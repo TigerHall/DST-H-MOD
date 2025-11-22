@@ -51,10 +51,10 @@ end
 name = L and "H-Staff Enhancement" or "H-手杖强化"
 description =
     L and
-    "V1.6\nEnhance your walking cane with features including customizable movement speed bonuses, damage values (including dimensional damage), ranged and area-of-effect attacks, life leech (which also restores hunger and sanity), light emission (only when dropped on the ground), protection against being knocked off by bosses, resurrection via haunting, and theft resistance.\nIt also supports multiple multi-tool functions: axe, pickaxe, shovel (with customizable tool efficiency), and hammer (with an independent toggle). Additionally, it can automatically harvest collectible crops around the player and auto-till land (farmland will keep generating; toggle off via right-click or drop the cane to stop).\nYou can configure walrus tusk crafting at the Alchemy Engine (using 1 boneshard and 2 houndstooth) or set walruses to drop an extra walrus tusk. The cane's multi-tool functions and light effects can be toggled on/off via right-click." or
-    "V1.6.1\n强化你的步行手杖，包括自定义移速加成、伤害值(包括位面伤害值)、远程攻击与群体攻击、吸血(包括回复饥饿和理智)、发光（仅限丢在地上的时候）、防boss拍落、可作祟复活以及不会被偷窃等功能，\n还支持多种多功能工具功能，包括斧子、稿子、铲子（可自定义工具效率）、锤子和浇水壶船桨（有单独设置开关），且可自动采摘玩家周围的可采摘作物，自动锄地(会一直生成耕地，通过右键关闭或丢掉手杖即可)。\n可以设置在二本合成海象牙（1骨头2犬牙）或让海象额外掉落一个海象牙，可以防雷、防雨、恒温。可通过右键关闭/开启手杖的多功能工具功能和光特效功能。"
+    "V1.7\nEnhance your walking cane with features including custom movement speed bonuses, damage values (including planar damage values), ranged attacks and area-of-effect attacks, life leech (including restoring hunger and sanity), glowing (only when dropped on the ground), preventing being knocked off by bosses, being revivable via haunting, and being theft-proof, etc.\nIt also supports multiple multi-functional tool features, including axe, pickaxe, shovel (with customizable tool efficiency), hammer, circular harvesting, and other multi-functional tools. It can automatically pick harvestable crops around the player and automatically till the soil. You can right-click to turn off/on the multi-functional tool features and light effect features of the cane.\nIn addition, there are permanent features such as watering can, oar, freshwater fishing rod, brush, and razor (with a separate setting switch).\nYou can set to craft walrus ivory at the Alchemy Engine (1 bone and 2 fangs) or make walruses drop an extra walrus ivory. It can also resist lightning, rain, and maintain a constant temperature.\nAll features can be turned on or off in the configuration options." or
+    "V1.7\n强化你的步行手杖，包括自定义移速加成、伤害值(包括位面伤害值)、远程攻击与群体攻击、吸血(包括回复饥饿和理智)、发光（仅限丢在地上的时候）、防boss拍落、可作祟复活以及不会被偷窃等功能，\n还支持多种多功能工具功能，包括斧子、稿子、铲子（可自定义工具效率）、锤子、圆形收割等多功能工具，且可自动采摘玩家周围的可采摘作物，自动锄地。可通过右键关闭/开启手杖的多功能工具功能和光特效功能。\n另外有常驻功能浇水壶、船桨、淡水钓竿、刷子、剃刀（有单独设置开关）\n可以设置在二本合成海象牙（1骨头2犬牙）或让海象额外掉落一个海象牙，可以防雷、防雨、恒温。\n所有功能均可在配置项开启或关闭"
 author = "hehu"
-version = "1.6.1"
+version = "1.7"
 api_version = 10
 dst_compatible = true
 all_clients_require_mod = true
@@ -249,7 +249,8 @@ configuration_options = {
 
 
   -- 多功能配置项
-  addTitle(L and "Multi-Tool Configurations" or "多功能工具"),
+  addTitle(L and "Multi-Tool Configurations(right-click to control the switch)" or "多功能工具（右键可控制开关）"),
+  -- 多工具组件
   addConfig(
     "tool_enable",
     "多功能",
@@ -262,6 +263,7 @@ configuration_options = {
     "功能太多确实也不好",
     "Too many functions are indeed not good"
   ),
+  -- 多工具状态保留
   addConfig(
     "multi_tool_state_save",
     "多功能工具状态保留",
@@ -274,41 +276,31 @@ configuration_options = {
     "卸下时自动关闭所有工具组件，重新装备需手动右键开启",
     "Automatically disables all tool components when unequipped; manual right-click to re-enable after re-equipping"
   ),
+  -- 锤子
   addConfig(
     "enable_hammer_action",
     "启用敲击动作",
     "Enable Hammer Action",
     true,
-    "控制是否允许作为锤子使用（用于破坏物品等操作）",
-    "Control whether to allow using as a hammer (for breaking objects, etc.)",
-    "启用后可执行敲击动作（如砸矿石、拆建筑）",
-    "Enables hammer actions (e.g., breaking ores, dismantling structures)",
+    "控制是否允许作为锤子使用",
+    "Control whether to allow using as a hammer",
+    "启用后可执行敲击动作",
+    "Enables hammer actions",
     "禁用后无法执行敲击动作",
     "Disables all hammer actions"
   ),
+  -- 镰刀配置项
   addConfig(
-    "enable_watering",
-    "水壶功能",
-    "Watering Function",
+    "enable_scythe",
+    "镰刀功能",
+    "Scythe Function",
     true,
-    "控制是否启用水壶功能",
-    "Control whether to enable the watering function",
-    "开启后可作为水壶使用",
-    "Can be used as a water bottle when enabled",
-    "关闭后无法作为水壶使用",
-    "Cannot be used as a water bottle when disabled"
-  ),
-  addConfig(
-    "enable_paddling",
-    "船桨功能",
-    "Paddle Function",
-    true,
-    "控制是否启用船桨功能",
-    "Control whether to enable the paddle function",
-    "开启后可作为船桨使用",
-    "Can be used as a paddle when enabled",
-    "关闭后无法作为船桨使用",
-    "Cannot be used as a paddle when disabled"
+    "控制是否启用镰刀功能",
+    "Control whether to enable the scythe function",
+    "开启后可作为镰刀使用",
+    "Can be used as a scythe when enabled",
+    "关闭后无法作为镰刀使用",
+    "Cannot be used as a scythe when disabled"
   ),
   -- 工作效率
   {
@@ -365,7 +357,7 @@ configuration_options = {
   },
   addConfig(
     "enable_light_fx",
-    "启用光特效，可作为装备是否开启的标志",
+    "启用光特效，可指示多功能是否开启",
     "Enable Light Effect",
     true,
     "控制是否显示手杖的光特效",
@@ -375,6 +367,74 @@ configuration_options = {
     "关闭后不再显示手杖的光特效",
     "Disables the cane's light effect when turned off"
   ),
+  -- 其他工具功能配置项
+  addTitle(L and "Other tools (permanently active functions)" or "其他工具（功能常驻）"),
+  -- 浇水壶
+  addConfig(
+    "enable_watering",
+    "水壶功能",
+    "Watering Function",
+    true,
+    "控制是否启用水壶功能",
+    "Control whether to enable the watering function",
+    "开启后可作为水壶使用",
+    "Can be used as a water bottle when enabled",
+    "关闭后无法作为水壶使用",
+    "Cannot be used as a water bottle when disabled"
+  ),
+  -- 船桨功能
+  addConfig(
+    "enable_paddling",
+    "船桨功能",
+    "Paddle Function",
+    true,
+    "控制是否启用船桨功能",
+    "Control whether to enable the paddle function",
+    "开启后可作为船桨使用",
+    "Can be used as a paddle when enabled",
+    "关闭后无法作为船桨使用",
+    "Cannot be used as a paddle when disabled"
+  ),
+  -- 淡水钓鱼竿配置项
+  addConfig(
+    "enable_fishingrod",
+    "淡水钓鱼竿功能",
+    "Freshwater Fishing Rod Function",
+    true,
+    "控制是否启用淡水钓鱼竿功能",
+    "Control whether to enable the freshwater fishing rod function",
+    "开启后可作为淡水钓鱼竿使用",
+    "Can be used as a freshwater fishing rod when enabled",
+    "关闭后无法作为淡水钓鱼竿使用",
+    "Cannot be used as a freshwater fishing rod when disabled"
+  ),
+  -- 刷子配置项
+  addConfig(
+    "enable_brush",
+    "刷子功能",
+    "Brush Function",
+    true,
+    "控制是否启用刷子功能",
+    "Control whether to enable the brush function",
+    "开启后可作为刷子使用",
+    "Can be used as a brush when enabled",
+    "关闭后无法作为刷子使用",
+    "Cannot be used as a brush when disabled"
+  ),
+  -- 剃刀配置项
+  addConfig(
+    "enable_razor",
+    "剃刀功能",
+    "Razor Function",
+    true,
+    "控制是否启用剃刀功能",
+    "Control whether to enable the razor function",
+    "开启后可作为剃刀使用",
+    "Can be used as a razor when enabled",
+    "关闭后无法作为剃刀使用",
+    "Cannot be used as a razor when disabled"
+  ),
+
 
 
   -- 其他配置项

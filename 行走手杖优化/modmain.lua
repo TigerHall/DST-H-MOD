@@ -20,12 +20,17 @@ local config = {
   tool_enable = GetModConfigData("tool_enable"),
   multi_tool_state_save = GetModConfigData("multi_tool_state_save"),
   enable_hammer_action = GetModConfigData("enable_hammer_action"),
+  enable_scythe = GetModConfigData("enable_scythe"),
   tool_efficiency = GetModConfigData("tool_efficiency"),
   auto_harvest_range = GetModConfigData("auto_harvest_range"),
   auto_farm_range = GetModConfigData("auto_farm_range"),
   enable_light_fx = GetModConfigData("enable_light_fx"),
+  -- 常驻功能配置项
   enable_watering = GetModConfigData("enable_watering"),
   enable_paddling = GetModConfigData("enable_paddling"),
+  enable_fishingrod = GetModConfigData("enable_fishingrod"),
+  enable_brush = GetModConfigData("enable_brush"),
+  enable_razor = GetModConfigData("enable_razor"),
   -- 其他配置项
   anti_lose = GetModConfigData("anti_lose_enable"),
   lightning_protect_enable = GetModConfigData("lightning_protect_enable"),
@@ -234,6 +239,7 @@ AddPrefabPostInit("cane", function(inst)
     if not inst.components.tool then
       -- 工具组件
       inst:AddComponent("tool")
+
       -- 砍树
       inst.components.tool:SetAction(ACTIONS.CHOP, config.tool_efficiency)
       -- 采矿
@@ -248,30 +254,41 @@ AddPrefabPostInit("cane", function(inst)
       inst.components.tool:SetAction(ACTIONS.NET)
       -- 挖掘
       inst.components.tool:SetAction(ACTIONS.DIG)
-      -- 刷子
-      if not inst.components.brush then
-        inst:AddComponent("brush")
-      end
-      -- 淡水钓鱼竿
-      if not inst.components.fishingrod then
-        inst:AddComponent("fishingrod")
-        inst.components.fishingrod:SetWaitTimes(1, 1.6)
-        inst.components.fishingrod:SetStrainTimes(0, 160)
-      end
-      -- 水壶浇水
-      if config.enable_watering and not inst.components.wateryprotection then
-        inst:AddComponent("wateryprotection")
-        inst:AddTag("wateringcan")
-        inst.components.wateryprotection.addwetness = 160
-        inst.components.wateryprotection.temperaturereduction = 66
-        inst.components.wateryprotection:AddIgnoreTag("player")
-      end
-      -- 划桨
-      if config.enable_paddling and not inst.components.oar then
-        inst:AddComponent("oar")
-        inst:AddTag("allow_action_on_impassable")
-        inst.components.oar.force = 1
-        inst.components.oar.max_velocity = 16
+      -- 添加镰刀功能
+      if config.enable_scythe then
+        -- 整合并简化镰刀收割功能（圆形范围收割）
+        local function DoScythe(inst, target, doer)
+          -- 定义收割范围和标签过滤
+          local HARVEST_RANGE = 6.6
+          local HARVEST_MUSTTAGS = { "pickable" }
+          local HARVEST_CANTTAGS = { "INLIMBO", "FX" }
+          local HARVEST_ONEOFTAGS = { "plant", "lichen", "oceanvine", "kelp" }
+
+          -- 获取玩家位置并查找范围内实体
+          local x, y, z = doer:GetPosition():Get()
+          local ents = TheSim:FindEntities(x, y, z, HARVEST_RANGE,
+            HARVEST_MUSTTAGS, HARVEST_CANTTAGS, HARVEST_ONEOFTAGS)
+
+          -- 遍历实体并收割
+          for _, ent in pairs(ents) do
+            if ent:IsValid() and ent.components.pickable then
+              -- 播放收割音效
+              if ent.components.pickable.picksound then
+                doer.SoundEmitter:PlaySound(ent.components.pickable.picksound)
+              end
+
+              -- 执行采摘并处理掉落物
+              local success, loot = ent.components.pickable:Pick(TheWorld)
+              if loot then
+                for _, item in ipairs(loot) do
+                  Launch(item, doer, 1.5) -- 物品向玩家方向弹出
+                end
+              end
+            end
+          end
+        end
+        inst.components.tool:SetAction(ACTIONS.SCYTHE)
+        inst.DoScythe = DoScythe
       end
     end
   end
@@ -279,14 +296,6 @@ AddPrefabPostInit("cane", function(inst)
   local function RemoveToolComponents()
     if inst.components.tool then
       inst:RemoveComponent("tool")
-      inst:RemoveComponent("brush")
-      inst:RemoveComponent("fishingrod")
-      if config.enable_watering then
-        inst:RemoveComponent("wateryprotection")
-      end
-      if config.enable_paddling then
-        inst:RemoveComponent("oar")
-      end
     end
   end
   -- 多工具功能状态更新函数
@@ -296,6 +305,37 @@ AddPrefabPostInit("cane", function(inst)
     else
       RemoveToolComponents()
     end
+  end
+
+  -- 不随右键关闭的功能
+  -- 刷子
+  if config.enable_brush and not inst.components.brush then
+    inst:AddComponent("brush")
+  end
+  -- 剃刀
+  if config.enable_razor and not inst.components.shaver then
+    inst:AddComponent("shaver")
+  end
+  -- 淡水钓鱼竿
+  if config.enable_fishingrod and not inst.components.fishingrod then
+    inst:AddComponent("fishingrod")
+    inst.components.fishingrod:SetWaitTimes(1, 1.6)
+    inst.components.fishingrod:SetStrainTimes(0, 160)
+  end
+  -- 水壶浇水
+  if config.enable_watering and not inst.components.wateryprotection then
+    inst:AddComponent("wateryprotection")
+    inst:AddTag("wateringcan")
+    inst.components.wateryprotection.addwetness = 160
+    inst.components.wateryprotection.temperaturereduction = 66
+    inst.components.wateryprotection:AddIgnoreTag("player")
+  end
+  -- 划桨
+  if config.enable_paddling and not inst.components.oar then
+    inst:AddComponent("oar")
+    inst:AddTag("allow_action_on_impassable")
+    inst.components.oar.force = 1
+    inst.components.oar.max_velocity = 16
   end
 
   -- 自动采摘逻辑
@@ -586,25 +626,29 @@ AddPrefabPostInit("cane", function(inst)
   if inst.components.equippable then
     inst:ListenForEvent("equipped", function(_, data)
       if data and data.owner and data.owner:HasTag("player") then
-        -- 先停止可能存在的旧任务（避免重复启动）
-        if auto_temp_task then
-          auto_temp_task:Cancel()
-          auto_temp_task = nil
+        if config.constant_temp_effect_enable then
+          -- 先停止可能存在的旧任务（避免重复启动）
+          if auto_temp_task then
+            auto_temp_task:Cancel()
+            auto_temp_task = nil
+          end
+          -- 启动新的自动温控任务（0.6秒间隔）
+          auto_temp_task = inst:DoPeriodicTask(AUTO_TEMP_INTERVAL, function()
+            DoAutoTempControl(inst)
+          end)
         end
-        -- 启动新的自动温控任务（0.6秒间隔）
-        auto_temp_task = inst:DoPeriodicTask(AUTO_TEMP_INTERVAL, function()
-          DoAutoTempControl(inst)
-        end)
         -- 装备时同步所有右键控制功能状态
         UpdateAllFeatures()
       end
     end)
     inst:ListenForEvent("unequipped", function(_, data)
       if data and data.owner and data.owner:HasTag("player") then
-        -- 停止自动温控任务
-        if auto_temp_task then
-          auto_temp_task:Cancel()
-          auto_temp_task = nil
+        if config.constant_temp_effect_enable then
+          -- 停止自动温控任务
+          if auto_temp_task then
+            auto_temp_task:Cancel()
+            auto_temp_task = nil
+          end
         end
         if config.multi_tool_state_save then
           -- 卸下时同步所有右键控制功能状态
