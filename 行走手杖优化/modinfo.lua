@@ -51,10 +51,10 @@ end
 name = L and "H-Staff Enhancement" or "H-手杖强化"
 description =
     L and
-    "V1.7\nEnhance your walking cane with features including custom movement speed bonuses, damage values (including planar damage values), ranged attacks and area-of-effect attacks, life leech (including restoring hunger and sanity), glowing (only when dropped on the ground), preventing being knocked off by bosses, being revivable via haunting, and being theft-proof, etc.\nIt also supports multiple multi-functional tool features, including axe, pickaxe, shovel (with customizable tool efficiency), hammer, circular harvesting, and other multi-functional tools. It can automatically pick harvestable crops around the player and automatically till the soil. You can right-click to turn off/on the multi-functional tool features and light effect features of the cane.\nIn addition, there are permanent features such as watering can, oar, freshwater fishing rod, brush, and razor (with a separate setting switch).\nYou can set to craft walrus ivory at the Alchemy Engine (1 bone and 2 fangs) or make walruses drop an extra walrus ivory. It can also resist lightning, rain, and maintain a constant temperature.\nAll features can be turned on or off in the configuration options." or
-    "V1.7\n强化你的步行手杖，包括自定义移速加成、伤害值(包括位面伤害值)、远程攻击与群体攻击、吸血(包括回复饥饿和理智)、发光（仅限丢在地上的时候）、防boss拍落、可作祟复活以及不会被偷窃等功能，\n还支持多种多功能工具功能，包括斧子、稿子、铲子（可自定义工具效率）、锤子、圆形收割等多功能工具，且可自动采摘玩家周围的可采摘作物，自动锄地。可通过右键关闭/开启手杖的多功能工具功能和光特效功能。\n另外有常驻功能浇水壶、船桨、淡水钓竿、刷子、剃刀（有单独设置开关）\n可以设置在二本合成海象牙（1骨头2犬牙）或让海象额外掉落一个海象牙，可以防雷、防雨、恒温。\n所有功能均可在配置项开启或关闭"
+    "V2.2\n\nAll features can be turned on or off in the configuration options.\n\nEnhance your walking cane with features including custom movement speed bonuses, damage values (including planar damage values), ranged attacks and area-of-effect attacks, life leech (including restoring hunger and sanity), glowing (only when dropped on the ground), preventing being knocked off by bosses, being revivable via haunting, and being theft-proof, etc.\n\nIt also supports various multi-functional tool features, including axe, pickaxe, shovel (with customizable tool efficiency), hammer, circular harvesting, and other multi-functional tools. It can automatically pick harvestable crops around the player, and has an auto-pickup function (an additional switch, controlled by auto-harvesting; it picks up everything, which is quite excessive). It also features automatic tilling and automatic sowing (by placing seeds in the cane's grid). The multi-functional tool features and light effect function of the cane can be turned off/on by right-clicking.\n\nIn addition, there are permanent features such as watering can, oar, freshwater fishing rod, brush, and razor (with a separate setting switch).\n\nYou can set to craft walrus ivory at the Alchemy Engine (1 bone and 2 fangs) or make walruses drop an extra walrus ivory. It can also resist lightning, rain, and maintain a constant temperature.\n\nSeeds can be placed in the grid for automatic sowing. Gems can also be placed in it, and different gems have different abilities." or
+    "V2.2.8\n\n所有功能均可在配置项开启或关闭\n\n强化你的步行手杖，包括自定义移速加成、伤害值(包括位面伤害值)、远程攻击与群体攻击、吸血(包括回复饥饿和理智)、发光（仅限丢在地上的时候）、防boss拍落、可作祟复活以及不会被偷窃等功能，\n\n还支持多种多功能工具功能，包括斧子、稿子、铲子（可自定义工具效率）、锤子、圆形收割等多功能工具，且可自动采摘玩家周围的可采摘作物，自动拾取功能（额外开关，受自动采摘控制，啥东西都会捡起来，很夸张），自动锄地，自动播种（将种子放进手杖的格子里）。可通过右键关闭/开启手杖的多功能工具功能和光特效功能。\n\n另外有常驻功能浇水壶、船桨、淡水钓竿、刷子、剃刀（有单独设置开关）\n\n可以设置在二本合成海象牙（1骨头2犬牙）或让海象额外掉落一个海象牙，可以防雷、防雨、恒温。\n\n可以在格子里放入种子，自动播种。还可以放入宝石不同宝石有不同的能力。"
 author = "hehu"
-version = "1.7"
+version = "2.2.8"
 api_version = 10
 dst_compatible = true
 all_clients_require_mod = true
@@ -63,6 +63,9 @@ icon_atlas = "modicon.xml"
 icon = "modicon.tex"
 
 server_filter_tags = { "cane", "步行手杖", "移速", "speed", "伤害", "damage", "远程攻击", "range attack", "复活", "resurrection" }
+
+--优先级调高(刚好压过Insight)
+priority = -10001
 
 configuration_options = {
   -- 基础配置项
@@ -110,18 +113,20 @@ configuration_options = {
     "相信你在永恒大陆不怕死亡，毕竟也可以回档大法",
     "You're not afraid of death in the Constant, after all, you can reload"
   ),
-  addConfig(
-    "enable_light",
-    "发光功能",
-    "Light Function(only when dropped on the ground)",
-    true,
-    "是否启用手杖的发光功能",
-    "Whether to enable the staff's light function",
-    "手杖会持续发出柔和的光芒",
-    "The staff will emit a soft light continuously",
-    "关闭发光功能，不产生任何光源",
-    "Disable the light function, no light source will be generated"
-  ),
+  -- 发光范围设置
+  {
+    name = "hcane_light",
+    label = L and "Light Emission Range" or "发光范围设置",
+    hover = L and "Set the light emission range of the item (0 = disable light)" or "设置物品的发光范围(0 = 禁用发光)",
+    options = {
+      { description = "0", data = 0, hover = L and "Disable light emission" or "禁用发光效果" },
+      { description = "1.6", data = 1.6, hover = L and "Small light range (radius 1.6)" or "保命微光(半径1.6)" },
+      { description = "3.6", data = 3.6, hover = L and "Medium light range (radius 3.6)" or "中等发光范围(半径3.6)" },
+      { description = "6.6", data = 6.6, hover = L and "Large light range (radius 6.6)" or "大发光范围(半径6.6)" },
+      { description = "12.6", data = 12.6, hover = L and "Extra large light range (radius 12.6)" or "超大发光范围(半径12.6)" },
+    },
+    default = 3.6
+  },
   -- 伤害值配置项
   addTitle(L and "About Damage" or "伤害相关"),
   -- 基础伤害值选项
@@ -166,18 +171,21 @@ configuration_options = {
     },
     default = 36
   },
-  addConfig(
-    "range_attack_enable",
-    "远程攻击",
-    "Ranged Attack",
-    true,
-    "是否启用远程攻击能力",
-    "Enable ranged attack capability",
-    "远程的武器，那是完全不一样的概念",
-    "Ranged weapon is a game-changer",
-    "你还是比较老实的",
-    "You prefer to be honest"
-  ),
+  -- 远程攻击范围
+  {
+    name = "range_attack",
+    label = L and "Attack Ranged" or "远程攻击范围",
+    hover = L and "How far you can Attack" or "可以打多远",
+    options = {
+      { description = "0", data = 0, hover = L and "No Attack Ranged" or "原本就是近战" },
+      { description = "2", data = 2, hover = L and "Half Turfs Radius" or "半个地皮远" },
+      { description = "6", data = 6, hover = L and "One and A Half Turfs Radius" or "1.5个地皮远" },
+      { description = "10", data = 10, hover = L and "2.5 * Turfs Radius" or "2.5个地皮远" },
+      { description = "16", data = 16, hover = L and "4 * Turfs Radius" or "4个地皮远" },
+      { description = "20", data = 20, hover = L and "5 * Turfs Radius" or "5个地皮那么远" },
+    },
+    default = 16
+  },
   -- 群攻伤害百分比
   {
     name = "aoe_damage_ratio",
@@ -319,15 +327,15 @@ configuration_options = {
     },
     default = 6
   },
-  -- 自动采摘
+  -- 自动工作范围
   {
-    name = "auto_harvest_range",
-    label = L and "Auto-Harvest Range" or "自动采摘范围",
+    name = "auto_work_range",
+    label = L and "Auto-Work Range" or "自动工作范围",
     hover = L and
-        "Effective range for auto-harvesting (set to 0 to disable)" or
-        "自动采摘的有效范围（设置为0则关闭功能）",
+        "Effective range for auto-working (set to 0 to disable)" or
+        "自动工作的有效范围（设置为0则关闭功能）",
     options = {
-      { description = "0", data = 0, hover = L and "Disable auto-harvest" or "关闭自动采摘功能" },
+      { description = "0", data = 0, hover = L and "Disable auto-work" or "关闭自动工作功能" },
       { description = "2.6", data = 2.6, hover = L and "Slightly more than 0.5 Turf Radius" or "稍大于0.5个地皮半径" },
       { description = "4.6", data = 4.6, hover = L and "Slightly more than 1 Turf Radius" or "稍大于1个地皮的半径范围" },
       { description = "6.6", data = 6.6, hover = L and "Slightly more than 1.5 Turfs Radius, allows the general grassland of grass lizards to be just fully harvested outside the fence." or "稍大于1.5个地皮的半径范围，围起来草蜥蜴的一般草场刚好能在栅栏外收完" },
@@ -435,8 +443,6 @@ configuration_options = {
     "Cannot be used as a razor when disabled"
   ),
 
-
-
   -- 其他配置项
   addTitle(L and "Others" or "其他"),
   addConfig(
@@ -514,5 +520,17 @@ configuration_options = {
     "Walrus will drop 1 Walrus Tusk every time it's killed",
     "海象掉落海象牙恢复默认随机机制",
     "Reverts Walrus Tusk drop to default random mechanism"
-  )
+  ),
+  addConfig(
+    "enable_slot",
+    "启用格子",
+    "Enable Slot",
+    true,
+    "控制是否显示和启用手杖上的存放格子",
+    "Control whether to show and enable the storage slot on the cane",
+    "显示1个存放格子，可放入各类农作物种子，自动耕地时会优先使用格子内种子",
+    "Show 1x1 seed storage slot, can hold various crop seeds, auto-farm will use seeds in the slot first",
+    "隐藏种子存放格子，自动播种功能同时失效",
+    "Hide seed storage slot, auto-planting function will be disabled"
+  ),
 }

@@ -8,7 +8,8 @@ local function lightfn()
 
   inst:AddTag("FX")
 
-  inst.Light:SetRadius(6)
+  local light_radius = TUNING.hcanelight or 6
+  inst.Light:SetRadius(light_radius)
   inst.Light:SetFalloff(0.6)
   inst.Light:SetIntensity(0.6)
   inst.Light:SetColour(0.6, 0.8, 0.6)
