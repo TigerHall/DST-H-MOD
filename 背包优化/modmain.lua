@@ -17,36 +17,167 @@ local config = {}
 for _, param in ipairs(backpack_params) do
   local prefab = param.prefab
   config[prefab] = {
+    -- 防御和反击
     defense = GetModConfigData(prefab .. "_defense"),
     planardefense = GetModConfigData(prefab .. "_planardefense"),
-    collect = GetModConfigData(prefab .. "_collect")
+    counter_dmg = GetModConfigData(prefab .. "_counter_dmg"),
+    -- 保温防雨和回san
+    insulate = GetModConfigData(prefab .. "_insulate"),
+    waterproof = GetModConfigData(prefab .. "_waterproof"),
+    sanity = GetModConfigData(prefab .. "_sanity"),
+    -- 自动采集和无限堆叠，保鲜
+    infinite_stack = GetModConfigData(prefab .. "_infinite_stack"),
+    collect = GetModConfigData(prefab .. "_collect"),
+    preserve = GetModConfigData(prefab .. "_preserve")
   }
 end
+
+-- 目标有效性过滤函数
+local function IsValidCounterTarget(attacker, owner)
+  if not attacker or not attacker:IsValid() or not attacker.entity:IsVisible() then
+    return false
+  end
+  -- 排除特定标签
+  local invalid_tags = { "bramble_resistant", "INLIMBO", "FX", "invisible", "wall", "notarget", "noattack", "flight",
+    "playerghost", "NOCLICK", }
+  for _, tag in ipairs(invalid_tags) do
+    if attacker:HasTag(tag) then
+      return false
+    end
+  end
+  -- 排除无战斗组件的目标
+  if not attacker.components.combat then
+    return false
+  end
+  -- 排除友方单位
+  if owner and owner.components.combat and owner.components.combat:IsAlly(attacker) then
+    return false
+  end
+  return true
+end
+-- 直接执行反击（添加目标限制）
+local function DoCounterAttack(inst, owner, attacker)
+  -- 目标过滤
+  if not IsValidCounterTarget(attacker, owner) then
+    return
+  end
+  -- 新增：检查攻击者是否有health组件
+  if not attacker.components or not attacker.components.health then
+    return
+  end
+
+  -- 检查目标存活状态（此时已确保health组件存在）
+  if attacker.components.health:IsDead() then
+    return
+  end
+
+  -- 获取配置的反击伤害
+  local dmg = config[inst.prefab].counter_dmg or 0
+  if dmg <= 0 then return end
+  -- 造成反击伤害
+  attacker.components.health:DoDelta(-dmg, false, inst.prefab)
+  -- 播放音效
+  if owner.SoundEmitter then
+    owner.SoundEmitter:PlaySound("dontstarve/common/together/armor/cactus")
+  end
+end
+-- 通用反击触发函数
+local function OnAttackTrigger(inst, owner, data)
+  -- 提取攻击者
+  local attacker = data.attacker or
+      (data.target and data.target.components.combat and data.target.components.combat.target)
+  if not attacker then return end
+  -- 触发反击
+  DoCounterAttack(inst, owner, attacker)
+end
+
+
 
 -- 通用背包强化函数（处理所有背包的共性逻辑）
 local function enhance_backpack(inst, prefab)
   -- 获取当前背包的配置
   local cfg = config[prefab]
+  inst.prefab = prefab
+
+  -- 装备时注册事件
+  local old_onequip = inst.components.equippable.onequipfn
+  inst.components.equippable:SetOnEquip(function(inst, owner)
+    if old_onequip then old_onequip(inst, owner) end
+
+    inst._onattacked = function(_owner, data) OnAttackTrigger(inst, _owner, data) end
+    inst:ListenForEvent("attacked", inst._onattacked, owner)
+    inst:ListenForEvent("blocked", inst._onattacked, owner)
+  end)
+
+  -- 卸下时清理
+  local old_onunequip = inst.components.equippable.onunequipfn
+  inst.components.equippable:SetOnUnequip(function(inst, owner)
+    if old_onunequip then old_onunequip(inst, owner) end
+
+    if inst._onattacked then
+      inst:RemoveEventCallback("attacked", inst._onattacked, owner)
+      inst:RemoveEventCallback("blocked", inst._onattacked, owner)
+      inst._onattacked = nil
+    end
+  end)
+
 
   -- 1. 普通防御设置
   if cfg.defense > 0 then
     inst:AddComponent("armor")
-    inst.components.armor:InitCondition(666666, cfg.defense)
-    -- 受伤不消耗耐久（直接重置为满耐久）
-    inst.components.armor.ontakedamage = function()
-      inst.components.armor:SetCondition(666666)
-    end
+    inst:AddTag("hide_percentage")
+    inst.components.armor:InitIndestructible(cfg.defense)
   end
 
-  -- 2. 位面防御设置（预留扩展）
+  -- 2. 位面防御设置
   if cfg.planardefense > 0 then
     inst:AddComponent("planardefense")
     inst.components.planardefense:SetBaseDefense(cfg.planardefense)
   end
 
+  -- 3. 保温功能
+  if cfg.insulate > 0 then
+    if not inst.components.insulator then
+      inst:AddComponent("insulator")
+    end
+    inst.components.insulator:SetInsulation(cfg.insulate)
+    -- 默认为保温效果，下面的注释去掉则为隔热效果
+    -- inst.components.insulator:SetSummer()
+  end
 
+  -- 4.防雨功能（简化为完全防雨/关闭）
+  if cfg.waterproof then
+    if not inst.components.waterproofer then
+      inst:AddComponent("waterproofer")
+    end
+    inst.components.waterproofer:SetEffectiveness(1)
+  end
 
-  -- 3. 自动采集功能
+  -- 5. 回san功能（精神恢复）
+  if cfg.sanity > 0 then
+    -- 确保背包有equippable组件（装备时生效）
+    if not inst.components.equippable then
+      inst:AddComponent("equippable")
+    end
+    -- 按需求调整除数
+    inst.components.equippable.dapperness = cfg.sanity / 54
+  end
+
+  -- 6. 保鲜功能实现
+  if cfg.preserve then
+    -- 添加preserver组件并设置保鲜倍率为0（食物永不腐烂）
+    if not inst.components.preserver then
+      inst:AddComponent("preserver")
+    end
+    inst.components.preserver:SetPerishRateMultiplier(0)
+  end
+
+  -- 无限堆叠功能
+  if cfg.infinite_stack then
+    inst.components.container:EnableInfiniteStackSize(true)
+  end
+
+  -- 自动采集功能
   if cfg.collect then
     -- 修改自 心悦卿兮的宠物拾取代码
     local function spawn_fx(name, scale, pos)
@@ -135,6 +266,7 @@ local function enhance_backpack(inst, prefab)
 
     inst:DoPeriodicTask(0.36, collect_items_periodially)
   end
+
 
   return inst
 end

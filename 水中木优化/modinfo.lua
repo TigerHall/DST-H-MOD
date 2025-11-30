@@ -50,10 +50,11 @@ end
 name = L and "H-Enhanced Waterlogged Tree" or "H-水中木强化"
 description = L
     and
-    "V1.1\nAllows transplanted Waterlogged Trees to glow, reduces the visual size of large trees, shrinks moss vines, and adjusts the number of figs obtained per harvest.Modify the production speed and consumption effect of Glommer's Goop, and modify the fertilizer effect of tree jam and Glommer's Goop."
-    or "V1.1\n让移植过来的水中木发光，减小大树视觉体积，减小苔藓藤条体积，修改获得的无花果数量，修改格罗姆粘液的产出速度和食用效果，修改树果酱和格罗姆粘液的肥料效果。"
+    "V1.5\n\nAllows transplanted Waterlogged Trees to glow, reduces the visual size of large trees, shrinks moss vines, increases the shade range of the fig Tree, and adjusts the number of figs obtained per harvest.Modify the production speed and consumption effect of Glommer's Goop, and modify the fertilizer effect of tree jam and Glommer's Goop.When fertilizing with Glommer's Goop, the transplant marker of the crop can be removed (once it becomes a native plant, there is no need to fertilize it anymore)."
+    or
+    "V1.5.1\n\n让移植过来的水中木发光，减小大树视觉体积，自定义增大树荫范围，减小苔藓藤条体积，修改获得的无花果数量，修改格罗姆粘液的产出速度和食用效果，自定义格罗姆的会san光环效果，修改树果酱和格罗姆粘液的肥料效果。格罗姆粘液施肥时可移除作物的移植标记（变为原生植物以后不用再施肥了）。"
 author = "hehu"
-version = "1.1"
+version = "1.5.1"
 api_version = 10
 dst_compatible = true
 all_clients_require_mod = true
@@ -62,6 +63,9 @@ icon_atlas = "modicon.xml"
 icon = "modicon.tex"
 
 server_filter_tags = { "oceantree_pillar", "水中木", "oceanvine", "苔藓藤条，无花果" }
+
+--优先级调高(刚好压过Insight)
+priority = -10001
 
 configuration_options = {
   -- 产物相关标题
@@ -81,19 +85,20 @@ configuration_options = {
     },
     default = 6.6
   },
-  -- -- 显示水中木叶冠，这是反的是否
-  -- addConfig(
-  --   "show_leafcanopy",
-  --   "不显示水中木叶冠",
-  --   "Don't Show Leafcanopy",
-  --   true,
-  --   "是否显示水中木叶冠（leafcanopy）",
-  --   "show the leafcanopy",
-  --   "不显示水中木叶冠将",
-  --   "Disables the display of the leafcanopy",
-  --   "显示水中木叶冠",
-  --   "Enables visibility of the leafcanopy"
-  -- ),
+  -- 水中木遮蔽范围
+  {
+    name = "OceanTreeShadeRange",
+    label = L and "Waterlogged Tree Shade Range" or "水中木遮蔽范围",
+    hover = L and "Adjust the shade coverage of waterlogged trees" or "调整水中木提供的荫蔽范围大小",
+    options = {
+      { description = L and "22 (Original)" or "22(原版)", data = 22, hover = L and "Default shade range" or "原版默认遮蔽范围" },
+      { description = L and "36 (1.5x)" or "36(1.5倍)", data = 36, hover = L and "1.5 times the original range" or "原版的1.5倍遮蔽范围" },
+      { description = L and "46 (2x)" or "46(2倍)", data = 46, hover = L and "2 times the original range" or "原版的2倍遮蔽范围" },
+      { description = L and "56 (2.5x)" or "55(2.5倍)", data = 56, hover = L and "2.5 times the original range" or "原版的2.5倍遮蔽范围" },
+      { description = L and "66 (3x)" or "66(3倍)", data = 66, hover = L and "3 times the original range" or "原版的3倍遮蔽范围" },
+    },
+    default = 66
+  },
   -- 缩小水中木大小
   {
     name = "OceanTreeShrinkScale",
@@ -170,6 +175,18 @@ configuration_options = {
     "No change"
   ),
   addConfig(
+    "glommerfuel_remove_transplant",
+    "格罗姆粘液移除移植标记",
+    "Glommerfuel Remove Transplant Mark",
+    true,
+    "使用格罗姆粘液施肥时移除作物的移植标记",
+    "Remove transplant mark of crops when fertilizing with Glommerfuel",
+    "开启后用格罗姆粘液施肥会清除移植标记",
+    "Fertilizing with Glommerfuel will clear transplant mark",
+    "禁用后格罗姆粘液不再移除移植标记",
+    "Glommerfuel no longer removes transplant mark"
+  ),
+  addConfig(
     "sgj_fl",
     "树果酱肥料效果修改",
     "Tree Jam Fertilizer Effect Modification",
@@ -195,26 +212,26 @@ configuration_options = {
     "保留原版格罗姆粘液的食用效果，不做数值修改",
     "don't change the original edible effect of Glommer's Goop"
   ),
-  -- 回san光环效果修改（无效的修改）
-  -- {
-  --   name = "glommer_sanityaura",
-  --   label = L and "Glommer's Sanity Aura (per second)" or "格罗姆每秒回san光环",
-  --   hover = L and "Adjust Glommer's sanity restoration per second (0 = disable aura)" or "调整格罗姆每秒的理智恢复值（0 = 禁用光环效果）",
-  --   options = {
-  --     { description = "0/s", data = 0, hover = L and "0 sanity per second (aura disabled)" or "不做改动" },
-  --     { description = "0.2/s", data = 0.2, hover = L and "0.2 sanity restored per second" or "每秒恢复0.2理智，两倍于原本的格罗姆效果" },
-  --     { description = "0.6/s", data = 0.6, hover = L and "0.6 sanity restored per second" or "每秒恢复0.6理智" },
-  --     { description = "1.0/s", data = 1, hover = L and "1 sanity restored per second" or "每秒恢复1理智（原始速率）" },
-  --     { description = "1.6/s", data = 1.6, hover = L and "1.6 sanity restored per second" or "每秒恢复1.6理智" },
-  --     { description = "2.6/s", data = 2.6, hover = L and "2.6 sanity restored per second" or "每秒恢复2.6理智" },
-  --     { description = "3.6/s", data = 3.6, hover = L and "3.6 sanity restored per second" or "每秒恢复3.6理智" },
-  --     { description = "6.6/s", data = 6.6, hover = L and "6.6 sanity restored per second" or "每秒恢复6.6理智" },
-  --     { description = "16.6/s", data = 16.6, hover = L and "16.6 sanity restored per second" or "每秒恢复16.6理智" },
-  --     { description = "26.6/s", data = 26.6, hover = L and "26.6 sanity restored per second" or "每秒恢复26.6理智" },
-  --     { description = "36.6/s", data = 36.6, hover = L and "36.6 sanity restored per second" or "每秒恢复36.6理智" },
-  --   },
-  --   default = 6.6
-  -- },
+  -- 回san光环效果修改
+  {
+    name = "glommer_sanityaura",
+    label = L and "Glommer's Sanity Aura (per second)" or "格罗姆每秒回san光环",
+    hover = L and "Adjust Glommer's sanity restoration per second (0 = disable aura)" or "调整格罗姆每秒的理智恢复值（0 = 禁用光环效果）",
+    options = {
+      { description = "0/s", data = 0, hover = L and "0 sanity per second (aura disabled)" or "不做改动" },
+      { description = "0.2/s", data = 0.2, hover = L and "0.2 sanity restored per second" or "每秒恢复0.2理智，两倍于原本的格罗姆效果" },
+      { description = "0.6/s", data = 0.6, hover = L and "0.6 sanity restored per second" or "每秒恢复0.6理智" },
+      { description = "1.0/s", data = 1, hover = L and "1 sanity restored per second" or "每秒恢复1理智（原始速率）" },
+      { description = "1.6/s", data = 1.6, hover = L and "1.6 sanity restored per second" or "每秒恢复1.6理智" },
+      { description = "2.6/s", data = 2.6, hover = L and "2.6 sanity restored per second" or "每秒恢复2.6理智" },
+      { description = "3.6/s", data = 3.6, hover = L and "3.6 sanity restored per second" or "每秒恢复3.6理智" },
+      { description = "6.6/s", data = 6.6, hover = L and "6.6 sanity restored per second" or "每秒恢复6.6理智" },
+      { description = "16.6/s", data = 16.6, hover = L and "16.6 sanity restored per second" or "每秒恢复16.6理智" },
+      { description = "26.6/s", data = 26.6, hover = L and "26.6 sanity restored per second" or "每秒恢复26.6理智" },
+      { description = "36.6/s", data = 36.6, hover = L and "36.6 sanity restored per second" or "每秒恢复36.6理智" },
+    },
+    default = 6.6
+  },
 
 
 }

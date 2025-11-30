@@ -10,9 +10,11 @@ local config = {
   show_leafcanopy = GetModConfigData("show_leafcanopy"),
   glommerfuel_edible = GetModConfigData("glommerfuel_edible"),
   glommerfuel_period = GetModConfigData("glommerfuel_period"),
+  glommerfuel_remove_transplant = GetModConfigData("glommerfuel_remove_transplant"),
   glommer_sanityaura = GetModConfigData("glommer_sanityaura"),
   sgj_fl = GetModConfigData("sgj_fl"),
   glmny_fl = GetModConfigData("glmny_fl"),
+  OceanTreeShadeRange = GetModConfigData("OceanTreeShadeRange"),
 }
 
 -- 设置全局调优参数
@@ -104,17 +106,15 @@ AddPrefabPostInit("glommer", function(inst)
   end
   -- 修改格罗姆粘液的产出速度
   if config.glommerfuel_period > 0 and inst.components.periodicspawner then
-    inst:AddComponent("periodicspawner")
     inst.components.periodicspawner.basetime = config.glommerfuel_period * 60
     inst.components.periodicspawner.randtime = 1
   end
-  -- 修改格罗姆的回san效果 无效的修改
-  -- if config.glommer_sanityaura > 0 and inst.sanityaura then
-  --   inst:AddComponent("sanityaura")
-  --   inst.components.sanityaura.aura = 6666
-  -- end
-
   --修改结束
+
+  -- 修改格罗姆粘液的产出速度
+  if config.glommer_sanityaura > 0 and inst.components.sanityaura then
+    inst.components.sanityaura.aura = config.glommer_sanityaura
+  end
 end)
 
 -- 修改格罗姆粘液
@@ -129,10 +129,10 @@ AddPrefabPostInit("glommerfuel", function(inst)
     inst.components.edible.hungervalue = 166
     inst.components.edible.sanityvalue = -166
   end
-  -- 修改树果酱的肥料效果
+  -- 修改格罗姆粘液的肥料效果
   if config.glmny_fl and inst.components.fertilizer then
-    inst:AddComponent("fertilizer")
     inst.components.fertilizer:SetNutrients(66, 66, 66)
+    -- 怎么让格罗姆粘液施肥移除种植标记？
   end
 
   --修改结束
@@ -146,8 +146,29 @@ AddPrefabPostInit("treegrowthsolution", function(inst)
   end
   -- 修改树果酱的肥料效果
   if config.sgj_fl and inst.components.fertilizer then
-    inst:AddComponent("fertilizer")
     inst.components.fertilizer:SetNutrients(166, 166, 166)
   end
   --修改结束
 end)
+
+if config.OceanTreeShadeRange > 22 then
+  TUNING.SHADE_CANOPY_RANGE_SMALL = config.OceanTreeShadeRange or 22
+end
+
+-- 格罗姆粘液施肥移除移植标记
+if config.glommerfuel_remove_transplant then
+  -- 移除原有的施肥类型配置依赖，仅保留格罗姆粪便逻辑
+  local function refertilize(self)
+    local oldfertilize = self.Fertilize
+    self.Fertilize = function(self, fertilizer, doer)
+      -- 仅当使用格罗姆粪便施肥时，移除移植标记
+      if fertilizer.prefab == "glommerfuel" then
+        self.transplanted = false
+      end
+      oldfertilize(self, fertilizer, doer)
+      return true
+    end
+  end
+  -- 所有可移植作物变为原生
+  AddComponentPostInit("pickable", refertilize)
+end
