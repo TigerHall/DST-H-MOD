@@ -51,10 +51,10 @@ end
 name = L and "H-Staff Enhancement" or "H-手杖强化"
 description =
     L and
-    "V2.2\n\nAll features can be turned on or off in the configuration options.\n\nEnhance your walking cane with features including custom movement speed bonuses, damage values (including planar damage values), ranged attacks and area-of-effect attacks, life leech (including restoring hunger and sanity), glowing (only when dropped on the ground), preventing being knocked off by bosses, being revivable via haunting, and being theft-proof, etc.\n\nIt also supports various multi-functional tool features, including axe, pickaxe, shovel (with customizable tool efficiency), hammer, circular harvesting, and other multi-functional tools. It can automatically pick harvestable crops around the player, and has an auto-pickup function (an additional switch, controlled by auto-harvesting; it picks up everything, which is quite excessive). It also features automatic tilling and automatic sowing (by placing seeds in the cane's grid). The multi-functional tool features and light effect function of the cane can be turned off/on by right-clicking.\n\nIn addition, there are permanent features such as watering can, oar, freshwater fishing rod, brush, and razor (with a separate setting switch).\n\nYou can set to craft walrus ivory at the Alchemy Engine (1 bone and 2 fangs) or make walruses drop an extra walrus ivory. It can also resist lightning, rain, and maintain a constant temperature.\n\nSeeds can be placed in the grid for automatic sowing. Gems can also be placed in it, and different gems have different abilities." or
-    "V2.2.8\n\n所有功能均可在配置项开启或关闭\n\n强化你的步行手杖，包括自定义移速加成、伤害值(包括位面伤害值)、远程攻击与群体攻击、吸血(包括回复饥饿和理智)、发光（仅限丢在地上的时候）、防boss拍落、可作祟复活以及不会被偷窃等功能，\n\n还支持多种多功能工具功能，包括斧子、稿子、铲子（可自定义工具效率）、锤子、圆形收割等多功能工具，且可自动采摘玩家周围的可采摘作物，自动拾取功能（额外开关，受自动采摘控制，啥东西都会捡起来，很夸张），自动锄地，自动播种（将种子放进手杖的格子里）。可通过右键关闭/开启手杖的多功能工具功能和光特效功能。\n\n另外有常驻功能浇水壶、船桨、淡水钓竿、刷子、剃刀（有单独设置开关）\n\n可以设置在二本合成海象牙（1骨头2犬牙）或让海象额外掉落一个海象牙，可以防雷、防雨、恒温。\n\n可以在格子里放入种子，自动播种。还可以放入宝石不同宝石有不同的能力。"
+    "V2.3\n\nAll features can be turned on or off in the configuration options.\n\nEnhance your walking cane with features including custom movement speed bonuses, damage values (including planar damage values), ranged attacks and area-of-effect attacks, life leech (including restoring hunger and sanity), glowing (only when dropped on the ground), preventing being knocked off by bosses, being revivable via haunting, and being theft-proof, etc.\n\nIt also supports various multi-functional tool features, including axe, pickaxe, shovel (with customizable tool efficiency), hammer, circular harvesting, and other multi-functional tools. It can automatically pick harvestable crops around the player, and has an auto-pickup function (an additional switch, controlled by auto-harvesting; it picks up everything, which is quite excessive). It also features automatic tilling and automatic sowing (by placing seeds in the cane's grid). The multi-functional tool features and light effect function of the cane can be turned off/on by right-clicking.\n\nIn addition, there are permanent features such as watering can, oar, freshwater fishing rod, brush, and razor (with a separate setting switch).\n\nYou can set to craft walrus ivory at the Alchemy Engine (1 bone and 2 fangs) or make walruses drop an extra walrus ivory. It can also resist lightning, rain, and maintain a constant temperature.\n\nYou can place seeds in the character's last inventory slot (the 15th one, closest to the equipment slot), and they will be sown automatically. You can also place gems, sand stones, bear skins (be careful of home destruction), etc., each of which has different abilities." or
+    "V2.3.10\n\n所有功能均可在配置项开启或关闭\n\n强化你的步行手杖，包括自定义移速加成、伤害值(包括位面伤害值)、远程攻击与群体攻击、吸血(包括回复饥饿和理智)、发光（仅限丢在地上的时候）、防boss拍落、可作祟复活以及不会被偷窃等功能，\n\n还支持多种多功能工具功能，包括斧子、稿子、铲子（可自定义工具效率）、锤子、圆形收割等多功能工具，且可自动采摘玩家周围的可采摘作物，自动拾取功能（额外开关，受自动采摘控制，啥东西都会捡起来，很夸张），自动锄地，自动播种（将种子放进手杖的格子里）。可通过右键关闭/开启手杖的多功能工具功能和光特效功能。\n\n另外有常驻功能浇水壶、船桨、淡水钓竿、刷子、剃刀（有单独设置开关）\n\n可以设置在二本合成海象牙（1骨头2犬牙）或让海象额外掉落一个海象牙，可以防雷、防雨、恒温。\n\n可以在人物最后一个格子（15个，最靠近装备那个）里放入种子，能自动播种。还可以放入宝石、沙之石、熊皮（小心拆家）等，都有不同的能力。"
 author = "hehu"
-version = "2.2.8"
+version = "2.3.10"
 api_version = 10
 dst_compatible = true
 all_clients_require_mod = true
@@ -523,14 +523,13 @@ configuration_options = {
   ),
   addConfig(
     "enable_slot",
-    "启用格子",
-    "Enable Slot",
+    "启用扫描格子",
+    "Enable Scan Slot",
     true,
-    "控制是否显示和启用手杖上的存放格子",
-    "Control whether to show and enable the storage slot on the cane",
-    "显示1个存放格子，可放入各类农作物种子，自动耕地时会优先使用格子内种子",
-    "Show 1x1 seed storage slot, can hold various crop seeds, auto-farm will use seeds in the slot first",
-    "隐藏种子存放格子，自动播种功能同时失效",
-    "Hide seed storage slot, auto-planting function will be disabled"
-  ),
+    "控制是否启用手杖的扫描格子功能",
+    "Control whether to enable the scan slot function of the cane",
+    "手杖会扫描人物物品栏第 15 个格子并解锁对应强大功能，可根据格子内物品触发各类实用效果",
+    "The cane will scan the 15th slot of the player's inventory and unlock corresponding powerful functions, which can trigger various practical effects according to the items in the slot",
+    "没啥变化",
+    "nothing changes"),
 }

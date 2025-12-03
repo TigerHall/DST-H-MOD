@@ -52,33 +52,7 @@ PrefabFiles = {
 -- 注册动画资源（放在 modmain.lua 开头）
 Assets = {
   -- 加载自定义UI动画包
-  -- Asset("ANIM", "anim/ui_hcane_1x1.zip"),
-  Asset("ANIM", "anim/ui_antlionhat_1x1.zip"),
-}
-
--- 复用铲地皮头盔容器组件定义
-local params = require("containers").params
-params.hcane =
-{
-  widget =
-  {
-    slotpos = {
-      Vector3(0, 2, 0),
-    },
-    animbank = "ui_antlionhat_1x1",
-    animbuild = "ui_antlionhat_1x1",
-    -- slotbg = { { image = "images/xin.tex", atlas = "images/xin.xml" } },
-    pos = Vector3(0, 40, 0),
-  },
-  type = "hand_inv",
-  -- openlimit = 2,
-  -- excludefromcrafting = true,
-  -- 容器里可以装的物品的条件（目前设置为种子）
-  itemtestfn = function(inst, item, slot)
-    return item:HasTag("deployedplant") and item:HasTag("deployedfarmplant")
-        -- 橙色宝石
-        or item.prefab == "orangegem"
-  end
+  -- Asset("ANIM", "anim/ui_antlionhat_1x1.zip"),
 }
 
 -- 修改步行手杖属性
@@ -87,23 +61,6 @@ AddPrefabPostInit("cane", function(inst)
   if not TheWorld.ismastersim then
     return inst
   end
-
-  -- 容器组件实现（根据配置决定是否启用）
-  if config.enable_slot then
-    if not inst.components.container then
-      inst:AddComponent("container")
-      inst.components.container:WidgetSetup("hcane")
-      print("步行手杖：添加容器组件成功！")
-      -- 为容器添加保鲜组件并设置倍率
-      if not inst.components.preserver then
-        inst:AddComponent("preserver")
-      end
-      inst.components.preserver:SetPerishRateMultiplier(0)
-      -- 可以无限堆叠
-      inst.components.container:EnableInfiniteStackSize(true)
-    end
-  end
-
 
   -- 基础配置项
   -- 处理装备组件逻辑（移速加成）
@@ -400,8 +357,8 @@ AddPrefabPostInit("cane", function(inst)
 
     local ents = TheSim:FindEntities(x, y, z, WORK_RADIUS,
       { "pickable" },
-      { "INLIMBO", "FX", "NOCLICK", "burnt", "flower", "dead", "thorny" },
-      { "plant", "crop", "lichen", "oceanvine", "kelp" }
+      { "INLIMBO", "FX", "NOCLICK", "burnt", "flower", "dead", "thorny" }, -- 排除标签
+      { "plant", "crop", "lichen", "oceanvine", "kelp" }                   -- 必须包含标签
     )
     for _, ent in ipairs(ents) do
       -- 普通采摘逻辑
@@ -462,7 +419,7 @@ AddPrefabPostInit("cane", function(inst)
       x, y, z,
       AUTO_FARM_RANGE,
       nil,
-      { "INLIMBO", "NOCLICK" } -- 排除无效实体
+      { "INLIMBO", "NOCLICK", "FX", "dead", }
     )
 
     for _, ent in ipairs(ents) do
@@ -491,36 +448,10 @@ AddPrefabPostInit("cane", function(inst)
             if TheWorld.Map:CanTillSoilAtPoint(nx, 0, nz, false) then
               TheWorld.Map:CollapseSoilAtPoint(nx, 0, nz)
               SpawnPrefab("farm_soil").Transform:SetPosition(nx, 0, nz)
-              -- 触发耕地音效/动画
-              doer:PushEvent("tilling")
-              -- 自动播种
-
-              -- 先检查槽位物品是否为可种植物，避免误吞非种子物品
-              local slot_item = doer.components.inventory:GetItemInSlot(15)
-              if slot_item and slot_item.components.farmplantable then
-                print("尝试自动播种：" .. slot_item.prefab)
-                local seed_copy = SpawnPrefab(slot_item.prefab)
-                for _, soil_ent in ipairs(TheSim:FindEntities(x, y, z, config.auto_farm_range, { "soil" }, { "NOCLICK" })) do
-                  -- 在确认是可种植物后再从容器中取出尝试播种；失败则归还(搞不明白怎么直接用slot_item播种会出问题，只能用复制品)
-                  local seed = seed_copy
-                  if seed and seed.components.farmplantable then
-                    if not seed.components.farmplantable:Plant(soil_ent, doer) then
-                      doer.components.inventory:GiveItem(seed)
-                      break
-                    end
-                  else
-                    -- 如果取出后发现不是可种植物，归还并停止
-                    if seed then
-                      doer.components.inventory:GiveItem(seed)
-                    end
-                    break
-                  end
-                end
-              end
-
-              -- 结束自动播种
             end
           end
+          -- 触发耕地音效/动画
+          doer:PushEvent("tilling")
         end
       end
     end
@@ -567,84 +498,11 @@ AddPrefabPostInit("cane", function(inst)
     end
   end
 
-  -- 自动工作相关配置与变量
-  local AUTO_WORK_INTERVAL = 0.6 -- 自动耕地检测间隔（可根据需求调整）
-  local auto_work_task = nil     -- 自动耕地定时任务句柄
-
-  -- 独立的自动工作函数，受右键总开关控制
-  local function DoAutotask(inst)
-    -- 存在容器才开始
-    if config.enable_slot then
-      -- 存在工作范围才开始
-      local WORK_RADIUS = config.auto_work_range
-      if WORK_RADIUS <= 0 then return end
-      -- 通用的人物坐标信息
-      local doer = inst.components.inventoryitem and inst.components.inventoryitem.owner or nil
-      if not doer or not doer:HasTag("player") then return end
-      local x, y, z = doer.Transform:GetWorldPosition()
-      -- 获取人物15格的东西
-      local item = doer.components.inventory:GetItemInSlot(15)
-
-      -- 橙色宝石开始
-      if item and item.prefab == "orangegem" then
-        local ents = TheSim:FindEntities(x, y, z, WORK_RADIUS,
-          nil,
-          { "INLIMBO", "FX", "NOCLICK", "burnt", "flower", "dead", "knockbackdelayinteraction", "fire", "minesprung",
-            "mineactive", "irreplaceable", "moonglass_geode", "thorny", },
-          { "_inventoryitem", "plant", "witherable", "lureplant", "waterplant", "crop", "lichen", "oceanvine", "kelp",
-            "catchable", "groundmushroom", "sludgestack", }
-        )
-        if true then
-          for _, ent in ipairs(ents) do
-            -- 懒人护符一样的方式啥都捡起来
-            if ent.components.inventoryitem and
-                ent.components.inventoryitem.cangoincontainer and
-                not ent.components.inventoryitem:IsHeld() and
-                doer.components.inventory:CanAcceptCount(ent, 1) > 0 then
-              -- 在物品位置生成沙子特效（视觉反馈）
-              SpawnPrefab("sand_puff").Transform:SetPosition(ent.Transform:GetWorldPosition())
-              -- 记录物品位置用于生成动画
-              local v_pos = ent:GetPosition()
-              -- 特殊处理陷阱：如果是已触发的陷阱，收获陷阱内容
-              if ent.components.trap and ent.components.trap:IsSprung() then
-                ent.components.trap:Harvest(doer)
-              else
-                -- 将物品放入玩家物品栏
-                doer.components.inventory:GiveItem(ent, nil, v_pos)
-              end
-              return
-            end
-          end
-        end
-      end
-      -- 橙色宝石结束
-    end
-  end
-
-  -- 自动工作状态更新函数（根据配置和装备状态控制任务启停）
-  local function UpdateAutotask()
-    -- 判定是否需要运行自动耕地：范围有效 + 总开关开启 + 已装备
-    local should_run = config.auto_work_range > 0
-        and inst.all_active
-        and inst.components.equippable
-        and inst.components.equippable:IsEquipped()
-    -- 任务启停控制
-    if should_run and not auto_work_task then
-      -- 启动定时任务（立即执行一次，之后按间隔循环）
-      auto_work_task = inst:DoPeriodicTask(AUTO_WORK_INTERVAL, DoAutotask, 0.16)
-    elseif not should_run and auto_work_task then
-      -- 停止并清理任务
-      auto_work_task:Cancel()
-      auto_work_task = nil
-    end
-  end
-
   -- 统一更新所有功能
   local function UpdateAllFeatures()
     UpdateToolState()
     UpdateAutoHarvest()
     UpdateAutoFarm()
-    UpdateAutotask()
     -- 光效
     UpdateLightFX()
   end
@@ -658,15 +516,6 @@ AddPrefabPostInit("cane", function(inst)
     -- 切换开关状态
     inst.all_active = not inst.all_active
     UpdateAllFeatures()
-
-    -- 新增：同步控制容器开关状态
-    if inst.components.container then
-      if inst.all_active then
-        inst.components.container:Open(owner) -- 开启时打开箱子
-      else
-        inst.components.container:Close()     -- 关闭时关闭箱子
-      end
-    end
 
     -- 修改装备名称（根据状态切换）
     if inst.all_active then
@@ -683,24 +532,6 @@ AddPrefabPostInit("cane", function(inst)
     return false
   end)
 
-  -- 销毁清理
-  inst:ListenForEvent("onremove", function()
-    if auto_harvest_task then
-      auto_harvest_task:Cancel()
-    end
-    if auto_farm_task then
-      auto_farm_task:Cancel()
-    end
-    if auto_work_task then
-      auto_work_task:Cancel()
-    end
-    RemoveToolComponents()
-    -- 光效清理
-    if inst.light_fx then
-      inst.light_fx:Remove()
-    end
-  end)
-
   -- 状态保存与加载（总开关统一控制，无需额外保存）
   inst.OnSave = function(inst, data)
     data.all_active = inst.all_active
@@ -710,7 +541,6 @@ AddPrefabPostInit("cane", function(inst)
     inst.all_active = data and data.all_active or false
     UpdateAllFeatures()
   end
-
 
   -- 其他配置
   -- 处理防丢失逻辑（根据开关决定是否启用）
@@ -762,27 +592,341 @@ AddPrefabPostInit("cane", function(inst)
       doer.components.temperature:SetTemperature(16)
     end
     -- 2. 自身解冻（仅当冻结时）
-    if doer.components.freezable and doer.components.freezable:IsFrozen() then
-      doer.components.freezable:Unfreeze()
-    end
+    -- if doer.components.freezable and doer.components.freezable:IsFrozen() then
+    --   doer.components.freezable:Unfreeze()
+    -- end
     -- 3. 自身灭火（仅当燃烧时）
-    if doer.components.burnable and doer.components.burnable:IsBurning() then
-      doer.components.burnable:Extinguish()
+    -- if doer.components.burnable and doer.components.burnable:IsBurning() then
+    --   doer.components.burnable:Extinguish()
+    -- end
+  end
+
+  -- 自动工作相关配置与变量
+  local AUTO_WORK_INTERVAL = 0.36 -- 自动工作检测间隔（可根据需求调整）
+  local auto_work_task = nil      -- 自动工作定时任务句柄
+
+  -- 独立的自动工作函数
+  local function DoAutotask(inst)
+    -- 存在工作范围才开始
+    local WORK_RADIUS = config.auto_work_range
+    if WORK_RADIUS <= 0 then return end
+    -- 通用的人物坐标信息
+    local doer = inst.components.inventoryitem and inst.components.inventoryitem.owner or nil
+    if not doer or not doer:HasTag("player") then return end
+    local owner = inst.components.inventoryitem:GetGrandOwner()
+    local x, y, z = doer.Transform:GetWorldPosition()
+    -- 获取人物15格的东西
+    local item = doer.components.inventory:GetItemInSlot(15)
+    -- 绿色宝石开始
+    if doer.components.builder ~= nil then
+      if item and item.prefab == "greengem" then
+        doer.components.builder.ingredientmod = 0.5
+      else
+        doer.components.builder.ingredientmod = 1
+      end
     end
+    -- 绿色宝石结束
+    -- 紫色宝石开始
+    if doer.components.sanity ~= nil then
+      if item and item.prefab == "purplegem" then
+        doer.components.sanity:SetInducedInsanity(inst, true)
+      else
+        doer.components.sanity:SetInducedInsanity(inst, false)
+      end
+    end
+    -- 紫色宝石结束
+    -- 黄色宝石开始
+    if item and item.prefab == "yellowgem" then
+      inst._light.Light:SetRadius(26)
+    else
+      inst._light.Light:SetRadius(config.hcane_light)
+    end
+    -- 黄色宝石结束
+    -- 有东西才开始
+    if not item then return end
+
+    -- 红色宝石开始
+    if item and item.prefab == "redgem" then
+      -- 1. 自身灭火（仅当燃烧时）
+      if doer.components.burnable and doer.components.burnable:IsBurning() then
+        doer.components.burnable:Extinguish()
+      end
+      if math.random() >= 0.16 then return end
+      if owner.components.health then
+        owner.components.health:DoDelta(16, false, "cane")
+      end
+    end
+    -- 红色宝石结束
+
+    -- 蓝色宝石开始
+    if item and item.prefab == "bluegem" then
+      -- 2. 自身解冻（仅当冻结时）
+      if doer.components.freezable and doer.components.freezable:IsFrozen() then
+        doer.components.freezable:Unfreeze()
+      end
+      if math.random() >= 0.16 then return end
+      if owner.components.sanity then
+        owner.components.sanity:DoDelta(16, false, "cane")
+      end
+    end
+    -- 蓝色宝石结束
+
+    -- 橙色宝石开始
+    if item and item.prefab == "orangegem" then
+      -- 传送功能
+      if not inst.components.blinkstaff then
+        inst:AddComponent("blinkstaff")
+        inst.components.blinkstaff:SetFX("sand_puff_large_front", "sand_puff_large_back")
+        inst.components.blinkstaff.onblinkfn = onblink
+      end
+      -- 拾取功能
+      local ents = TheSim:FindEntities(x, y, z, WORK_RADIUS,
+        nil,
+        { "INLIMBO", "FX", "NOCLICK", "burnt", "flower", "dead", "knockbackdelayinteraction", "fire", "minesprung",
+          "mineactive", "irreplaceable", "moonglass_geode", "thorny", },
+        { "_inventoryitem", "plant", "witherable", "lureplant", "waterplant", "crop", "lichen", "oceanvine", "kelp",
+          "catchable", "groundmushroom", "sludgestack", }
+      )
+      for _, ent in ipairs(ents) do
+        -- 懒人护符一样的方式啥都捡起来
+        if ent.components.inventoryitem and
+            ent.components.inventoryitem.cangoincontainer and
+            not ent.components.inventoryitem:IsHeld() and
+            doer.components.inventory:CanAcceptCount(ent, 1) > 0 then
+          -- 在物品位置生成沙子特效（视觉反馈）
+          SpawnPrefab("sand_puff").Transform:SetPosition(ent.Transform:GetWorldPosition())
+          -- 记录物品位置用于生成动画
+          local v_pos = ent:GetPosition()
+          -- 特殊处理陷阱：如果是已触发的陷阱，收获陷阱内容
+          if ent.components.trap and ent.components.trap:IsSprung() then
+            ent.components.trap:Harvest(doer)
+          else
+            -- 将物品放入玩家物品栏
+            doer.components.inventory:GiveItem(ent, nil, v_pos)
+          end
+          return
+        end
+      end
+    else
+      -- 移除传送功能（如果存在）
+      if inst.components.blinkstaff then
+        inst:RemoveComponent("blinkstaff")
+      end
+    end
+    -- 橙色宝石结束
+
+    -- 彩虹宝石开始
+    if item and item.prefab == "opalpreciousgem" then
+      -- 复制概率为16%
+      if math.random() >= 0.16 then return end
+      -- 1. 获取玩家第14个物品栏的物品
+      local slot_14_item = doer.components.inventory:GetItemInSlot(14)
+      -- 2. 严格校验：玩家有效+有物品栏+14栏有有效物品+物品可堆叠+堆叠未达上限
+      if doer
+          and doer.components.inventory
+          and slot_14_item
+          and slot_14_item:IsValid()
+          and slot_14_item.components.stackable
+          and not slot_14_item.components.stackable:IsFull()
+      then
+        local target_prefab = slot_14_item.prefab
+        -- 3. 固定复制1个（不再复制余量）
+        local item_copy = SpawnPrefab(target_prefab)
+        if item_copy.components.stackable then
+          item_copy.components.stackable:SetStackSize(1) -- 每次只加1个
+        end
+        -- 4. 放入物品栏（自动叠加到14栏物品中）
+        doer.components.inventory:GiveItem(item_copy)
+      end
+    end
+    -- 彩虹宝石结束
+
+    -- 理智减少开始
+    if item and item.prefab == "nightmarefuel" then
+      -- 理智减少
+      if owner.components.sanity then
+        owner.components.sanity:DoDelta(-16, false, "cane")
+      end
+    end
+    -- 理智减少结束
+
+    -- 破坏范围开始
+    if item and item.prefab == "bearger_fur" then
+      -- 定义破坏范围（可根据需求调整）
+      local DESTROY_RADIUS = config.auto_work_range
+      -- 筛选可破坏目标的标签（同原逻辑）
+      local WORKABLES_CANT_TAGS = { "insect", "INLIMBO", "structure", "wall", "ignorewalkableplatforms" }
+      local WORKABLES_ONEOF_TAGS = { "CHOP_workable", "DIG_workable", "HAMMER_workable", "MINE_workable" }
+
+      -- 核心破坏函数：传入坐标(x,y,z)，按范围破坏物体
+      local function DestroyInRange(inst, x, y, z)
+        -- 查找范围内可破坏的物体
+        local targets = TheSim:FindEntities(x, y, z, DESTROY_RADIUS, nil, WORKABLES_CANT_TAGS, WORKABLES_ONEOF_TAGS)
+
+        for _, target in ipairs(targets) do
+          if target:IsValid() and
+              target.components.workable ~= nil and
+              target.components.workable:CanBeWorked() and
+              target.components.workable.action ~= ACTIONS.NET then
+            -- 生成破坏特效（如坍塌效果）
+            SpawnPrefab("collapse_small").Transform:SetPosition(target.Transform:GetWorldPosition())
+
+            -- 执行破坏
+            target.components.workable:Destroy(inst)
+          end
+        end
+      end
+
+      -- 执行破坏
+      if owner.components.talker then
+        owner.components.talker:Say("󰀌破坏/Broke")
+      end
+      DestroyInRange(inst, x, y, z)
+    end
+    -- 破坏范围结束
+
+    -- 三维恢复开始
+    if item and item.prefab == "cookbook" then
+      if math.random() >= 0.16 then return end
+      -- 生命转换
+      if owner.components.health then
+        owner.components.health:DoDelta(6, false, "cane")
+      end
+      -- 饥饿转换
+      if owner.components.hunger then
+        owner.components.hunger:DoDelta(6, false, "cane")
+      end
+      -- 理智转换
+      if owner.components.sanity then
+        owner.components.sanity:DoDelta(6, false, "cane")
+      end
+    end
+    -- 三维恢复结束
+
+    -- 范围训牛开始
+    if item and item.prefab == "beefalohat" then
+      -- 查找范围内的牛
+      local beefalos = TheSim:FindEntities(x, y, z, WORK_RADIUS,
+        { "beefalo" },                 -- 只找牛
+        { "INLIMBO", "dead", "ghost" } -- 排除无效目标
+      )
+
+      for _, beefalo in ipairs(beefalos) do
+        if beefalo:IsValid() and beefalo.components.domesticatable then
+          -- 增加驯服度（每次增加0.5，可根据需要调整）
+          beefalo.components.domesticatable:DeltaDomestication(0.0006)
+        end
+      end
+    end
+    -- 范围训牛结束
+
+    -- 范围消除蚁狮坑开始
+    if item and item.prefab == "townportaltalisman" then
+      -- 查找范围内的蚁狮坑
+      local sinkholes = TheSim:FindEntities(x, y, z, WORK_RADIUS,
+        { "antlion_sinkhole" }, -- 只找蚁狮坑
+        { "FX" }                -- 排除无效目标
+      )
+
+      for _, sinkhole in ipairs(sinkholes) do
+        if sinkhole:IsValid() then
+          -- 直接移除蚁狮坑
+          sinkhole:Remove()
+
+          -- 可选：生成消除特效
+          local fx = SpawnPrefab("collapse_small")
+          if fx then
+            fx.Transform:SetPosition(sinkhole.Transform:GetWorldPosition())
+          end
+
+          -- 可选：播放消除音效
+          sinkhole.SoundEmitter:PlaySound("dontstarve/common/destroy_rock")
+        end
+      end
+    end
+    -- 范围消除蚁狮坑结束
+
+    -- 耕作先驱帽开始
+    if item and item.prefab == "plantregistryhat" then
+      local ents = TheSim:FindEntities(x, y, z, 16, nil, { 'INLIMBO', 'wall', 'shadowminion' })
+      for i, ent in ipairs(ents) do
+        -- 对有"可照料"组件的植物执行照料操作
+        if ent.components.farmplanttendable ~= nil then
+          ent.components.farmplanttendable:TendTo(inst)
+        end
+      end
+      -- 核心改进：仅对人物所在tile为中心的3x3（9格）地皮补充营养
+      local center_tile_x, center_tile_z = TheWorld.Map:GetTileCoordsAtPoint(x, y, z)
+      -- 遍历范围（中心tile ±1）
+      for dx = -1, 1 do
+        for dz = -1, 1 do
+          local tile_x = center_tile_x + dx
+          local tile_z = center_tile_z + dz
+          -- 为9格内的每块有效地皮补充营养
+          TheWorld.components.farming_manager:AddTileNutrients(
+            tile_x, tile_z, 6, 6, 6
+          )
+        end
+      end
+    end
+    -- 耕作先驱帽结束
+
+    -- 高级耕作先驱帽开始
+    if item and item.prefab == "nutrientsgoggleshat" then
+      local ents = TheSim:FindEntities(x, y, z, 36, nil, { 'INLIMBO', 'wall', 'shadowminion' })
+      for i, ent in ipairs(ents) do
+        -- 对有"可照料"组件的植物执行照料操作
+        if ent.components.farmplanttendable ~= nil then
+          ent.components.farmplanttendable:TendTo(inst)
+        end
+      end
+      -- 核心改进：仅对人物所在tile为中心的3x3（9格）地皮补充营养
+      local center_tile_x, center_tile_z = TheWorld.Map:GetTileCoordsAtPoint(x, y, z)
+      -- 遍历范围（中心tile ±）
+      for dx = -3, 3 do
+        for dz = -3, 3 do
+          local tile_x = center_tile_x + dx
+          local tile_z = center_tile_z + dz
+          -- 为9格内的每块有效地皮补充营养
+          TheWorld.components.farming_manager:AddTileNutrients(
+            tile_x, tile_z, 16, 16, 16
+          )
+        end
+      end
+    end
+    -- 高级耕作先驱帽结束
+
+    -- 自动播种
+    -- 先检查槽位物品是否为可种植物，避免误吞非种子物品
+    if item and item.components.farmplantable then
+      -- print("尝试自动播种：" .. item.prefab)
+      local seed_copy = SpawnPrefab(item.prefab)
+      for _, soil_ent in ipairs(TheSim:FindEntities(x, y, z, config.auto_farm_range, { "soil" }, { "NOCLICK" })) do
+        -- 在确认是可种植物后再从容器中取出尝试播种；失败则归还(搞不明白怎么直接用item播种会出问题，只能用复制品)
+        local seed = seed_copy
+        if seed and seed.components.farmplantable then
+          if not seed.components.farmplantable:Plant(soil_ent, doer) then
+            doer.components.inventory:GiveItem(seed)
+            break
+          end
+        else
+          -- 如果取出后发现不是可种植物，归还并停止
+          if seed then
+            doer.components.inventory:GiveItem(seed)
+          end
+          break
+        end
+      end
+    end
+    -- 结束自动播种
   end
 
   -- 装备/卸下事件
   if inst.components.equippable then
+    -- 装备时启动相关任务
     inst:ListenForEvent("equipped", function(_, data)
       if data and data.owner and data.owner:HasTag("player") then
-        -- 新增：同步控制容器开关状态
-        if inst.components.container then
-          if inst.all_active then
-            inst.components.container:Open(data.owner)
-          else
-            inst.components.container:Close()
-          end
-        end
+        local doer = data.owner
         if config.constant_temp_effect_enable then
           -- 先停止可能存在的旧任务（避免重复启动）
           if auto_temp_task then
@@ -794,22 +938,47 @@ AddPrefabPostInit("cane", function(inst)
             DoAutoTempControl(inst)
           end)
         end
+        -- 自动工作：装备时启动
+        if config.auto_work_range > 0 and config.enable_slot then
+          if auto_work_task then
+            auto_work_task:Cancel()
+            auto_work_task = nil
+          end
+          auto_work_task = inst:DoPeriodicTask(AUTO_WORK_INTERVAL, function()
+            DoAutotask(inst)
+          end)
+        end
         -- 装备时同步所有右键控制功能状态
         UpdateAllFeatures()
       end
     end)
+    -- 卸下时停止相关任务
     inst:ListenForEvent("unequipped", function(_, data)
-      if inst.components.container then
-        inst.components.container:Close()
-      end
       if data and data.owner and data.owner:HasTag("player") then
+        local doer = data.owner
+        -- 停止自动温控任务
         if config.constant_temp_effect_enable then
-          -- 停止自动温控任务
           if auto_temp_task then
             auto_temp_task:Cancel()
             auto_temp_task = nil
           end
         end
+        -- 自动工作任务清理
+        if auto_work_task then
+          auto_work_task:Cancel()
+        end
+        -- 理智/建造恢复默认状态
+        if doer.components.sanity then
+          doer.components.sanity:SetInducedInsanity(inst, false)
+        end
+        if doer.components.builder then
+          doer.components.builder.ingredientmod = 1
+        end
+        -- 移除传送功能（如果存在）
+        if inst.components.blinkstaff then
+          inst:RemoveComponent("blinkstaff")
+        end
+        -- 右键状态
         if config.multi_tool_state_save then
           -- 卸下时同步所有右键控制功能状态
           UpdateAllFeatures()
@@ -822,6 +991,23 @@ AddPrefabPostInit("cane", function(inst)
     end)
   end
 
+  -- 销毁清理
+  inst:ListenForEvent("onremove", function()
+    if auto_harvest_task then
+      auto_harvest_task:Cancel()
+    end
+    if auto_farm_task then
+      auto_farm_task:Cancel()
+    end
+    if auto_work_task then
+      auto_work_task:Cancel()
+    end
+    RemoveToolComponents()
+    -- 光效清理
+    if inst.light_fx then
+      inst.light_fx:Remove()
+    end
+  end)
   -- 结束
 end)
 
