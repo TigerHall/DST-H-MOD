@@ -6,9 +6,9 @@ description = L
     and
     "V1.5\n\nAll features can be turned on or off in the configuration options.\n\nSince backpacks and armor share the same equipment slot, it only makes sense for backpacks to provide armor effects too—including physical defense and planar defense. And if they have armor, why not add a counterattack ability as well?\n\nIt’s reasonable for a backpack to offer some insulation to keep you warm. If it can keep you warm, regaining a bit of Sanity (mental health) isn’t too much to ask. And if it helps with Sanity, shouldn’t it also protect you from rain? After all, raincoats share the same slot too.\n\nAdditionally, backpacks now have the ability to automatically collect nearby items on the ground (only picks up items that already exist in the backpack), freeing up your hands. Since they can auto-collect items, allowing infinite stack sizes for items inside feels perfectly logical!\n\nallow players to craft Krampus Sack (Need Stag Antler)\n\nThe Seed Pouch comes with the maximum tier of bonuses by default—after all, I’m a farming player. Farmers shouldn’t be disturbed… I’m just an old farmer tending to my crops."
     or
-    "V1.5.1\n\n所有功能均可在配置项开启或关闭\n\n既然背包和护甲都在一个格子，那么就让背包也有护甲效果很合理吧。包括物理防御和位面防御。既然有护甲了，那是不是也应该可以反击呢？\n\n背包背着，有点保暖效果合理吧。能保暖了，回点SAN也不过分吧。能回san，那是不是不应该被雨淋了？毕竟雨衣也在这个格子里。\n\n另外增加自动采集地上物品到背包的能力（物品在背包中已存在才捡起），解放双手。都自动拣起地上的东西了，那东西可以无限堆叠很合理吧。\n\n可制作坎普斯背包（需要麋鹿茸）。\n\n种子袋默认是最强的一档，毕竟我是个种田玩家，种田的人不应该被打扰，我是个老农。"
+    "V1.5.6\n\n所有功能均可在配置项开启或关闭\n\n既然背包和护甲都在一个格子，那么就让背包也有护甲效果很合理吧。包括物理防御和位面防御。既然有护甲了，那是不是也应该可以反击呢？\n\n背包背着，有点保暖效果合理吧。能保暖了，回点SAN也不过分吧。能回san，那是不是不应该被雨淋了？毕竟雨衣也在这个格子里。\n\n另外增加自动采集地上物品到背包的能力（物品在背包中已存在才捡起），解放双手。都自动拣起地上的东西了，那东西可以无限堆叠很合理吧。\n\n可制作坎普斯背包（需要麋鹿茸）。\n\n种子袋默认是最强的一档，毕竟我是个种田玩家，种田的人不应该被打扰，我是个老农。"
 author = "hehu"
-version = "1.5.1"
+version = "1.5.6"
 api_version = 10
 dst_compatible = true
 all_clients_require_mod = true
@@ -67,13 +67,125 @@ end
 
 -- 背包参数表（集中管理所有背包信息，方便后续添加/修改）
 local backpack_params = {
-  { prefab = "backpack", ch_name = "普通背包", en_name = "Backpack", def_default = 0.66, planar_default = 1.6, collect_default = true, insulate_default = 0, infinite_stack_default = false, waterproof_default = false, sanity_default = 6, counter_dmg_default = 0, preserve_default = false, },
-  { prefab = "piggyback", ch_name = "猪皮包", en_name = "Piggyback", def_default = 0.86, planar_default = 6.6, collect_default = true, insulate_default = 66, infinite_stack_default = false, waterproof_default = false, sanity_default = 16, counter_dmg_default = 16, preserve_default = false, },
-  { prefab = "icepack", ch_name = "保鲜背包", en_name = "Insulated Pack", def_default = 0.86, planar_default = 9.6, collect_default = true, insulate_default = 126, infinite_stack_default = false, waterproof_default = true, sanity_default = 36, counter_dmg_default = 36, preserve_default = true, },
-  { prefab = "krampus_sack", ch_name = "坎普斯背包", en_name = "Krampus Sack", def_default = 0.96, planar_default = 66, collect_default = true, insulate_default = 246, infinite_stack_default = true, waterproof_default = true, sanity_default = 66, counter_dmg_default = 66, preserve_default = true, },
-  { prefab = "seedpouch", ch_name = "种子袋", en_name = "Seed Pack-It", def_default = 1, planar_default = 126, collect_default = true, insulate_default = 366, infinite_stack_default = true, waterproof_default = true, sanity_default = 126, counter_dmg_default = 126, preserve_default = true, },
-  { prefab = "candybag", ch_name = "糖果袋", en_name = "Candy Bag", def_default = 0.16, planar_default = 1.6, collect_default = true, insulate_default = 0, infinite_stack_default = true, waterproof_default = false, sanity_default = 0, counter_dmg_default = 0, preserve_default = false, },
-  { prefab = "spicepack", ch_name = "厨师袋", en_name = "Chef Pouch", def_default = 0.16, planar_default = 1.6, collect_default = true, insulate_default = 0, infinite_stack_default = true, waterproof_default = false, sanity_default = 0, counter_dmg_default = 0, preserve_default = false, },
+  {
+    prefab = "backpack",
+    ch_name = "普通背包",
+    en_name = "Backpack",
+    def_default = 0.66,
+    planar_default = 1.6,
+    collect_default = true,
+    insulate_default = 0,
+    infinite_stack_default = false,
+    waterproof_default = false,
+    sanity_default = 6,
+    counter_dmg_default = 0,
+    preserve_default = false,
+    fireproof_default = false,
+    shadow_immunity_default = false,
+    moon_immunity_default = false,
+  },
+  {
+    prefab = "piggyback",
+    ch_name = "猪皮包",
+    en_name = "Piggyback",
+    def_default = 0.86,
+    planar_default = 6.6,
+    collect_default = true,
+    insulate_default = 66,
+    infinite_stack_default = false,
+    waterproof_default = false,
+    sanity_default = 16,
+    counter_dmg_default = 16,
+    preserve_default = false,
+    fireproof_default = false,
+    shadow_immunity_default = false,
+    moon_immunity_default = false,
+  },
+  {
+    prefab = "icepack",
+    ch_name = "保鲜背包",
+    en_name = "Insulated Pack",
+    def_default = 0.86,
+    planar_default = 9.6,
+    collect_default = true,
+    insulate_default = 126,
+    infinite_stack_default = false,
+    waterproof_default = true,
+    sanity_default = 36,
+    counter_dmg_default = 36,
+    preserve_default = true,
+    fireproof_default = false,
+    shadow_immunity_default = false,
+    moon_immunity_default = false,
+  },
+  {
+    prefab = "krampus_sack",
+    ch_name = "坎普斯背包",
+    en_name = "Krampus Sack",
+    def_default = 0.96,
+    planar_default = 66,
+    collect_default = true,
+    insulate_default = 246,
+    infinite_stack_default = true,
+    waterproof_default = true,
+    sanity_default = 66,
+    counter_dmg_default = 66,
+    preserve_default = true,
+    fireproof_default = true,
+    shadow_immunity_default = false,
+    moon_immunity_default = false,
+  },
+  {
+    prefab = "seedpouch",
+    ch_name = "种子袋",
+    en_name = "Seed Pack-It",
+    def_default = 1,
+    planar_default = 126,
+    collect_default = true,
+    insulate_default = 366,
+    infinite_stack_default = true,
+    waterproof_default = true,
+    sanity_default = 126,
+    counter_dmg_default = 126,
+    preserve_default = true,
+    fireproof_default = true,
+    shadow_immunity_default = true,
+    moon_immunity_default = true,
+  },
+  {
+    prefab = "candybag",
+    ch_name = "糖果袋",
+    en_name = "Candy Bag",
+    def_default = 0.16,
+    planar_default = 1.6,
+    collect_default = true,
+    insulate_default = 0,
+    infinite_stack_default = true,
+    waterproof_default = false,
+    sanity_default = 0,
+    counter_dmg_default = 0,
+    preserve_default = false,
+    fireproof_default = false,
+    shadow_immunity_default = false,
+    moon_immunity_default = false,
+  },
+  {
+    prefab = "spicepack",
+    ch_name = "厨师袋",
+    en_name = "Chef Pouch",
+    def_default = 0.16,
+    planar_default = 1.6,
+    collect_default = true,
+    insulate_default = 0,
+    infinite_stack_default = true,
+    waterproof_default = false,
+    sanity_default = 0,
+    counter_dmg_default = 0,
+    preserve_default = false,
+    fireproof_default = false,
+    shadow_immunity_default = false,
+    moon_immunity_default = false,
+  },
 }
 
 -- 生成防御配置项
@@ -114,6 +226,54 @@ local function createPlanarDefenseConfig(param)
     },
     default = param.planar_default
   }
+end
+
+-- 新增：暗影阵营不攻击配置项
+local function createShadowImmunityConfig(param)
+  return addToggleConfig(
+    param.prefab .. "_shadow_immunity",
+    param.ch_name .. "暗影阵营不攻击",
+    param.en_name .. " Shadow Immunity",
+    param.shadow_immunity_default,
+    "是否开启" .. param.ch_name .. "使暗影阵营生物不攻击玩家",
+    "Whether " .. param.en_name .. " makes shadow creatures not attack the player",
+    param.ch_name .. "使暗影阵营生物不攻击玩家",
+    param.en_name .. " prevents shadow creatures from attacking",
+    param.ch_name .. "不会影响响暗影阵营生物",
+    param.en_name .. " doesn't affect shadow creatures"
+  )
+end
+
+-- 新增：月亮阵营不攻击配置项
+local function createMoonImmunityConfig(param)
+  return addToggleConfig(
+    param.prefab .. "_moon_immunity",
+    param.ch_name .. "月亮阵营不攻击",
+    param.en_name .. " Moon Creature Immunity",
+    param.moon_immunity_default,
+    "是否开启" .. param.ch_name .. "使月亮阵营生物不攻击玩家",
+    "Whether " .. param.en_name .. " makes moon creatures not attack the player",
+    param.ch_name .. "使月亮阵营生物不攻击玩家",
+    param.en_name .. " prevents moon creatures from attacking",
+    param.ch_name .. "不会影响月亮阵营生物",
+    param.en_name .. " doesn't affect moon creatures"
+  )
+end
+
+-- 新增火焰免疫配置项生成函数
+local function createFireproofConfig(param)
+  return addToggleConfig(
+    param.prefab .. "_fireproof",
+    param.ch_name .. "火焰免疫",
+    param.en_name .. " Fireproof",
+    param.fireproof_default,
+    "是否开启" .. param.ch_name .. "的火焰免疫效果（免疫所有火焰伤害）",
+    "Whether to enable fireproof effect for " .. param.en_name .. " (immune to all fire damage)",
+    param.ch_name .. "提供100%火焰免疫",
+    param.en_name .. " provides 100% fire damage immunity",
+    param.ch_name .. "不免疫火焰伤害",
+    param.en_name .. " does not immune to fire damage"
+  )
 end
 
 -- 生成回san配置项（精神恢复速率）
@@ -263,6 +423,34 @@ configuration_options = {
   createCounterDmgConfig(backpack_params[5]), -- 种子袋
   createCounterDmgConfig(backpack_params[6]), -- 糖果袋
   createCounterDmgConfig(backpack_params[7]), -- 厨师袋
+
+  -- 阵营免疫配置组
+  addTitle(L and "Shadow Immunity Settings" or "暗影阵营不主动攻击"),
+  createShadowImmunityConfig(backpack_params[1]), -- 普通背包
+  createShadowImmunityConfig(backpack_params[2]), -- 猪皮包
+  createShadowImmunityConfig(backpack_params[3]), -- 保鲜背包
+  createShadowImmunityConfig(backpack_params[4]), -- 坎普斯背包
+  createShadowImmunityConfig(backpack_params[5]), -- 种子袋
+  createShadowImmunityConfig(backpack_params[6]), -- 糖果袋
+  createShadowImmunityConfig(backpack_params[7]), -- 厨师袋
+  addTitle(L and "Moon Immunity Settings" or "月亮阵营不主动攻击"),
+  createMoonImmunityConfig(backpack_params[1]),   -- 普通背包
+  createMoonImmunityConfig(backpack_params[2]),   -- 猪皮包
+  createMoonImmunityConfig(backpack_params[3]),   -- 保鲜背包
+  createMoonImmunityConfig(backpack_params[4]),   -- 坎普斯背包
+  createMoonImmunityConfig(backpack_params[5]),   -- 种子袋
+  createMoonImmunityConfig(backpack_params[6]),   -- 糖果袋
+  createMoonImmunityConfig(backpack_params[7]),   -- 厨师袋
+
+  -- 新增：火焰免疫配置组
+  addTitle(L and "Fireproof Settings" or "火焰免疫设置"),
+  createFireproofConfig(backpack_params[1]), -- 普通背包
+  createFireproofConfig(backpack_params[2]), -- 猪皮包
+  createFireproofConfig(backpack_params[3]), -- 保鲜背包
+  createFireproofConfig(backpack_params[4]), -- 坎普斯背包
+  createFireproofConfig(backpack_params[5]), -- 种子袋
+  createFireproofConfig(backpack_params[6]), -- 糖果袋
+  createFireproofConfig(backpack_params[7]), -- 厨师袋
 
   -- 保温配置组
   addTitle(L and "Insulation Settings" or "保温能力设置"),

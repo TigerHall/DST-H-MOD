@@ -28,7 +28,11 @@ for _, param in ipairs(backpack_params) do
     -- 自动采集和无限堆叠，保鲜
     infinite_stack = GetModConfigData(prefab .. "_infinite_stack"),
     collect = GetModConfigData(prefab .. "_collect"),
-    preserve = GetModConfigData(prefab .. "_preserve")
+    preserve = GetModConfigData(prefab .. "_preserve"),
+    -- 其他选项
+    fireproof = GetModConfigData(prefab .. "_fireproof"),
+    shadow_immunity = GetModConfigData(prefab .. "_shadow_immunity"),
+    moon_immunity = GetModConfigData(prefab .. "_moon_immunity"),
   }
 end
 
@@ -103,21 +107,49 @@ local function enhance_backpack(inst, prefab)
   local old_onequip = inst.components.equippable.onequipfn
   inst.components.equippable:SetOnEquip(function(inst, owner)
     if old_onequip then old_onequip(inst, owner) end
-
+    -- 反击事件注册
     inst._onattacked = function(_owner, data) OnAttackTrigger(inst, _owner, data) end
     inst:ListenForEvent("attacked", inst._onattacked, owner)
     inst:ListenForEvent("blocked", inst._onattacked, owner)
+    -- 防火：装备时添加火焰免疫（龙鳞甲同款逻辑）
+    if cfg.fireproof and owner and owner.components.health ~= nil then
+      owner.components.health.externalfiredamagemultipliers:SetModifier(inst, 0)
+    end
+    -- 暗影阵营不攻击
+    if cfg.shadow_immunity then
+      inst:AddComponent("shadowdominance")
+      inst:AddTag("shadowdominance")
+    end
+
+    -- 月亮阵营不攻击
+    if cfg.moon_immunity then
+      inst:AddTag("gestaltprotection")
+    end
   end)
 
   -- 卸下时清理
   local old_onunequip = inst.components.equippable.onunequipfn
   inst.components.equippable:SetOnUnequip(function(inst, owner)
     if old_onunequip then old_onunequip(inst, owner) end
-
+    -- 反击事件清理
     if inst._onattacked then
       inst:RemoveEventCallback("attacked", inst._onattacked, owner)
       inst:RemoveEventCallback("blocked", inst._onattacked, owner)
       inst._onattacked = nil
+    end
+    -- 防火：卸装时移除火焰免疫
+    if cfg.fireproof and owner and owner.components.health ~= nil then
+      owner.components.health.externalfiredamagemultipliers:RemoveModifier(inst)
+    end
+    -- 去除暗影阵营不攻击
+    if cfg.shadow_immunity and owner.components.shadowdominance ~= nil then
+      inst:RemoveComponent("shadowdominance")
+      inst:RemoveTag("shadowdominance")
+    end
+
+    -- 去除月亮阵营不攻击
+    if cfg.moon_immunity then
+      inst:RemoveTag("gestaltprotection")
     end
   end)
 
@@ -170,6 +202,11 @@ local function enhance_backpack(inst, prefab)
       inst:AddComponent("preserver")
     end
     inst.components.preserver:SetPerishRateMultiplier(0)
+  end
+
+  -- 7. 防火
+  if cfg.fireproof then
+    inst:AddTag("gestaltprotection")
   end
 
   -- 无限堆叠功能
@@ -293,5 +330,3 @@ if configh.krampus_sack_craft then
     TECH.NONE, nil,
     { "CONTAINERS", })
 end
-
--- ARMOR STORAGE WEAPONS TOOLS
