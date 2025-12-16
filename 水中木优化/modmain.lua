@@ -5,6 +5,7 @@ GLOBAL.setmetatable(env, { __index = function(t, k) return GLOBAL.rawget(GLOBAL,
 local config = {
   light_radius = GetModConfigData("OceanTreeLightRadius"),
   shrink_scale = GetModConfigData("OceanTreeShrinkScale"),
+  ocean_tree_cooldown = GetModConfigData("ocean_tree_cooldown"),
   ovshrink_scale = GetModConfigData("OceanVineShrinkScale"),
   fig_harvest_count = GetModConfigData("fig_harvest_count"),
   show_leafcanopy = GetModConfigData("show_leafcanopy"),
@@ -25,6 +26,10 @@ local config = {
 --   "OceanTree_light",
 -- }
 
+
+if config.OceanTreeShadeRange > 22 then
+  TUNING.SHADE_CANOPY_RANGE_SMALL = config.OceanTreeShadeRange or 22
+end
 
 -- 修改水中木
 AddPrefabPostInit("oceantree_pillar", function(inst)
@@ -68,6 +73,14 @@ AddPrefabPostInit("oceantree_pillar", function(inst)
   -- 仅当比例值大于0时修改
   if config.shrink_scale > 0 then
     inst.Transform:SetScale(config.shrink_scale, config.shrink_scale, config.shrink_scale)
+  end
+
+  -- 添加树冠控温效果
+  if config.ocean_tree_cooldown then
+    inst:AddComponent("temperatureoverrider")
+    inst.components.temperatureoverrider:Enable()
+    inst.components.temperatureoverrider:SetRadius(TUNING.SHADE_CANOPY_RANGE_SMALL)
+    inst.components.temperatureoverrider:SetTemperature(16)
   end
 
   --修改结束
@@ -151,9 +164,6 @@ AddPrefabPostInit("treegrowthsolution", function(inst)
   --修改结束
 end)
 
-if config.OceanTreeShadeRange > 22 then
-  TUNING.SHADE_CANOPY_RANGE_SMALL = config.OceanTreeShadeRange or 22
-end
 
 -- 格罗姆粘液施肥移除移植标记
 if config.glommerfuel_remove_transplant then
@@ -163,7 +173,18 @@ if config.glommerfuel_remove_transplant then
     self.Fertilize = function(self, fertilizer, doer)
       -- 仅当使用格罗姆粪便施肥时，移除移植标记
       if fertilizer.prefab == "glommerfuel" then
+        -- 移除移植标记变成原生作物
         self.transplanted = false
+        -- 不会夏天枯萎
+        if self.inst.components.witherable then
+          -- 设置高温枯萎温度为极高值
+          self.inst.components.witherable.wither_temp = 160
+          -- 停止枯萎组件并移除
+          -- self.inst.components.witherable:Stop()
+          -- self.inst:RemoveComponent("witherable")
+        end
+        -- 添加野火保护标签
+        self.inst:AddTag("wildfireprotected")
       end
       oldfertilize(self, fertilizer, doer)
       return true

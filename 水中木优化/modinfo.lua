@@ -50,11 +50,11 @@ end
 name = L and "H-Enhanced Waterlogged Tree" or "H-水中木强化"
 description = L
     and
-    "V1.5\n\nAllows transplanted Waterlogged Trees to glow, reduces the visual size of large trees, shrinks moss vines, increases the shade range of the fig Tree, and adjusts the number of figs obtained per harvest.Modify the production speed and consumption effect of Glommer's Goop, and modify the fertilizer effect of tree jam and Glommer's Goop.When fertilizing with Glommer's Goop, the transplant marker of the crop can be removed (once it becomes a native plant, there is no need to fertilize it anymore)."
+    "V1.6\n\nAllows transplanted Waterlogged Trees to glow, reduces the visual size of large trees, shrinks moss vines, increases the shade range of the fig Tree, and adjusts the number of figs obtained per harvest.Modify the production speed and consumption effect of Glommer's Goop, and modify the fertilizer effect of tree jam and Glommer's Goop. When fertilizing with Glommer's Goop, the transplant marker of the crop can be removed (after becoming a native plant, there is no need to fertilize again), and it should no longer wither. The ambient temperature under the tree is 16 degrees."
     or
-    "V1.5.1\n\n让移植过来的水中木发光，减小大树视觉体积，自定义增大树荫范围，减小苔藓藤条体积，修改获得的无花果数量，修改格罗姆粘液的产出速度和食用效果，自定义格罗姆的会san光环效果，修改树果酱和格罗姆粘液的肥料效果。格罗姆粘液施肥时可移除作物的移植标记（变为原生植物以后不用再施肥了）。"
+    "V1.6.1\n\n让移植过来的水中木发光，减小大树视觉体积，自定义增大树荫范围，减小苔藓藤条体积，修改获得的无花果数量，修改格罗姆粘液的产出速度和食用效果，自定义格罗姆的会san光环效果，修改树果酱和格罗姆粘液的肥料效果。格罗姆粘液施肥时可移除作物的移植标记（变为原生植物以后不用再施肥了）同时应该不会再枯萎。树下环境温度16度。"
 author = "hehu"
-version = "1.5.1"
+version = "1.6.1"
 api_version = 10
 dst_compatible = true
 all_clients_require_mod = true
@@ -65,7 +65,7 @@ icon = "modicon.tex"
 server_filter_tags = { "oceantree_pillar", "水中木", "oceanvine", "苔藓藤条，无花果" }
 
 --优先级调高(刚好压过Insight)
-priority = -10001
+priority = -10018
 
 configuration_options = {
   -- 产物相关标题
@@ -99,6 +99,19 @@ configuration_options = {
     },
     default = 66
   },
+  -- 新增：水中木树荫降温开关
+  addConfig(
+    "ocean_tree_cooldown",
+    "树下更凉快",
+    "Cool Under Ocean Tree",
+    true,
+    "水中木树荫的温度调节开关",
+    "Temperature adjustment switch for Ocean Tree shade",
+    "开启后，水中木树荫下温度固定为16度，植物夏天不枯萎",
+    "When enabled, the temperature under Ocean Tree shade is fixed at 16°C, preventing plants from withering in summer",
+    "关闭后，水中木树荫温度恢复默认，植物夏天可能枯萎",
+    "When disabled, the temperature under Ocean Tree shade returns to default, and plants may wither in summer"
+  ),
   -- 缩小水中木大小
   {
     name = "OceanTreeShrinkScale",
