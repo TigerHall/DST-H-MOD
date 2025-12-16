@@ -48,13 +48,13 @@ local function addTitle(title)
 end
 
 --  基础信息
-name = L and "H-Staff Enhancement" or "H-手杖强化"
+name = L and "H-Cane Enhancement" or "H-手杖强化"
 description =
     L and
-    "V2.3\n\nAll features can be turned on or off in the configuration options.\n\nEnhance your walking cane with features including custom movement speed bonuses, damage values (including planar damage values), ranged attacks and area-of-effect attacks, life leech (including restoring hunger and sanity), glowing (only when dropped on the ground), preventing being knocked off by bosses, being revivable via haunting, and being theft-proof, etc.\n\nIt also supports various multi-functional tool features, including axe, pickaxe, shovel (with customizable tool efficiency), hammer, circular harvesting, and other multi-functional tools. It can automatically pick harvestable crops around the player, and has an auto-pickup function (an additional switch, controlled by auto-harvesting; it picks up everything, which is quite excessive). It also features automatic tilling and automatic sowing (by placing seeds in the cane's grid). The multi-functional tool features and light effect function of the cane can be turned off/on by right-clicking.\n\nIn addition, there are permanent features such as watering can, oar, freshwater fishing rod, brush, and razor (with a separate setting switch).\n\nYou can set to craft walrus ivory at the Alchemy Engine (1 bone and 2 fangs) or make walruses drop an extra walrus ivory. It can also resist lightning, rain, and maintain a constant temperature.\n\nYou can place seeds in the character's last inventory slot (the 15th one, closest to the equipment slot), and they will be sown automatically. You can also place gems, sand stones, bear skins (be careful of home destruction), etc., each of which has different abilities." or
-    "V2.3.10\n\n所有功能均可在配置项开启或关闭\n\n强化你的步行手杖，包括自定义移速加成、伤害值(包括位面伤害值)、远程攻击与群体攻击、吸血(包括回复饥饿和理智)、发光（仅限丢在地上的时候）、防boss拍落、可作祟复活以及不会被偷窃等功能，\n\n还支持多种多功能工具功能，包括斧子、稿子、铲子（可自定义工具效率）、锤子、圆形收割等多功能工具，且可自动采摘玩家周围的可采摘作物，自动拾取功能（额外开关，受自动采摘控制，啥东西都会捡起来，很夸张），自动锄地，自动播种（将种子放进手杖的格子里）。可通过右键关闭/开启手杖的多功能工具功能和光特效功能。\n\n另外有常驻功能浇水壶、船桨、淡水钓竿、刷子、剃刀（有单独设置开关）\n\n可以设置在二本合成海象牙（1骨头2犬牙）或让海象额外掉落一个海象牙，可以防雷、防雨、恒温。\n\n可以在人物最后一个格子（15个，最靠近装备那个）里放入种子，能自动播种。还可以放入宝石、沙之石、熊皮（小心拆家）等，都有不同的能力。"
+    "V2.8\n\nAll features can be turned on or off in the configuration options.\n\nEnhance your walking cane with features including custom movement speed bonuses, damage values (including planar damage values),Ramping Damage, ranged attacks and area-of-effect attacks, life leech (including restoring hunger and sanity), glowing (only when dropped on the ground), preventing being knocked off by bosses, being revivable via haunting, and being theft-proof, etc.\n\nIt also supports various multi-functional tool features, including axe, pickaxe, shovel (with customizable tool efficiency), hammer, circular harvesting, and other multi-functional tools. It can automatically pick harvestable crops around the player. It also features automatic tilling. The multi-functional tool features and light effect function of the cane can be turned off/on by right-clicking.\n\nIn addition, there are permanent features such as watering can, oar, freshwater fishing rod, brush, and razor (with a separate setting switch).\n\nYou can set to craft walrus ivory at the Alchemy Engine (1 bone and 2 fangs) or make walruses drop an extra walrus ivory. It can also resist lightning, rain, and maintain a constant temperature.\n\nYou can place seeds in the character's last inventory slot (the 15th one, closest to the equipment slot), and they will be sown automatically. You can also place gems, sand stones, bear skins (be careful of home destruction), etc., each of which has different abilities. But all abilities come with a hunger cost" or
+    "V2.8.3\n\n所有功能均可在配置项开启或关闭\n\n强化你的步行手杖，包括自定义移速加成、伤害值(包括位面伤害值)、越战越强、远程攻击与群体攻击、吸血(包括回复饥饿和理智)、发光（仅限丢在地上的时候）、防boss拍落、可作祟复活以及不会被偷窃等功能，\n\n还支持多种多功能工具功能，包括斧子、稿子、铲子（可自定义工具效率）、锤子、圆形收割等多功能工具，且可自动采摘玩家周围的可采摘作物，自动锄地。可通过右键关闭/开启手杖的多功能工具功能和光特效功能。\n\n另外有常驻功能浇水壶、船桨、淡水钓竿、刷子、剃刀（有单独设置开关）\n\n可以设置在二本合成海象牙（1骨头2犬牙）或让海象额外掉落一个海象牙，可以防雷、防雨、恒温。\n\n可以在人物最后一个格子（15个，最靠近装备那个）里放入种子，能自动播种。还可以放入宝石、沙之石、熊皮（小心拆家）等，都有不同的能力。但所有的能力都有饥饿代价。"
 author = "hehu"
-version = "2.3.10"
+version = "2.8.3"
 api_version = 10
 dst_compatible = true
 all_clients_require_mod = true
@@ -65,7 +65,7 @@ icon = "modicon.tex"
 server_filter_tags = { "cane", "步行手杖", "移速", "speed", "伤害", "damage", "远程攻击", "range attack", "复活", "resurrection" }
 
 --优先级调高(刚好压过Insight)
-priority = -10001
+priority = -10016
 
 configuration_options = {
   -- 基础配置项
@@ -136,6 +136,8 @@ configuration_options = {
     hover = L and "Attack damage value" or "攻击伤害值",
     options = {
       { description = "0.0000006", data = 0.0000006, hover = L and "Almost No damage but still useful" or "基本没伤害但也有用" },
+      { description = "1.6", data = 1.6, hover = L and "Just right to hit some butterflies" or "刚好打打蝴蝶" },
+      { description = "10", data = 10, hover = L and "weaker than vanilla" or "比原版弱一些" },
       { description = "16", data = 16, hover = L and "Slightly weaker than vanilla" or "比原版弱一点，刚好有点区分" },
       { description = "36", data = 36, hover = L and "A bit higher than spear" or "比长矛的伤害高一点点" },
       { description = "66", data = 66, hover = L and "Stronger than ham bat" or "比火腿棒强一点点" },
@@ -148,7 +150,7 @@ configuration_options = {
       },
       { description = "6666", data = 6666, hover = L and "You can conquer the饥荒 world" or "饥荒世界你都能杀穿了" }
     },
-    default = 36
+    default = 16
   },
   -- 真实伤害选项
   {
@@ -157,6 +159,7 @@ configuration_options = {
     hover = L and "Planar attack damage value" or "位面攻击伤害值",
     options = {
       { description = "0", data = 0, hover = L and "No planar damage" or "没有位面伤害" },
+      { description = "10", data = 10, hover = L and "10 planar damage" or "普普通通的伤害" },
       { description = "16", data = 16, hover = L and "Slightly weaker than Shadow Reaper" or "比暗影收割者位面伤害弱一点" },
       { description = "36", data = 36, hover = L and "A bit higher than lunar spear" or "比阴郁回旋镖位面伤害高一点点" },
       { description = "66", data = 66, hover = L and "Brightshade Sword * 2" or "两倍亮茄剑位面伤害" },
@@ -169,8 +172,21 @@ configuration_options = {
       },
       { description = "6666", data = 6666, hover = L and "Dominate all planar creatures" or "碾压所有位面生物" }
     },
-    default = 36
+    default = 16
   },
+  -- 越攻击越强
+  addConfig(
+    "extra_damage",
+    "越战越强",
+    "Ramping Damage",
+    true,
+    "是否启用攻击叠加伤害效果（每次攻击有概率增加1~6点伤害，上限166点，16秒无战斗重置）",
+    "Enable ramping damage effect (Maybe randomly increase 1~6 damage per attack, max 66 damage, reset after 16s of inactivity)",
+    "每次攻击都会变强，持续战斗伤害拉满",
+    "Damage increases with each attack, max damage in continuous combat",
+    "关闭叠加效果，伤害保持基础值不变",
+    "Disable ramping effect, damage remains at base value"
+  ),
   -- 远程攻击范围
   {
     name = "range_attack",
@@ -193,6 +209,7 @@ configuration_options = {
     hover = L and "Percentage of base damage for AOE attacks (0% = disable AOE)" or "群攻伤害占基础伤害的百分比(0% = 禁用群攻)",
     options = {
       { description = "0%", data = 0, hover = L and "Disable AOE attack" or "禁用群攻效果" },
+      { description = "6%", data = 0.06, hover = L and "6% of base damage" or "基础伤害的6%" },
       { description = "16%", data = 0.16, hover = L and "16% of base damage" or "基础伤害的16%" },
       { description = "36%", data = 0.36, hover = L and "36% of base damage" or "基础伤害的36%" },
       { description = "50%", data = 0.5, hover = L and "50% of base damage" or "基础伤害的50%" },
@@ -218,7 +235,7 @@ configuration_options = {
       { description = "100%", data = 1.0, hover = L and "100% of damage as health" or "伤害的100%转化为生命" },
       { description = "166%", data = 1.66, hover = L and "166% of damage as health" or "伤害的166%转化为生命" }
     },
-    default = 0.16
+    default = 0.06
   },
   -- 攻击回饿
   {
@@ -327,24 +344,6 @@ configuration_options = {
     },
     default = 6
   },
-  -- 自动工作范围
-  {
-    name = "auto_work_range",
-    label = L and "Auto-Work Range" or "自动工作范围",
-    hover = L and
-        "Effective range for auto-working (set to 0 to disable)" or
-        "自动工作的有效范围（设置为0则关闭功能）",
-    options = {
-      { description = "0", data = 0, hover = L and "Disable auto-work" or "关闭自动工作功能" },
-      { description = "2.6", data = 2.6, hover = L and "Slightly more than 0.5 Turf Radius" or "稍大于0.5个地皮半径" },
-      { description = "4.6", data = 4.6, hover = L and "Slightly more than 1 Turf Radius" or "稍大于1个地皮的半径范围" },
-      { description = "6.6", data = 6.6, hover = L and "Slightly more than 1.5 Turfs Radius, allows the general grassland of grass lizards to be just fully harvested outside the fence." or "稍大于1.5个地皮的半径范围，围起来草蜥蜴的一般草场刚好能在栅栏外收完" },
-      { description = "8.6", data = 8.6, hover = L and "Slightly more than 2 Turfs Radius" or "稍大于2个地皮的半径范围" },
-      { description = "12.6", data = 12.6, hover = L and "Slightly more than 3 Turfs Radius" or "稍大于3个地皮的半径范围" },
-      { description = "16.6", data = 16.6, hover = L and "Slightly more than 4 Turfs Radius" or "稍大于4个地皮的半径范围" }
-    },
-    default = 6.6
-  },
   -- 自动耕地
   {
     name = "auto_farm_range",
@@ -354,14 +353,11 @@ configuration_options = {
         "自动耕地的有效范围（设置为0则关闭功能）",
     options = {
       { description = "0", data = 0, hover = L and "Disable auto-farming" or "关闭自动耕地功能" },
-      { description = "2.6", data = 2.6, hover = L and "Slightly more than 0.5 Turf Radius" or "稍大于0.5个地皮半径" },
-      { description = "4.6", data = 4.6, hover = L and "Slightly more than 1 Turf Radius" or "稍大于1个地皮的半径范围" },
-      { description = "6.6", data = 6.6, hover = L and "Slightly more than 1.5 Turfs Radius, suitable for small farm plots" or "稍大于1.5个地皮的半径范围，适合小型农田" },
-      { description = "8.6", data = 8.6, hover = L and "Slightly more than 2 Turfs Radius, covers medium-sized farms" or "稍大于2个地皮的半径范围，覆盖中型农田" },
-      { description = "12.6", data = 12.6, hover = L and "Slightly more than 3 Turfs Radius, ideal for large farmlands" or "稍大于3个地皮的半径范围，适合大型耕地" },
-      { description = "16.6", data = 16.6, hover = L and "Slightly more than 4 Turfs Radius, covers extensive farm areas" or "稍大于4个地皮的半径范围，覆盖大面积农田" }
+      { description = "1", data = 1, hover = L and "1 Turf range" or "周围1个地皮，9宫格" },
+      { description = "2", data = 2, hover = L and "2 Turfs range, covers medium-sized farms" or "周围2个地皮" },
+      { description = "3", data = 3, hover = L and "3 Turfs range, ideal for large farmlands" or "周围3个地皮" },
     },
-    default = 6.6
+    default = 1
   },
   addConfig(
     "enable_light_fx",
@@ -488,8 +484,8 @@ configuration_options = {
     "恒温效果",
     "Constant Temperature Effect",
     true,
-    "是否启用恒温效果（保持体温处于不高不低的适宜范围，且解除被冰冻和燃烧状态）",
-    "Whether to enable constant temperature effect (keeps body temperature in a comfortable range, neither too high nor too low)",
+    "是否启用恒温效果",
+    "Whether to enable constant temperature effect.",
     "启用后体温始终保持适宜状态，不会过热也不会过冷",
     "Enables constant comfortable body temperature; neither overheating nor getting too cold",
     "禁用后恢复正常温度机制，会随环境变化出现过热或过冷",
@@ -521,6 +517,9 @@ configuration_options = {
     "海象掉落海象牙恢复默认随机机制",
     "Reverts Walrus Tusk drop to default random mechanism"
   ),
+  -- 其他工具功能配置项
+  addTitle(L and "Combination function of the cane" or
+    "手杖组合功能"),
   addConfig(
     "enable_slot",
     "启用扫描格子",
@@ -528,8 +527,26 @@ configuration_options = {
     true,
     "控制是否启用手杖的扫描格子功能",
     "Control whether to enable the scan slot function of the cane",
-    "手杖会扫描人物物品栏第 15 个格子并解锁对应强大功能，可根据格子内物品触发各类实用效果",
-    "The cane will scan the 15th slot of the player's inventory and unlock corresponding powerful functions, which can trigger various practical effects according to the items in the slot",
-    "没啥变化",
-    "nothing changes"),
+    "手杖会根据第15个物品栏及装备栏物品解锁对应功能",
+    "The cane will unlock corresponding functions based on the items in the 15th inventory slot and the equipment slot.",
+    "没啥变化，而且不会有自动工作了",
+    "nothing changes and no functions unlocked"),
+  -- 自动工作范围
+  {
+    name = "auto_work_range",
+    label = L and "Auto-Work Range" or "自动工作范围",
+    hover = L and
+        "Effective range for auto-working (set to 0 to disable)" or
+        "自动工作的有效范围（设置为0则关闭功能）",
+    options = {
+      { description = "0", data = 0, hover = L and "Disable auto-work" or "关闭自动工作功能" },
+      { description = "2.6", data = 2.6, hover = L and "Slightly more than 0.5 Turf Radius" or "稍大于0.5个地皮半径" },
+      { description = "4.6", data = 4.6, hover = L and "Slightly more than 1 Turf Radius" or "稍大于1个地皮的半径范围" },
+      { description = "6.6", data = 6.6, hover = L and "Slightly more than 1.5 Turfs Radius, allows the general grassland of grass lizards to be just fully harvested outside the fence." or "稍大于1.5个地皮的半径范围，围起来草蜥蜴的一般草场刚好能在栅栏外收完" },
+      { description = "8.6", data = 8.6, hover = L and "Slightly more than 2 Turfs Radius" or "稍大于2个地皮的半径范围" },
+      { description = "12.6", data = 12.6, hover = L and "Slightly more than 3 Turfs Radius" or "稍大于3个地皮的半径范围" },
+      { description = "16.6", data = 16.6, hover = L and "Slightly more than 4 Turfs Radius" or "稍大于4个地皮的半径范围" }
+    },
+    default = 6.6
+  },
 }

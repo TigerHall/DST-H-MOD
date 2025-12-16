@@ -12,6 +12,7 @@ local config = {
   damage = GetModConfigData("damage_value"),
   planardamage = GetModConfigData("planardamage"),
   range_attack = GetModConfigData("range_attack"),
+  extra_damage = GetModConfigData("extra_damage"),
   aoe_damage_ratio = GetModConfigData("aoe_damage_ratio"),
   life_drain_ratio = GetModConfigData("life_drain_ratio"),
   hunger_conversion_ratio = GetModConfigData("hunger_conversion_ratio"),
@@ -148,19 +149,31 @@ AddPrefabPostInit("cane", function(inst)
     end)
   end
 
-
   -- 伤害配置项
   -- 处理武器组件逻辑
   if inst.components.weapon then
     -- 基础伤害设置
     inst.components.weapon:SetDamage(config.damage)
-    -- 确保位面伤害组件存在（如果需要动态开关，可加判断）
-    if config.planardamage > 0 then
-      inst:AddComponent("planardamage"):SetBaseDamage(config.planardamage)
-    end
+    -- 确保位面伤害组件存在
+    inst:AddComponent("planardamage"):SetBaseDamage(config.planardamage)
     -- 攻击范围
     if config.range_attack > 0 then
-      inst.components.weapon:SetRange(config.range_attack - 1, config.range_attack)
+      inst.components.weapon:SetRange(config.range_attack, config.range_attack + 1)
+    end
+    -- 初始化实体的伤害倍率存储（首次使用时赋值，避免nil）
+    if not inst._damage_mult then
+      inst._damage_mult = 1 -- 基础伤害原始倍率
+    end
+    if not inst._planardamage_mult then
+      inst._planardamage_mult = 1 -- 位面伤害原始倍率
+    end
+    -- 重置额外伤害函数（直接判断配置开关）
+    local function ResetExtraDamage()
+      inst.extra_damage = 0
+      inst.combat_timer = nil
+      -- 恢复基础伤害
+      inst.components.weapon:SetDamage(config.damage * inst._damage_mult)
+      inst.components.planardamage:SetBaseDamage(config.planardamage * inst._planardamage_mult)
     end
 
     -- 伤害转换逻辑封装（复用函数）
@@ -182,12 +195,35 @@ AddPrefabPostInit("cane", function(inst)
     -- 攻击逻辑处理
     inst.components.weapon.onattack = function(inst, attacker, target)
       -- 1. 计算最终基础伤害（包含所有增益）
-      local final_base_damage = config.damage
-      local final_base_planardamage = config.planardamage
-      -- 这里可以添加其他增益计算，例如：
-      -- if attacker:HasTag("some_buff") then
-      --     final_base_damage = final_base_damage * 1.2  -- 20%增益
-      -- end
+      local final_base_damage = config.damage * inst._damage_mult
+      local final_base_planardamage = config.planardamage * inst._planardamage_mult
+      -- 越攻击越强 核心逻辑（简化版）
+      if config.extra_damage then
+        -- 初始化累加变量（首次触发时）
+        inst.extra_damage = inst.extra_damage or 0
+        inst.max_extra_damage = 166
+
+        -- 刷新16秒重置计时器
+        if inst.combat_timer ~= nil then
+          inst.combat_timer:Cancel()
+        end
+        inst.combat_timer = inst:DoTaskInTime(16, ResetExtraDamage)
+
+        -- 随机累加1-6点伤害，限制上限66
+        if math.random() < 0.16 then
+          local add_damage = math.random(1, 6)
+          inst.extra_damage = math.min(inst.extra_damage + add_damage, inst.max_extra_damage)
+        end
+
+        -- 叠加额外伤害并更新武器伤害
+        final_base_damage = config.damage * inst._damage_mult + inst.extra_damage
+        final_base_planardamage = config.planardamage * inst._planardamage_mult + inst.extra_damage
+        inst.components.weapon:SetDamage(final_base_damage)
+        if not inst.components.planardamage then
+          inst:AddComponent("planardamage")
+        end
+        inst.components.planardamage:SetBaseDamage(final_base_planardamage)
+      end
 
       -- 2. 主目标伤害转换
       ApplyDamageConversions(attacker, final_base_damage)
@@ -343,6 +379,14 @@ AddPrefabPostInit("cane", function(inst)
     inst.components.oar.force = 1
     inst.components.oar.max_velocity = 16
   end
+  -- 添加 区域温度 组件(暂未添加)
+  if false then
+    inst:AddComponent("temperatureoverrider")
+    inst.components.temperatureoverrider:SetTemperature(46)
+    inst.components.temperatureoverrider:SetRadius(config.auto_work_range)
+    inst.components.temperatureoverrider:Enable()
+  end
+
 
   -- 自动采摘逻辑
   local auto_harvest_task = nil
@@ -408,54 +452,44 @@ AddPrefabPostInit("cane", function(inst)
 
     -- 获取玩家位置和配置的耕地范围
     local x, y, z = doer.Transform:GetWorldPosition()
-    local AUTO_FARM_RANGE = config.auto_farm_range or 0
+    local AUTO_FARM_RANGE = config.auto_farm_range or 1
+    local center_tile_x, center_tile_z = TheWorld.Map:GetTileCoordsAtPoint(x, y, z)
     if AUTO_FARM_RANGE <= 0 then
       return -- 范围无效则退出
     end
 
-    -- 搜索范围内的可耕地块
-    local found_centers = {} -- 存储已处理的地块中心，避免重复操作
-    local ents = TheSim:FindEntities(
-      x, y, z,
-      AUTO_FARM_RANGE,
-      nil,
-      { "INLIMBO", "NOCLICK", "FX", "dead", }
-    )
+    -- 遍历以玩家为中心的周围格子
+    for dx = -AUTO_FARM_RANGE, AUTO_FARM_RANGE do
+      for dz = -AUTO_FARM_RANGE, AUTO_FARM_RANGE do
+        local tile_x = center_tile_x + dx
+        local tile_z = center_tile_z + dz
 
-    for _, ent in ipairs(ents) do
-      -- 检查是否为可耕地或土壤实体
-      if ent:IsValid() and (ent:HasTag("soil") or TheWorld.Map:CanTillSoilAtPoint(ent.Transform:GetWorldPosition())) then
-        -- 获取地块中心坐标
-        local cx, _, cz = TheWorld.Map:GetTileCenterPoint(ent.Transform:GetWorldPosition())
-        local center_key = string.format("%.2f,%.2f", cx, cz) -- 用坐标字符串作为唯一标识
+        -- 获取当前格子的中心世界坐标
+        local cx, _, cz = TheWorld.Map:GetTileCenterPoint(tile_x, tile_z)
 
-        -- 跳过已处理的地块
-        if not found_centers[center_key] then
-          found_centers[center_key] = true
-
-          -- 坍塌当前地块上的旧土壤
-          local tile_ents = TheWorld.Map:GetEntitiesOnTileAtPoint(cx, 0, cz)
-          for _, tile_ent in ipairs(tile_ents) do
-            if tile_ent ~= inst and tile_ent:HasTag("soil") then
-              tile_ent:PushEvent("collapsesoil")
-            end
+        -- 坍塌当前地块上的旧土壤
+        local tile_ents = TheWorld.Map:GetEntitiesOnTileAtPoint(cx, 0, cz)
+        for _, tile_ent in ipairs(tile_ents) do
+          if tile_ent ~= inst and tile_ent:HasTag("soil") then
+            tile_ent:PushEvent("collapsesoil")
           end
-
-          -- 在地块中心执行3x3耕地
-          for _, v in pairs(MAP_3x3) do
-            local nx = v[1] + cx
-            local nz = v[2] + cz
-            if TheWorld.Map:CanTillSoilAtPoint(nx, 0, nz, false) then
-              TheWorld.Map:CollapseSoilAtPoint(nx, 0, nz)
-              SpawnPrefab("farm_soil").Transform:SetPosition(nx, 0, nz)
-            end
-          end
-          -- 触发耕地音效/动画
-          doer:PushEvent("tilling")
         end
+
+        -- 在地块中心执行3x3耕地
+        for _, v in pairs(MAP_3x3) do
+          local nx = v[1] + cx
+          local nz = v[2] + cz
+          if TheWorld.Map:CanTillSoilAtPoint(nx, 0, nz, false) then
+            TheWorld.Map:CollapseSoilAtPoint(nx, 0, nz)
+            SpawnPrefab("farm_soil").Transform:SetPosition(nx, 0, nz)
+          end
+        end
+        -- 触发耕地音效/动画
+        doer:PushEvent("tilling")
       end
     end
   end
+
 
   -- 自动耕地状态更新函数（根据配置和装备状态控制任务启停）
   local function UpdateAutoFarm()
@@ -568,7 +602,7 @@ AddPrefabPostInit("cane", function(inst)
 
   -- 定义自动温控相关变量
   local auto_temp_task = nil
-  local AUTO_TEMP_INTERVAL = 0.6
+  local AUTO_TEMP_INTERVAL = 3.6
 
   -- 自动温控核心逻辑函数
   local function DoAutoTempControl(inst)
@@ -588,8 +622,8 @@ AddPrefabPostInit("cane", function(inst)
     end
     -- 1. 温度调整
     if doer.components.temperature then
-      -- 温度设定为16
-      doer.components.temperature:SetTemperature(16)
+      -- 温度设定为36
+      doer.components.temperature:SetTemperature(36)
     end
     -- 2. 自身解冻（仅当冻结时）
     -- if doer.components.freezable and doer.components.freezable:IsFrozen() then
@@ -605,6 +639,14 @@ AddPrefabPostInit("cane", function(inst)
   local AUTO_WORK_INTERVAL = 0.36 -- 自动工作检测间隔（可根据需求调整）
   local auto_work_task = nil      -- 自动工作定时任务句柄
 
+  -- 科技加成表
+  local tech_bonus = {
+    SCIENCE = 2,
+    MAGIC = 3,
+    ANCIENT = 4,
+    SEAFARING = 2,
+  }
+
   -- 独立的自动工作函数
   local function DoAutotask(inst)
     -- 存在工作范围才开始
@@ -615,64 +657,103 @@ AddPrefabPostInit("cane", function(inst)
     if not doer or not doer:HasTag("player") then return end
     local owner = inst.components.inventoryitem:GetGrandOwner()
     local x, y, z = doer.Transform:GetWorldPosition()
+
+    -- 保存原始血量上限
+    if doer and doer.components.health and not doer._original_maxhealth then
+      doer._original_maxhealth = doer.components.health.maxhealth
+      doer._health_mult = 1
+    end
+    -- 保存原始饥饿上限
+    if doer and doer.components.hunger and not doer._original_maxhunger then
+      doer._original_maxhunger = doer.components.hunger.max
+      doer._hunger_mult = 1
+    end
+    -- 记录原始理智上限
+    if doer and doer.components.sanity and not doer._original_maxsanity then
+      doer._original_maxsanity = doer.components.sanity.max
+      doer._sanity_mult = 1
+    end
+    -- 2. 计算倍率（基于实体属性取最大）
+    local sanity_mult = doer._sanity_mult
+    local health_mult = doer._health_mult
+    local hunger_mult = doer._hunger_mult
+
     -- 获取人物15格的东西
     local item = doer.components.inventory:GetItemInSlot(15)
+    -- 获取人物装备栏/15格子的东西
+    -- 1. 遍历装备槽位
+    local items = {}
+    if EQUIPSLOTS then
+      for k, v in pairs(EQUIPSLOTS) do
+        local equip = doer.components.inventory:GetEquippedItem(v)
+        if equip then
+          items[v] = equip
+        end
+      end
+    end
+    items["slot_15"] = doer.components.inventory:GetItemInSlot(15)
+
+    -- 封装检测物品函数
+    local function HasTargetItem(items, target_prefabs)
+      if not items or not target_prefabs or #target_prefabs == 0 then
+        return false
+      end
+      -- 将目标预制名数组转为集合（键值对），提升查询效率
+      local prefab_set = {}
+      for _, prefab in ipairs(target_prefabs) do
+        prefab_set[prefab] = true
+      end
+      -- 遍历物品集合
+      for _, item in pairs(items) do
+        if item and prefab_set[item.prefab] then
+          return true
+        end
+      end
+      return false
+    end
+
+    -- 封装饥饿代价逻辑为函数
+    local function ApplyHungerCost(owner, delta, chance, source)
+      if owner and owner.components.hunger and math.random() < chance then
+        owner.components.hunger:DoDelta(delta, false, source)
+      end
+    end
+
+    -- ！！！七色宝石类
     -- 绿色宝石开始
-    if doer.components.builder ~= nil then
-      if item and item.prefab == "greengem" then
-        doer.components.builder.ingredientmod = 0.5
-      else
-        doer.components.builder.ingredientmod = 1
+    if HasTargetItem(items, { "greengem", "greenmooneye", "greenamulet" }) then
+      doer.components.builder.ingredientmod = 0.5
+      if doer ~= nil and not doer:HasTag("fastbuilder") then
+        doer:AddTag("fastbuilder")
+      end
+    else
+      doer.components.builder.ingredientmod = 1
+      if doer ~= nil and not doer:HasTag("handyperson") then
+        doer:RemoveTag("fastbuilder")
       end
     end
     -- 绿色宝石结束
+
     -- 紫色宝石开始
-    if doer.components.sanity ~= nil then
-      if item and item.prefab == "purplegem" then
-        doer.components.sanity:SetInducedInsanity(inst, true)
-      else
-        doer.components.sanity:SetInducedInsanity(inst, false)
-      end
+    if HasTargetItem(items, { "purplegem", "purplemooneye", "purpleamulet" }) then
+      doer.components.sanity:SetInducedInsanity(inst, true)
+    else
+      doer.components.sanity:SetInducedInsanity(inst, false)
     end
     -- 紫色宝石结束
+
     -- 黄色宝石开始
-    if item and item.prefab == "yellowgem" then
+    if HasTargetItem(items, { "yellowgem", "yellowmooneye", "yellowamulet" }) then
       inst._light.Light:SetRadius(26)
+      inst.components.equippable.walkspeedmult = 1 + config.speed_buff + 0.36
     else
       inst._light.Light:SetRadius(config.hcane_light)
+      inst.components.equippable.walkspeedmult = 1 + config.speed_buff
     end
     -- 黄色宝石结束
-    -- 有东西才开始
-    if not item then return end
-
-    -- 红色宝石开始
-    if item and item.prefab == "redgem" then
-      -- 1. 自身灭火（仅当燃烧时）
-      if doer.components.burnable and doer.components.burnable:IsBurning() then
-        doer.components.burnable:Extinguish()
-      end
-      if math.random() >= 0.16 then return end
-      if owner.components.health then
-        owner.components.health:DoDelta(16, false, "cane")
-      end
-    end
-    -- 红色宝石结束
-
-    -- 蓝色宝石开始
-    if item and item.prefab == "bluegem" then
-      -- 2. 自身解冻（仅当冻结时）
-      if doer.components.freezable and doer.components.freezable:IsFrozen() then
-        doer.components.freezable:Unfreeze()
-      end
-      if math.random() >= 0.16 then return end
-      if owner.components.sanity then
-        owner.components.sanity:DoDelta(16, false, "cane")
-      end
-    end
-    -- 蓝色宝石结束
 
     -- 橙色宝石开始
-    if item and item.prefab == "orangegem" then
+    if HasTargetItem(items, { "orangegem", "orangemooneye", "orangeamulet" }) then
       -- 传送功能
       if not inst.components.blinkstaff then
         inst:AddComponent("blinkstaff")
@@ -704,45 +785,241 @@ AddPrefabPostInit("cane", function(inst)
             -- 将物品放入玩家物品栏
             doer.components.inventory:GiveItem(ent, nil, v_pos)
           end
+          ApplyHungerCost(owner, -0.6, 0.66, "cane")
           return
         end
       end
     else
-      -- 移除传送功能（如果存在）
       if inst.components.blinkstaff then
         inst:RemoveComponent("blinkstaff")
       end
     end
     -- 橙色宝石结束
 
-    -- 彩虹宝石开始
-    if item and item.prefab == "opalpreciousgem" then
-      -- 复制概率为16%
-      if math.random() >= 0.16 then return end
-      -- 1. 获取玩家第14个物品栏的物品
-      local slot_14_item = doer.components.inventory:GetItemInSlot(14)
-      -- 2. 严格校验：玩家有效+有物品栏+14栏有有效物品+物品可堆叠+堆叠未达上限
-      if doer
-          and doer.components.inventory
-          and slot_14_item
-          and slot_14_item:IsValid()
-          and slot_14_item.components.stackable
-          and not slot_14_item.components.stackable:IsFull()
-      then
-        local target_prefab = slot_14_item.prefab
-        -- 3. 固定复制1个（不再复制余量）
-        local item_copy = SpawnPrefab(target_prefab)
-        if item_copy.components.stackable then
-          item_copy.components.stackable:SetStackSize(1) -- 每次只加1个
+    -- 红色宝石开始
+    if HasTargetItem(items, { "redgem", "redmooneye", "amulet" }) then
+      -- 1. 自身灭火（仅当燃烧时）
+      if doer.components.burnable and doer.components.burnable:IsBurning() then
+        doer.components.burnable:Extinguish()
+        if doer.components.inventory
+        then
+          doer.components.inventory:GiveItem(SpawnPrefab("ash"), nil, doer:GetPosition())
         end
-        -- 4. 放入物品栏（自动叠加到14栏物品中）
-        doer.components.inventory:GiveItem(item_copy)
+      end
+      -- 生命回复
+      if math.random() < 0.16 then
+        -- 饥饿代价
+        ApplyHungerCost(owner, -1.6, 0.66, "cane")
+        if owner.components.health then
+          owner.components.health:DoDelta(16, false, "cane")
+        end
+      end
+    end
+    -- 红色宝石结束
+
+    -- 蓝色宝石开始
+    if HasTargetItem(items, { "bluegem", "bluemooneye", "blueamulet" }) then
+      -- 2. 自身解冻（仅当冻结时）
+      if doer.components.freezable and doer.components.freezable:IsFrozen() then
+        doer.components.freezable:Unfreeze()
+        if doer.components.inventory
+        then
+          doer.components.inventory:GiveItem(SpawnPrefab("ice"), nil, doer:GetPosition())
+        end
+      end
+      -- 理智回复
+      if math.random() < 0.16 then
+        -- 饥饿代价
+        ApplyHungerCost(owner, -1.6, 0.66, "cane")
+        if owner.components.sanity then
+          owner.components.sanity:DoDelta(16, false, "cane")
+        end
+      end
+    end
+    -- 蓝色宝石结束
+
+    -- ！！！高级能力
+    -- 彩虹宝石开始
+    if HasTargetItem(items, { "opalpreciousgem" }) then
+      -- 复制概率为16%
+      if math.random() < 0.16 then
+        -- 1. 获取玩家第14个物品栏的物品
+        local slot_14_item = doer.components.inventory:GetItemInSlot(14)
+        -- 2. 严格校验：玩家有效+有物品栏+14栏有有效物品+物品可堆叠+堆叠未达上限
+        if doer
+            and doer.components.inventory
+            and slot_14_item
+            and slot_14_item:IsValid()
+            and slot_14_item.components.stackable
+            and not slot_14_item.components.stackable:IsFull()
+        then
+          local target_prefab = slot_14_item.prefab
+          -- 3. 固定复制1个（不再复制余量）
+          local item_copy = SpawnPrefab(target_prefab)
+          if item_copy.components.stackable then
+            item_copy.components.stackable:SetStackSize(1) -- 每次只加1个
+          end
+          -- 4. 放入物品栏（自动叠加到14栏物品中）
+          doer.components.inventory:GiveItem(item_copy)
+        end
+        ApplyHungerCost(owner, -16.6, 0.66, "cane")
       end
     end
     -- 彩虹宝石结束
 
+    -- ！！！伤害修改类开始
+    -- 定义伤害修改的装备组及倍率规则（一站式管理，和三维修改类结构一致）
+    local damage_mod_configs = {
+      -- 绝望石/套装装备组
+      dreadstone = {
+        items = { "dreadstone", "armordreadstone", "dreadstonehat", "purebrilliance" },
+        damage_mult = 2.6,      -- 基础伤害倍率
+        planardamage_mult = 2.6 -- 位面伤害倍率
+      },
+      -- 暗影碎布类装备组
+      voidcloth = {
+        items = { "voidcloth", "voidcloth_boomerang", "armor_voidcloth", "voidcloth_umbrella" },
+        damage_mult = 4.6,      -- 基础伤害倍率
+        planardamage_mult = 3.6 -- 位面伤害倍率
+      },
+      -- 亮茄套装装备组
+      lunarplant = {
+        items = { "armor_lunarplant", "lunarplanthat", "sword_lunarplant", "staff_lunarplant" },
+        damage_mult = 3.6,      -- 基础伤害倍率
+        planardamage_mult = 4.6 -- 位面伤害倍率
+      }
+    }
+
+    -- 合并所有伤害修改装备为总列表
+    local all_damage_gear_list = {}
+    for _, damage_config in pairs(damage_mod_configs) do
+      for _, gear_item in ipairs(damage_config.items) do
+        table.insert(all_damage_gear_list, gear_item)
+      end
+    end
+
+    -- 外侧判断
+    if HasTargetItem(items, all_damage_gear_list) then
+      -- 从实体获取历史倍率（作为计算基础，保证只会变大不会变小）
+      local current_damage_mult = inst._damage_mult
+      local current_planardamage_mult = inst._planardamage_mult
+
+      -- 遍历配置表计算新的倍率（取最大值，保证倍率只增不减）
+      for _, damage_config in pairs(damage_mod_configs) do
+        if HasTargetItem(items, damage_config.items) then
+          current_damage_mult = math.max(current_damage_mult, damage_config.damage_mult or 1)
+          current_planardamage_mult = math.max(current_planardamage_mult, damage_config.planardamage_mult or 1)
+        end
+      end
+
+      -- 应用基础伤害变化（仅当倍率变动时才赋值）
+      if inst._damage_mult ~= current_damage_mult then
+        inst._damage_mult = current_damage_mult
+        print("玩家装备伤害倍率更新：", current_damage_mult)
+      end
+
+      -- 应用位面伤害变化（仅当倍率变动时才赋值）
+      if inst._planardamage_mult ~= current_planardamage_mult then
+        inst._planardamage_mult = current_planardamage_mult
+        print("玩家装备位面伤害倍率更新：", current_planardamage_mult)
+      end
+    end
+    -- ！！！伤害修改类结束
+
+    -- 启迪碎片开始（H-装备）
+    if HasTargetItem(items, { "alterguardianhat", "alterguardianhatshard" }) then
+      -- 全科技解锁
+      local builder = owner and owner.components.builder
+      if builder ~= nil then
+        for k, v in pairs(tech_bonus) do
+          builder[string.lower(k) .. "_tempbonus"] = v
+        end
+      end
+    else
+      -- 恢复原本科技
+      local builder = owner and owner.components.builder
+      if builder ~= nil then
+        for k, _ in pairs(tech_bonus) do
+          builder[string.lower(k) .. "_tempbonus"] = nil
+        end
+      end
+    end
+    -- 启迪碎片结束
+
+    -- ！！！三维修改类开始
+    -- 定义装备组及对应的倍率规则（一站式管理，更易维护）
+    local gear_mod_configs = {
+      -- 远古织影者骨头类装备组
+      bone = {
+        items = { "skeletonhat", "thurible", "armorskeleton" },
+        sanity_mult = 1.6,
+        health_mult = 1.6,
+        hunger_mult = 1.6
+      },
+      -- 暗影心房类装备组
+      shadow = {
+        items = { "shadowheart", "shadowheart_infused", "shadow_beef_bell", "saddle_shadow", "shadow_battleaxe" },
+        sanity_mult = 3.6
+      },
+      -- 火花柜类装备组
+      spark = {
+        items = { "coolant", "security_pulse_cage", "security_pulse_cage_full", "beargerfur_sack", "deerclopseyeball_sentryward_kit", "houndstooth_blowpipe" },
+        health_mult = 3.6,
+        hunger_mult = 3.6
+      }
+    }
+
+    -- 合并所有装备为总列表
+    local all_mod_gear_list = {}
+    for _, gear_config in pairs(gear_mod_configs) do
+      for _, gear_item in ipairs(gear_config.items) do
+        table.insert(all_mod_gear_list, gear_item)
+      end
+    end
+
+    -- 外侧判断
+    if HasTargetItem(items, all_mod_gear_list) then
+      -- 遍历配置表计算倍率
+      for _, gear_config in pairs(gear_mod_configs) do
+        if HasTargetItem(items, gear_config.items) then
+          sanity_mult = math.max(sanity_mult, gear_config.sanity_mult or 1)
+          health_mult = math.max(health_mult, gear_config.health_mult or 1)
+          hunger_mult = math.max(hunger_mult, gear_config.hunger_mult or 1)
+        end
+      end
+
+      -- 应用变化后的倍率
+      if doer._sanity_mult ~= sanity_mult then
+        doer.components.sanity.max = doer._original_maxsanity * sanity_mult
+        doer._sanity_mult = sanity_mult
+        owner.components.sanity:DoDelta(1, false, "cane")
+      end
+
+      if doer._health_mult ~= health_mult then
+        doer.components.health.maxhealth = doer._original_maxhealth * health_mult
+        doer._health_mult = health_mult
+        owner.components.health:DoDelta(1, false, "cane")
+      end
+
+      if doer._hunger_mult ~= hunger_mult then
+        doer.components.hunger.max = doer._original_maxhunger * hunger_mult
+        doer._hunger_mult = hunger_mult
+        owner.components.hunger:DoDelta(1, false, "cane")
+      end
+    end
+    -- 三维修改类结束
+
+    -- 天体珠宝开始
+    if HasTargetItem(items, { "lunar_seed" }) then
+      owner:Hide()
+    else
+      owner:Show()
+    end
+    -- 天体珠宝结束
+
+    -- ！！！杂类
     -- 理智减少开始
-    if item and item.prefab == "nightmarefuel" then
+    if HasTargetItem(items, { "nightmarefuel", "horrorfuel" }) then
       -- 理智减少
       if owner.components.sanity then
         owner.components.sanity:DoDelta(-16, false, "cane")
@@ -750,8 +1027,87 @@ AddPrefabPostInit("cane", function(inst)
     end
     -- 理智减少结束
 
+    -- 三维恢复开始
+    if HasTargetItem(items, { "cookbook" }) then
+      if math.random() < 0.16 then
+        -- 生命
+        if owner.components.health then
+          owner.components.health:DoDelta(6, false, "cane")
+        end
+        -- 饥饿
+        if owner.components.hunger then
+          owner.components.hunger:DoDelta(6, false, "cane")
+        end
+        -- 理智
+        if owner.components.sanity then
+          owner.components.sanity:DoDelta(6, false, "cane")
+        end
+      end
+    end
+    -- 三维恢复结束
+
+    -- 范围训牛开始（H-装备）
+    if HasTargetItem(items, { "beefalohat", "horn" }) then
+      -- 查找范围内的牛
+      local beefalos = TheSim:FindEntities(x, y, z, WORK_RADIUS,
+        { "beefalo" },                 -- 只找牛
+        { "INLIMBO", "dead", "ghost" } -- 排除无效目标
+      )
+      -- 增加驯服度
+      for _, beefalo in ipairs(beefalos) do
+        if beefalo:IsValid() and beefalo.components.domesticatable then
+          beefalo.components.domesticatable:DeltaDomestication(0.0006)
+        end
+        -- 1. 确保牛有坐骑组件和移动组件
+        if beefalo.components.rideable and beefalo.components.locomotor then
+          -- 保存原始速度（若未保存过）
+          if not beefalo.old_train_speed then
+            beefalo.old_train_speed = beefalo.components.locomotor:GetRunSpeed()
+          end
+          -- 2. 计算最终速度：原始速度 × (1 + 配置加成)
+          beefalo.components.locomotor.runspeed = beefalo.old_train_speed * (1 + config.speed_buff)
+        end
+      end
+    else
+      -- 恢复牛的原始速度
+      local beefalos = TheSim:FindEntities(x, y, z, WORK_RADIUS + 16,
+        { "beefalo" },                 -- 只找牛
+        { "INLIMBO", "dead", "ghost" } -- 排除无效目标
+      )
+      for _, beefalo in ipairs(beefalos) do
+        beefalo.components.locomotor.runspeed = beefalo.old_train_speed or beefalo.components.locomotor:GetRunSpeed()
+      end
+    end
+    -- 范围训牛结束
+
+    -- 范围消除蚁狮坑开始（H-装备）
+    if HasTargetItem(items, { "townportaltalisman", "antlionhat" }) then
+      -- 查找范围内的蚁狮坑
+      local sinkholes = TheSim:FindEntities(x, y, z, WORK_RADIUS,
+        { "antlion_sinkhole" }, -- 只找蚁狮坑
+        { "FX" }                -- 排除无效目标
+      )
+
+      for _, sinkhole in ipairs(sinkholes) do
+        if sinkhole:IsValid() then
+          -- 直接移除蚁狮坑
+          sinkhole:Remove()
+          ApplyHungerCost(owner, -6.6, 0.66, "cane")
+          -- 可选：生成消除特效
+          local fx = SpawnPrefab("collapse_small")
+          if fx then
+            fx.Transform:SetPosition(sinkhole.Transform:GetWorldPosition())
+          end
+
+          -- 可选：播放消除音效
+          sinkhole.SoundEmitter:PlaySound("dontstarve/common/destroy_rock")
+        end
+      end
+    end
+    -- 范围消除蚁狮坑结束
+
     -- 破坏范围开始
-    if item and item.prefab == "bearger_fur" then
+    if HasTargetItem(items, { "furtuft", "bearger_fur" }) then
       -- 定义破坏范围（可根据需求调整）
       local DESTROY_RADIUS = config.auto_work_range
       -- 筛选可破坏目标的标签（同原逻辑）
@@ -773,6 +1129,7 @@ AddPrefabPostInit("cane", function(inst)
 
             -- 执行破坏
             target.components.workable:Destroy(inst)
+            ApplyHungerCost(owner, -0.6, 0.36, "cane")
           end
         end
       end
@@ -785,94 +1142,25 @@ AddPrefabPostInit("cane", function(inst)
     end
     -- 破坏范围结束
 
-    -- 三维恢复开始
-    if item and item.prefab == "cookbook" then
-      if math.random() >= 0.16 then return end
-      -- 生命转换
-      if owner.components.health then
-        owner.components.health:DoDelta(6, false, "cane")
-      end
-      -- 饥饿转换
-      if owner.components.hunger then
-        owner.components.hunger:DoDelta(6, false, "cane")
-      end
-      -- 理智转换
-      if owner.components.sanity then
-        owner.components.sanity:DoDelta(6, false, "cane")
-      end
-    end
-    -- 三维恢复结束
-
-    -- 范围训牛开始
-    if item and item.prefab == "beefalohat" then
-      -- 查找范围内的牛
-      local beefalos = TheSim:FindEntities(x, y, z, WORK_RADIUS,
-        { "beefalo" },                 -- 只找牛
-        { "INLIMBO", "dead", "ghost" } -- 排除无效目标
-      )
-
-      for _, beefalo in ipairs(beefalos) do
-        if beefalo:IsValid() and beefalo.components.domesticatable then
-          -- 增加驯服度（每次增加0.5，可根据需要调整）
-          beefalo.components.domesticatable:DeltaDomestication(0.0006)
-        end
-      end
-    end
-    -- 范围训牛结束
-
-    -- 范围消除蚁狮坑开始
-    if item and item.prefab == "townportaltalisman" then
-      -- 查找范围内的蚁狮坑
-      local sinkholes = TheSim:FindEntities(x, y, z, WORK_RADIUS,
-        { "antlion_sinkhole" }, -- 只找蚁狮坑
-        { "FX" }                -- 排除无效目标
-      )
-
-      for _, sinkhole in ipairs(sinkholes) do
-        if sinkhole:IsValid() then
-          -- 直接移除蚁狮坑
-          sinkhole:Remove()
-
-          -- 可选：生成消除特效
-          local fx = SpawnPrefab("collapse_small")
-          if fx then
-            fx.Transform:SetPosition(sinkhole.Transform:GetWorldPosition())
-          end
-
-          -- 可选：播放消除音效
-          sinkhole.SoundEmitter:PlaySound("dontstarve/common/destroy_rock")
-        end
-      end
-    end
-    -- 范围消除蚁狮坑结束
-
-    -- 耕作先驱帽开始
-    if item and item.prefab == "plantregistryhat" then
-      local ents = TheSim:FindEntities(x, y, z, 16, nil, { 'INLIMBO', 'wall', 'shadowminion' })
+    -- 耕作先驱帽开始（H-装备）
+    if HasTargetItem(items, { "plantregistryhat", "fertilizer" }) then
+      local ents = TheSim:FindEntities(x, y, z, WORK_RADIUS, nil, { 'INLIMBO', 'wall', 'shadowminion' })
       for i, ent in ipairs(ents) do
         -- 对有"可照料"组件的植物执行照料操作
         if ent.components.farmplanttendable ~= nil then
           ent.components.farmplanttendable:TendTo(inst)
         end
       end
-      -- 核心改进：仅对人物所在tile为中心的3x3（9格）地皮补充营养
+      -- 核心改进：仅对人物所在tile为中心的地皮补充营养
       local center_tile_x, center_tile_z = TheWorld.Map:GetTileCoordsAtPoint(x, y, z)
-      -- 遍历范围（中心tile ±1）
-      for dx = -1, 1 do
-        for dz = -1, 1 do
-          local tile_x = center_tile_x + dx
-          local tile_z = center_tile_z + dz
-          -- 为9格内的每块有效地皮补充营养
-          TheWorld.components.farming_manager:AddTileNutrients(
-            tile_x, tile_z, 6, 6, 6
-          )
-        end
-      end
+      TheWorld.components.farming_manager:AddTileNutrients(
+        center_tile_x, center_tile_z, 6, 6, 6
+      )
     end
     -- 耕作先驱帽结束
 
-    -- 高级耕作先驱帽开始
-    if item and item.prefab == "nutrientsgoggleshat" then
+    -- 高级耕作先驱帽开始（H-装备）
+    if HasTargetItem(items, { "nutrientsgoggleshat" }) then
       local ents = TheSim:FindEntities(x, y, z, 36, nil, { 'INLIMBO', 'wall', 'shadowminion' })
       for i, ent in ipairs(ents) do
         -- 对有"可照料"组件的植物执行照料操作
@@ -891,17 +1179,39 @@ AddPrefabPostInit("cane", function(inst)
           TheWorld.components.farming_manager:AddTileNutrients(
             tile_x, tile_z, 16, 16, 16
           )
+          -- 先将格子坐标转换为世界坐标（取格子中心）
+          local world_x, _, world_z = TheWorld.Map:GetTileCenterPoint(tile_x, tile_z)
+          -- 给该格子添加16点土壤湿度（和施肥同范围、同数值）
+          TheWorld.components.farming_manager:AddSoilMoistureAtPoint(world_x, 0, world_z, 16)
         end
       end
     end
     -- 高级耕作先驱帽结束
+
+    -- 范围催眠开始（H-装备）
+    if HasTargetItem(items, { "mandrake", "panflute" }) then
+      -- 范围催眠10+WORK_RADIUS范围内的所有实体
+      local ents = TheSim:FindEntities(x, y, z, WORK_RADIUS + 10, nil, { "INLIMBO", "player", "dead", "ghost" }) -- 直接过滤玩家标签
+      for _, ent in ipairs(ents) do
+        -- 排除特殊状态生物（可选，也可直接删掉这几行更简化）
+        if not (ent.components.freezable and ent.components.freezable:IsFrozen()) then
+          -- 给生物加睡眠值（10点足够直接入睡，时长用原版排箫的10秒即可）
+          if ent.components.sleeper then
+            ent.components.sleeper:AddSleepiness(16, 66)
+          else
+            ent:PushEvent("knockedout")
+          end
+        end
+      end
+    end
+    -- 范围催眠结束
 
     -- 自动播种
     -- 先检查槽位物品是否为可种植物，避免误吞非种子物品
     if item and item.components.farmplantable then
       -- print("尝试自动播种：" .. item.prefab)
       local seed_copy = SpawnPrefab(item.prefab)
-      for _, soil_ent in ipairs(TheSim:FindEntities(x, y, z, config.auto_farm_range, { "soil" }, { "NOCLICK" })) do
+      for _, soil_ent in ipairs(TheSim:FindEntities(x, y, z, WORK_RADIUS, { "soil" }, { "NOCLICK" })) do
         -- 在确认是可种植物后再从容器中取出尝试播种；失败则归还(搞不明白怎么直接用item播种会出问题，只能用复制品)
         local seed = seed_copy
         if seed and seed.components.farmplantable then
@@ -974,6 +1284,25 @@ AddPrefabPostInit("cane", function(inst)
         if doer.components.builder then
           doer.components.builder.ingredientmod = 1
         end
+        -- 三维恢复
+        doer.components.health.maxhealth = doer._original_maxhealth
+        doer.components.hunger.max = doer._original_maxhunger
+        doer.components.sanity.max = doer._original_maxsanity
+        doer._original_maxhealth = nil
+        doer._original_maxhunger = nil
+        doer._original_maxsanity = nil
+        -- 伤害恢复
+        inst._damage_mult = 1
+        inst._planardamage_mult = 1
+        -- 显示人物
+        doer:Show()
+        -- 恢复原本科技
+        local builder = doer and doer.components.builder
+        if builder ~= nil then
+          for k, _ in pairs(tech_bonus) do
+            builder[string.lower(k) .. "_tempbonus"] = nil
+          end
+        end
         -- 移除传送功能（如果存在）
         if inst.components.blinkstaff then
           inst:RemoveComponent("blinkstaff")
@@ -1002,7 +1331,6 @@ AddPrefabPostInit("cane", function(inst)
     if auto_work_task then
       auto_work_task:Cancel()
     end
-    RemoveToolComponents()
     -- 光效清理
     if inst.light_fx then
       inst.light_fx:Remove()
@@ -1016,6 +1344,17 @@ if config.enable_walrus_tusk_craft then
   AddRecipe2("walrus_tusk", { Ingredient("boneshard", 1), Ingredient("houndstooth", 1) },
     TECH.NONE, nil,
     { "REFINE", })
+
+  AddPrefabPostInit("houndbone", function(inst)
+    -- 只在服务端生效
+    if not TheWorld.ismastersim then
+      return inst
+    end
+    -- 检查是否有掉落物组件，有的话修改掉落配置
+    if config.enable_walrus_tusk_drop then
+      inst.components.lootdropper:AddChanceLoot("houndstooth", 0.66)
+    end
+  end)
 end
 
 AddPrefabPostInit("walrus", function(inst)
