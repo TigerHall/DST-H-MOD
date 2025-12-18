@@ -5,7 +5,8 @@ local function lightfn()
   inst.entity:AddTransform()
   inst.entity:AddLight()
   inst.entity:AddNetwork()
-
+  -- 让作物生长
+  inst:AddTag("daylight")
   inst:AddTag("FX")
 
   local light_radius = TUNING.hcanelight or 6

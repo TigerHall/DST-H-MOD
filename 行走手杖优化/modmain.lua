@@ -194,9 +194,15 @@ AddPrefabPostInit("cane", function(inst)
 
     -- 攻击逻辑处理
     inst.components.weapon.onattack = function(inst, attacker, target)
-      -- 1. 计算最终基础伤害（包含所有增益）
-      local final_base_damage = config.damage * inst._damage_mult
-      local final_base_planardamage = config.planardamage * inst._planardamage_mult
+      -- 临时增益伤害计算
+      local base_damage = config.damage * inst._damage_mult
+      local base_planardamage = config.planardamage * inst._planardamage_mult
+      -- 升级增益计算（未设置）
+      local final_base_damage = base_damage
+      local final_base_planardamage = base_planardamage
+
+      inst.singlefight_target = target or false
+
       -- 越攻击越强 核心逻辑（简化版）
       if config.extra_damage then
         -- 初始化累加变量（首次触发时）
@@ -216,8 +222,8 @@ AddPrefabPostInit("cane", function(inst)
         end
 
         -- 叠加额外伤害并更新武器伤害
-        final_base_damage = config.damage * inst._damage_mult + inst.extra_damage
-        final_base_planardamage = config.planardamage * inst._planardamage_mult + inst.extra_damage
+        final_base_damage = base_damage + inst.extra_damage
+        final_base_planardamage = base_planardamage + inst.extra_damage
         inst.components.weapon:SetDamage(final_base_damage)
         if not inst.components.planardamage then
           inst:AddComponent("planardamage")
@@ -551,16 +557,18 @@ AddPrefabPostInit("cane", function(inst)
     inst.all_active = not inst.all_active
     UpdateAllFeatures()
 
+    -- 任务栏小图标显示文字（待实现）
+    local status_text = inst.all_active and "󰀏开/ON" or "󰀜关/OFF"
+    -- local status_text = inst.all_active and "ON" or "OFF"
+    -- inst.components.slottextoverride:SetText(status_text)
+
+
     -- 修改装备名称（根据状态切换）
-    if inst.all_active then
-      inst.components.named:SetName("H-手杖:󰀏开/ON")
-    else
-      inst.components.named:SetName("H-手杖:󰀜关/OFF")
-    end
+    inst.components.named:SetName("H-手杖:" .. status_text)
 
     -- 玩家提示
     if owner.components.talker then
-      owner.components.talker:Say(inst.all_active and "󰀏开/ON" or "󰀜关/OFF")
+      owner.components.talker:Say(status_text)
     end
 
     return false
@@ -744,10 +752,40 @@ AddPrefabPostInit("cane", function(inst)
 
     -- 黄色宝石开始
     if HasTargetItem(items, { "yellowgem", "yellowmooneye", "yellowamulet" }) then
-      inst._light.Light:SetRadius(26)
+      if config.hcane_light <= 0 then
+        if inst._yellow_light == nil or not inst._yellow_light:IsValid() then
+          inst._yellow_light = SpawnPrefab('hehu_light')
+          if inst._yellow_light then
+            -- 设置光效属性
+            inst._yellow_light.entity:SetParent(owner and owner.entity or inst.entity)
+            inst._yellow_light.entity:AddFollower()
+            inst._yellow_light.Light:SetRadius(26)
+            inst._yellow_light.Light:Enable(true)
+          else
+            print("警告：黄色宝石光效预制体创建失败！")
+          end
+        else
+          -- 光效已存在，更新父对象和启用状态
+          inst._yellow_light.entity:SetParent(owner and owner.entity or inst.entity)
+          inst._yellow_light.Light:Enable(true)
+        end
+      else
+        -- 全局发光已开启，直接修改原有光效的半径
+        if inst._light and inst._light:IsValid() then
+          inst._light.Light:SetRadius(26)
+        end
+      end
       inst.components.equippable.walkspeedmult = 1 + config.speed_buff + 0.36
     else
-      inst._light.Light:SetRadius(config.hcane_light)
+      -- 无黄色宝石或未装备，销毁独立光效
+      if inst._yellow_light ~= nil and inst._yellow_light:IsValid() then
+        inst._yellow_light:Remove()
+      end
+      inst._yellow_light = nil
+      -- 全局发光开启时，恢复原有光效半径
+      if config.hcane_light > 0 and inst._light and inst._light:IsValid() then
+        inst._light.Light:SetRadius(config.hcane_light)
+      end
       inst.components.equippable.walkspeedmult = 1 + config.speed_buff
     end
     -- 黄色宝石结束
@@ -811,7 +849,7 @@ AddPrefabPostInit("cane", function(inst)
         -- 饥饿代价
         ApplyHungerCost(owner, -1.6, 0.66, "cane")
         if owner.components.health then
-          owner.components.health:DoDelta(16, false, "cane")
+          owner.components.health:DoDelta(6, false, "cane")
         end
       end
     end
@@ -832,7 +870,7 @@ AddPrefabPostInit("cane", function(inst)
         -- 饥饿代价
         ApplyHungerCost(owner, -1.6, 0.66, "cane")
         if owner.components.sanity then
-          owner.components.sanity:DoDelta(16, false, "cane")
+          owner.components.sanity:DoDelta(6, false, "cane")
         end
       end
     end
@@ -861,11 +899,131 @@ AddPrefabPostInit("cane", function(inst)
           end
           -- 4. 放入物品栏（自动叠加到14栏物品中）
           doer.components.inventory:GiveItem(item_copy)
+          ApplyHungerCost(owner, -16.6, 0.66, "cane")
         end
-        ApplyHungerCost(owner, -16.6, 0.66, "cane")
       end
     end
     -- 彩虹宝石结束
+
+    -- 启迪碎片开始（H-装备）
+    if HasTargetItem(items, { "alterguardianhat", "alterguardianhatshard" }) then
+      -- 全科技解锁
+      local builder = owner and owner.components.builder
+      if builder ~= nil then
+        for k, v in pairs(tech_bonus) do
+          builder[string.lower(k) .. "_tempbonus"] = v
+        end
+      end
+    else
+      -- 恢复原本科技
+      local builder = owner and owner.components.builder
+      if builder ~= nil then
+        for k, _ in pairs(tech_bonus) do
+          builder[string.lower(k) .. "_tempbonus"] = nil
+        end
+      end
+    end
+    -- 启迪碎片结束
+
+    -- 天体珠宝开始
+    if HasTargetItem(items, { "lunar_seed" }) then
+      owner:Hide()
+      ApplyHungerCost(owner, -1, 0.36, "cane")
+    else
+      owner:Show()
+    end
+    -- 天体珠宝结束
+
+    -- 独眼巨鹿眼球开始
+    if HasTargetItem(items, { "deerclops_eyeball" }) then
+      -- 触发单挑
+      if inst.singlefight_target then
+        local ents = TheSim:FindEntities(x, y, z, 36,
+          { "_combat" },
+          { "INLIMBO", "NOCLICK", "player", "notarget" }
+        )
+        for _, v in ipairs(ents) do
+          -- 非当前单挑目标、存活、且仇恨目标是玩家
+          if v ~= inst.singlefight_target
+              and v.entity:IsVisible()
+              and (not v.components.health or not v.components.health:IsDead())
+              and v.components.combat
+              and v.components.combat.target == owner then
+            v.components.combat:DropTarget(nil) -- 强制清除仇恨
+          end
+        end
+      end
+    end
+    -- 独眼巨鹿眼球结束
+
+    -- 龙蝇开始
+    if HasTargetItem(items, { "dragon_scales" }) then
+      if math.random() < 0.16 then
+        -- 生命
+        if owner.components.health then
+          owner.components.health:DoDelta(16, false, "cane")
+        end
+      end
+    end
+    -- 龙蝇结束
+
+    -- 麋鹿鹅开始
+    if HasTargetItem(items, { "goose_feather" }) then
+      if owner.components.drownable then
+        owner.Physics:ClearCollidesWith(COLLISION.LAND_OCEAN_LIMITS)
+        owner.components.drownable.enabled = false
+      end
+    elseif owner.components.drownable then
+      owner.Physics:CollidesWith(COLLISION.LAND_OCEAN_LIMITS)
+      owner.components.drownable.enabled = true
+    end
+    -- 麋鹿鹅结束
+
+    -- 熊大破坏范围开始
+    if HasTargetItem(items, { "furtuft", "bearger_fur" }) then
+      -- 定义破坏范围（可根据需求调整）
+      local DESTROY_RADIUS = config.auto_work_range
+      -- 筛选可破坏目标的标签（同原逻辑）
+      local WORKABLES_CANT_TAGS = { "insect", "INLIMBO", "structure", "wall", "ignorewalkableplatforms" }
+      local WORKABLES_ONEOF_TAGS = { "CHOP_workable", "DIG_workable", "HAMMER_workable", "MINE_workable" }
+
+      -- 核心破坏函数：传入坐标(x,y,z)，按范围破坏物体
+      local function DestroyInRange(inst, x, y, z)
+        -- 查找范围内可破坏的物体
+        local targets = TheSim:FindEntities(x, y, z, DESTROY_RADIUS, nil, WORKABLES_CANT_TAGS, WORKABLES_ONEOF_TAGS)
+
+        for _, target in ipairs(targets) do
+          if target:IsValid() and
+              target.components.workable ~= nil and
+              target.components.workable:CanBeWorked() and
+              target.components.workable.action ~= ACTIONS.NET then
+            -- 生成破坏特效（如坍塌效果）
+            SpawnPrefab("collapse_small").Transform:SetPosition(target.Transform:GetWorldPosition())
+            -- 执行破坏（玩家为主体，可刷勋章）
+            target.components.workable:Destroy(owner)
+            ApplyHungerCost(owner, -0.6, 0.36, "cane")
+          end
+        end
+      end
+
+      -- 执行破坏
+      if owner.components.talker then
+        owner.components.talker:Say("󰀌破坏/Broke")
+      end
+      DestroyInRange(inst, x, y, z)
+    end
+    -- 熊大破坏范围结束
+
+    -- 远古织影者骨头类装备开始
+    if HasTargetItem(items, { "skeletonhat", "thurible", "armorskeleton" }) then
+      if math.random() < 0.16 then
+        -- 理智
+        if owner.components.sanity then
+          owner.components.sanity:DoDelta(16, false, "cane")
+        end
+      end
+    end
+    -- 远古织影者骨头类装备结束
 
     -- ！！！伤害修改类开始
     -- 定义伤害修改的装备组及倍率规则（一站式管理，和三维修改类结构一致）
@@ -898,7 +1056,7 @@ AddPrefabPostInit("cane", function(inst)
       end
     end
 
-    -- 外侧判断
+    -- 伤害修改类外侧判断
     if HasTargetItem(items, all_damage_gear_list) then
       -- 从实体获取历史倍率（作为计算基础，保证只会变大不会变小）
       local current_damage_mult = inst._damage_mult
@@ -926,39 +1084,19 @@ AddPrefabPostInit("cane", function(inst)
     end
     -- ！！！伤害修改类结束
 
-    -- 启迪碎片开始（H-装备）
-    if HasTargetItem(items, { "alterguardianhat", "alterguardianhatshard" }) then
-      -- 全科技解锁
-      local builder = owner and owner.components.builder
-      if builder ~= nil then
-        for k, v in pairs(tech_bonus) do
-          builder[string.lower(k) .. "_tempbonus"] = v
-        end
-      end
-    else
-      -- 恢复原本科技
-      local builder = owner and owner.components.builder
-      if builder ~= nil then
-        for k, _ in pairs(tech_bonus) do
-          builder[string.lower(k) .. "_tempbonus"] = nil
-        end
-      end
-    end
-    -- 启迪碎片结束
-
     -- ！！！三维修改类开始
     -- 定义装备组及对应的倍率规则（一站式管理，更易维护）
     local gear_mod_configs = {
       -- 远古织影者骨头类装备组
       bone = {
-        items = { "skeletonhat", "thurible", "armorskeleton" },
+        items = { "shadowheart", "skeletonhat", "thurible", "armorskeleton" },
         sanity_mult = 1.6,
         health_mult = 1.6,
         hunger_mult = 1.6
       },
       -- 暗影心房类装备组
       shadow = {
-        items = { "shadowheart", "shadowheart_infused", "shadow_beef_bell", "saddle_shadow", "shadow_battleaxe" },
+        items = { "shadowheart_infused", "shadow_beef_bell", "saddle_shadow", "shadow_battleaxe" },
         sanity_mult = 3.6
       },
       -- 火花柜类装备组
@@ -969,7 +1107,7 @@ AddPrefabPostInit("cane", function(inst)
       }
     }
 
-    -- 合并所有装备为总列表
+    -- 三维修改类合并所有装备为总列表
     local all_mod_gear_list = {}
     for _, gear_config in pairs(gear_mod_configs) do
       for _, gear_item in ipairs(gear_config.items) do
@@ -977,7 +1115,7 @@ AddPrefabPostInit("cane", function(inst)
       end
     end
 
-    -- 外侧判断
+    -- 三维修改类外侧判断
     if HasTargetItem(items, all_mod_gear_list) then
       -- 遍历配置表计算倍率
       for _, gear_config in pairs(gear_mod_configs) do
@@ -1008,14 +1146,6 @@ AddPrefabPostInit("cane", function(inst)
       end
     end
     -- 三维修改类结束
-
-    -- 天体珠宝开始
-    if HasTargetItem(items, { "lunar_seed" }) then
-      owner:Hide()
-    else
-      owner:Show()
-    end
-    -- 天体珠宝结束
 
     -- ！！！杂类
     -- 理智减少开始
@@ -1105,42 +1235,6 @@ AddPrefabPostInit("cane", function(inst)
       end
     end
     -- 范围消除蚁狮坑结束
-
-    -- 破坏范围开始
-    if HasTargetItem(items, { "furtuft", "bearger_fur" }) then
-      -- 定义破坏范围（可根据需求调整）
-      local DESTROY_RADIUS = config.auto_work_range
-      -- 筛选可破坏目标的标签（同原逻辑）
-      local WORKABLES_CANT_TAGS = { "insect", "INLIMBO", "structure", "wall", "ignorewalkableplatforms" }
-      local WORKABLES_ONEOF_TAGS = { "CHOP_workable", "DIG_workable", "HAMMER_workable", "MINE_workable" }
-
-      -- 核心破坏函数：传入坐标(x,y,z)，按范围破坏物体
-      local function DestroyInRange(inst, x, y, z)
-        -- 查找范围内可破坏的物体
-        local targets = TheSim:FindEntities(x, y, z, DESTROY_RADIUS, nil, WORKABLES_CANT_TAGS, WORKABLES_ONEOF_TAGS)
-
-        for _, target in ipairs(targets) do
-          if target:IsValid() and
-              target.components.workable ~= nil and
-              target.components.workable:CanBeWorked() and
-              target.components.workable.action ~= ACTIONS.NET then
-            -- 生成破坏特效（如坍塌效果）
-            SpawnPrefab("collapse_small").Transform:SetPosition(target.Transform:GetWorldPosition())
-
-            -- 执行破坏
-            target.components.workable:Destroy(inst)
-            ApplyHungerCost(owner, -0.6, 0.36, "cane")
-          end
-        end
-      end
-
-      -- 执行破坏
-      if owner.components.talker then
-        owner.components.talker:Say("󰀌破坏/Broke")
-      end
-      DestroyInRange(inst, x, y, z)
-    end
-    -- 破坏范围结束
 
     -- 耕作先驱帽开始（H-装备）
     if HasTargetItem(items, { "plantregistryhat", "fertilizer" }) then
@@ -1284,10 +1378,16 @@ AddPrefabPostInit("cane", function(inst)
         if doer.components.builder then
           doer.components.builder.ingredientmod = 1
         end
-        -- 三维恢复
-        doer.components.health.maxhealth = doer._original_maxhealth
-        doer.components.hunger.max = doer._original_maxhunger
-        doer.components.sanity.max = doer._original_maxsanity
+        -- 三维恢复（增强版）
+        if doer and doer._original_maxhealth and doer.components.health then
+          doer.components.health.maxhealth = doer._original_maxhealth
+        end
+        if doer and doer._original_maxhunger and doer.components.hunger then
+          doer.components.hunger.max = doer._original_maxhunger
+        end
+        if doer and doer._original_maxsanity and doer.components.sanity then
+          doer.components.sanity.max = doer._original_maxsanity
+        end
         doer._original_maxhealth = nil
         doer._original_maxhunger = nil
         doer._original_maxsanity = nil
