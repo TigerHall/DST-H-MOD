@@ -21,11 +21,14 @@ local config = {
   tool_enable = GetModConfigData("tool_enable"),
   multi_tool_state_save = GetModConfigData("multi_tool_state_save"),
   enable_hammer_action = GetModConfigData("enable_hammer_action"),
+  enable_dig_action = GetModConfigData("enable_dig_action"),
   enable_scythe = GetModConfigData("enable_scythe"),
   tool_efficiency = GetModConfigData("tool_efficiency"),
   auto_work_range = GetModConfigData("auto_work_range"),
   auto_farm_range = GetModConfigData("auto_farm_range"),
   enable_light_fx = GetModConfigData("enable_light_fx"),
+  enable_tool_toggle_icon = GetModConfigData("enable_tool_toggle_icon"),
+  enable_tool_toggle_rename = GetModConfigData("enable_tool_toggle_rename"),
   -- 常驻功能配置项
   enable_watering = GetModConfigData("enable_watering"),
   enable_paddling = GetModConfigData("enable_paddling"),
@@ -54,15 +57,19 @@ PrefabFiles = {
 Assets = {
   -- 加载自定义UI动画包
   -- Asset("ANIM", "anim/ui_antlionhat_1x1.zip"),
+  Asset("IMAGE", "images/inventoryimages/xin.tex"),
+  Asset("ATLAS", "images/inventoryimages/xin.xml"),
+  Asset("IMAGE", "images/inventoryimages/heh.tex"),
+  Asset("ATLAS", "images/inventoryimages/heh.xml"),
+  -- Asset("SHADER", "shaders/myshader.ksh")
 }
 
 -- 修改步行手杖属性
 AddPrefabPostInit("cane", function(inst)
-  -- 只在主机端执行修改
+  -- 以下只在主机端执行修改
   if not TheWorld.ismastersim then
     return inst
   end
-
   -- 基础配置项
   -- 处理装备组件逻辑（移速加成）
   if inst.components.equippable then
@@ -287,7 +294,6 @@ AddPrefabPostInit("cane", function(inst)
     if not inst.components.tool then
       -- 工具组件
       inst:AddComponent("tool")
-
       -- 砍树
       inst.components.tool:SetAction(ACTIONS.CHOP, config.tool_efficiency)
       -- 采矿
@@ -298,10 +304,13 @@ AddPrefabPostInit("cane", function(inst)
       if config.enable_hammer_action then
         inst.components.tool:SetAction(ACTIONS.HAMMER, config.tool_efficiency)
       end
-      -- 捕虫网
-      inst.components.tool:SetAction(ACTIONS.NET)
       -- 挖掘
-      inst.components.tool:SetAction(ACTIONS.DIG)
+      if config.enable_dig_action then
+        inst.components.tool:SetAction(ACTIONS.DIG, config.tool_efficiency)
+      end
+      -- 捕虫网
+      inst.components.tool:SetAction(ACTIONS.NET, config.tool_efficiency)
+
       -- 添加镰刀功能
       if config.enable_scythe then
         -- 整合并简化镰刀收割功能（圆形范围收割）
@@ -385,7 +394,7 @@ AddPrefabPostInit("cane", function(inst)
     inst.components.oar.force = 1
     inst.components.oar.max_velocity = 16
   end
-  -- 添加 区域温度 组件(暂未添加)
+  -- 添加 区域温度 组件(暂未添加，而且需要主客机同时才行)
   if false then
     inst:AddComponent("temperatureoverrider")
     inst.components.temperatureoverrider:SetTemperature(46)
@@ -496,7 +505,6 @@ AddPrefabPostInit("cane", function(inst)
     end
   end
 
-
   -- 自动耕地状态更新函数（根据配置和装备状态控制任务启停）
   local function UpdateAutoFarm()
     -- 判定是否需要运行自动耕地：范围有效 + 总开关开启 + 已装备
@@ -547,7 +555,14 @@ AddPrefabPostInit("cane", function(inst)
     UpdateLightFX()
   end
 
+
+
   -- 右键切换总开关（控制包括自动耕地在内的所有功能）
+
+  -- 组件
+  if not inst.components.inventoryitem then
+    inst:AddComponent("inventoryitem")
+  end
   inst:AddComponent("useableitem")
   inst:AddComponent("named")
   inst.components.useableitem:SetOnUseFn(function(inst)
@@ -556,23 +571,32 @@ AddPrefabPostInit("cane", function(inst)
     -- 切换开关状态
     inst.all_active = not inst.all_active
     UpdateAllFeatures()
-
-    -- 任务栏小图标显示文字（待实现）
-    local status_text = inst.all_active and "󰀏开/ON" or "󰀜关/OFF"
-    -- local status_text = inst.all_active and "ON" or "OFF"
-    -- inst.components.slottextoverride:SetText(status_text)
-
-
-    -- 修改装备名称（根据状态切换）
-    inst.components.named:SetName("H-手杖:" .. status_text)
-
-    -- 玩家提示
-    if owner.components.talker then
-      owner.components.talker:Say(status_text)
+    -- 切换贴图（换皮肤会丢失logo）
+    if config.enable_tool_toggle_icon then
+      local invitem = inst.components.inventoryitem
+      if inst.all_active then
+        invitem.imagename = "xin"
+        invitem.atlasname = "images/inventoryimages/xin.xml"
+      else
+        invitem.imagename = "heh"
+        invitem.atlasname = "images/inventoryimages/heh.xml"
+      end
+      invitem:ChangeImageName(invitem.imagename)
     end
-
+    -- 任务栏小图标显示文字（待实现）
+    local status_text = inst.all_active and "󰀏 开/ON 󰀏" or "󰀜 关/OFF 󰀜"
+    -- 修改装备名称（根据状态切换）
+    if config.enable_tool_toggle_rename then
+      inst.components.named:SetName(status_text)
+      -- 玩家提示
+      if owner.components.talker then
+        owner.components.talker:Say("H-手杖 " .. status_text)
+      end
+    end
     return false
   end)
+
+
 
   -- 状态保存与加载（总开关统一控制，无需额外保存）
   inst.OnSave = function(inst, data)
@@ -591,7 +615,8 @@ AddPrefabPostInit("cane", function(inst)
     inst:AddTag("nosteal")
     -- 防流星破坏
     inst:AddTag("meteor_protection")
-    -- 防止BOSS攻击/潮湿导致脱手
+    -- 防止BOSS攻击/潮湿/落水导致脱手
+    inst.components.inventoryitem.keepondrown = true
     inst.components.inventoryitem:SetOnDroppedFn(nil)
   end
   -- 防雷保护
@@ -647,12 +672,45 @@ AddPrefabPostInit("cane", function(inst)
   local AUTO_WORK_INTERVAL = 0.36 -- 自动工作检测间隔（可根据需求调整）
   local auto_work_task = nil      -- 自动工作定时任务句柄
 
-  -- 科技加成表
+  -- 全科技加成表
   local tech_bonus = {
     SCIENCE = 2,
     MAGIC = 3,
     ANCIENT = 4,
     SEAFARING = 2,
+    CELESTIAL = 3,
+    SHADOW = 4,
+    CARTOGRAPHY = 2,
+    SCULPTING = 1,
+    BOOKCRAFT = 1,
+    ORPHANAGE = 1,
+    PERDOFFERING = 3,
+    FISHING = 1,
+    WARGOFFERING = 3,
+    PIGOFFERING = 3,
+    CARRATOFFERING = 3,
+    BEEFOFFERING = 3,
+    DRAGONOFFERING = 3,
+    WORMOFFERING = 3,
+    RABBITOFFERING = 3,
+    CATCOONOFFERING = 3,
+    LUNARFORGING = 2,
+    SHADOWFORGING = 2,
+    MADSCIENCE = 1,
+    CARNIVAL_HOSTSHOP = 3,
+    FOODPROCESSING = 1,
+    CARNIVAL_PRIZESHOP = 1,
+    CARPENTRY = 3,
+    WINTERSFEASTCOOKING = 1,
+    HERMITCRABSHOP = 7,
+    RABBITKINGSHOP = 2,
+    WANDERINGTRADERSHOP = 2,
+    WAGPUNK_WORKSTATION = 1,
+    TURFCRAFTING = 2,
+    MASHTURFCRAFTING = 2,
+    SPIDERCRAFT = 1,
+    ROBOTMODULECRAFT = 1,
+    SHELLWEAVER = 3,
   }
 
   -- 独立的自动工作函数
@@ -902,6 +960,13 @@ AddPrefabPostInit("cane", function(inst)
           ApplyHungerCost(owner, -16.6, 0.66, "cane")
         end
       end
+      if owner.components.hunger then
+        owner.components.hunger.burnratemodifiers:SetModifier("hcnae_opalprehunger", 0.06)
+      end
+    else
+      if owner.components.hunger then
+        owner.components.hunger.burnratemodifiers:RemoveModifier("hcnae_opalprehunger")
+      end
     end
     -- 彩虹宝石结束
 
@@ -958,24 +1023,43 @@ AddPrefabPostInit("cane", function(inst)
 
     -- 龙蝇开始
     if HasTargetItem(items, { "dragon_scales" }) then
-      if math.random() < 0.16 then
-        -- 生命
-        if owner.components.health then
-          owner.components.health:DoDelta(16, false, "cane")
-        end
+      if not owner:HasTag("NOTARGET") then
+        owner:AddTag("NOTARGET")
       end
+    elseif owner:HasTag("NOTARGET") then
+      owner:RemoveTag("NOTARGET")
     end
     -- 龙蝇结束
 
     -- 麋鹿鹅开始
-    if HasTargetItem(items, { "goose_feather" }) then
-      if owner.components.drownable then
-        owner.Physics:ClearCollidesWith(COLLISION.LAND_OCEAN_LIMITS)
+    if HasTargetItem(items, { "goose_feather", "featherfan" }) and owner.components.drownable then
+      if not owner.hwatergo_active then
+        -- owner.Physics:ClearCollidesWith(COLLISION.LAND_OCEAN_LIMITS)
+        -- owner.Physics:ClearCollidesWith(COLLISION.BOAT_LIMITS)
+        if owner.Physics then
+          RemovePhysicsColliders(owner)
+        end
         owner.components.drownable.enabled = false
+        if owner.components.hunger then
+          owner.components.hunger.burnratemodifiers:SetModifier("hcnae_goose_hunger", 6)
+        end
+        -- 状态标记
+        owner.hwatergo = true
+        owner.hwatergo_active = true
       end
-    elseif owner.components.drownable then
-      owner.Physics:CollidesWith(COLLISION.LAND_OCEAN_LIMITS)
+    elseif owner.components.drownable and owner.hwatergo then
+      -- owner.Physics:CollidesWith(COLLISION.LAND_OCEAN_LIMITS)
+      -- owner.Physics:CollidesWith(COLLISION.BOAT_LIMITS)
+      if owner.Physics then
+        ChangeToCharacterPhysics(owner)
+      end
       owner.components.drownable.enabled = true
+      if owner.components.hunger then
+        owner.components.hunger.burnratemodifiers:RemoveModifier("hcnae_goose_hunger")
+      end
+      -- 状态标记去除
+      owner.hwatergo = nil
+      owner.hwatergo_active = nil
     end
     -- 麋鹿鹅结束
 
@@ -1008,7 +1092,7 @@ AddPrefabPostInit("cane", function(inst)
 
       -- 执行破坏
       if owner.components.talker then
-        owner.components.talker:Say("󰀌破坏/Broke")
+        owner.components.talker:Say("󰀌 破坏/Broke 󰀌")
       end
       DestroyInRange(inst, x, y, z)
     end
@@ -1024,6 +1108,28 @@ AddPrefabPostInit("cane", function(inst)
       end
     end
     -- 远古织影者骨头类装备结束
+
+    -- 毒菌蟾蜍开始
+    if HasTargetItem(items, { "sleepbomb", "shroom_skin" }) then
+      if not owner.bufulj_active then
+        for k, v in pairs(owner.components.inventory.itemslots) do
+          if v.components.perishable ~= nil then
+            v.components.perishable:StopPerishing()
+          end
+        end
+        owner.bufulj = true
+        owner.bufulj_active = true
+      end
+    elseif owner.bufulj then
+      for k, v in pairs(owner.components.inventory.itemslots) do
+        if v.components.perishable ~= nil then
+          v.components.perishable:StartPerishing()
+        end
+      end
+      owner.bufulj = nil
+      owner.bufulj_active = nil
+    end
+    -- 毒菌蟾蜍结束
 
     -- ！！！伤害修改类开始
     -- 定义伤害修改的装备组及倍率规则（一站式管理，和三维修改类结构一致）
@@ -1158,7 +1264,7 @@ AddPrefabPostInit("cane", function(inst)
     -- 理智减少结束
 
     -- 三维恢复开始
-    if HasTargetItem(items, { "cookbook" }) then
+    if HasTargetItem(items, { "moonrockcrater" }) then
       if math.random() < 0.16 then
         -- 生命
         if owner.components.health then
@@ -1175,6 +1281,22 @@ AddPrefabPostInit("cane", function(inst)
       end
     end
     -- 三维恢复结束
+
+    if HasTargetItem(items, { "cookbook" }) then
+      if not owner.hfood_active then
+        owner:PushEvent("learncookbookstats", inst.prefab)
+        owner:AddDebuff("hungerregenbuff", "hungerregenbuff")
+        owner.hfood = true
+        owner.hfood_active = true
+      end
+    elseif owner.hfood then
+      owner:RemoveDebuff("hungerregenbuff")
+      if owner.components.foodmemory ~= nil then
+        owner.components.foodmemory:RememberFood("hungerregenbuff")
+      end
+      owner.hfood = nil
+      owner.hfood_active = nil
+    end
 
     -- 范围训牛开始（H-装备）
     if HasTargetItem(items, { "beefalohat", "horn" }) then
@@ -1301,13 +1423,12 @@ AddPrefabPostInit("cane", function(inst)
     -- 范围催眠结束
 
     -- 自动播种
-    -- 先检查槽位物品是否为可种植物，避免误吞非种子物品
+    -- 种种子，先检查槽位物品是否为可种植物，避免误吞非种子物品
     if item and item.components.farmplantable then
-      -- print("尝试自动播种：" .. item.prefab)
-      local seed_copy = SpawnPrefab(item.prefab)
       for _, soil_ent in ipairs(TheSim:FindEntities(x, y, z, WORK_RADIUS, { "soil" }, { "NOCLICK" })) do
         -- 在确认是可种植物后再从容器中取出尝试播种；失败则归还(搞不明白怎么直接用item播种会出问题，只能用复制品)
-        local seed = seed_copy
+        local seed = SpawnPrefab(item.prefab)
+        -- print("尝试自动播种：" .. item.prefab)
         if seed and seed.components.farmplantable then
           if not seed.components.farmplantable:Plant(soil_ent, doer) then
             doer.components.inventory:GiveItem(seed)
@@ -1322,6 +1443,25 @@ AddPrefabPostInit("cane", function(inst)
         end
       end
     end
+    -- 种杂草
+    if HasTargetItem(items, { "forgetmelots", "tillweed", "firenettles" }) then
+      -- 杂草对应的实体
+      local SPECIAL_SEED_WEED_MAP = {
+        -- 必忘我
+        forgetmelots = "weed_forgetmelots",
+        -- 犁地草
+        tillweed = "weed_tillweed",
+        -- 火荨麻
+        firenettles = "weed_firenettle"
+      }
+      for _, soil_ent in ipairs(TheSim:FindEntities(x, y, z, WORK_RADIUS, { "soil" }, { "NOCLICK" })) do
+        local s_x, s_y, s_z = soil_ent.Transform:GetWorldPosition()
+        -- 获取杂草对应作物
+        soil_ent:Remove()
+        local weed = SpawnPrefab(SPECIAL_SEED_WEED_MAP[item.prefab])
+        weed.Transform:SetPosition(s_x, s_y, s_z)
+      end
+    end
     -- 结束自动播种
   end
 
@@ -1329,6 +1469,8 @@ AddPrefabPostInit("cane", function(inst)
   if inst.components.equippable then
     -- 装备时启动相关任务
     inst:ListenForEvent("equipped", function(_, data)
+      inst.hdore = nil
+      inst.hdore = data.owner
       if data and data.owner and data.owner:HasTag("player") then
         local doer = data.owner
         if config.constant_temp_effect_enable then
@@ -1360,16 +1502,10 @@ AddPrefabPostInit("cane", function(inst)
     inst:ListenForEvent("unequipped", function(_, data)
       if data and data.owner and data.owner:HasTag("player") then
         local doer = data.owner
-        -- 停止自动温控任务
-        if config.constant_temp_effect_enable then
-          if auto_temp_task then
-            auto_temp_task:Cancel()
-            auto_temp_task = nil
-          end
-        end
         -- 自动工作任务清理
         if auto_work_task then
           auto_work_task:Cancel()
+          auto_work_task = nil
         end
         -- 理智/建造恢复默认状态
         if doer.components.sanity then
@@ -1378,22 +1514,7 @@ AddPrefabPostInit("cane", function(inst)
         if doer.components.builder then
           doer.components.builder.ingredientmod = 1
         end
-        -- 三维恢复（增强版）
-        if doer and doer._original_maxhealth and doer.components.health then
-          doer.components.health.maxhealth = doer._original_maxhealth
-        end
-        if doer and doer._original_maxhunger and doer.components.hunger then
-          doer.components.hunger.max = doer._original_maxhunger
-        end
-        if doer and doer._original_maxsanity and doer.components.sanity then
-          doer.components.sanity.max = doer._original_maxsanity
-        end
-        doer._original_maxhealth = nil
-        doer._original_maxhunger = nil
-        doer._original_maxsanity = nil
-        -- 伤害恢复
-        inst._damage_mult = 1
-        inst._planardamage_mult = 1
+
         -- 显示人物
         doer:Show()
         -- 恢复原本科技
@@ -1419,6 +1540,37 @@ AddPrefabPostInit("cane", function(inst)
       end
     end)
   end
+
+  -- 2. 物品掉落时的事件
+  inst:ListenForEvent("ondropped", function(inst)
+    -- 获取掉落前的持有者（通过inventoryitem组件）
+    if inst.hdore then
+      local doer = inst.hdore
+      -- 停止自动温控任务
+      if config.constant_temp_effect_enable then
+        if auto_temp_task then
+          auto_temp_task:Cancel()
+          auto_temp_task = nil
+        end
+      end
+      -- 三维恢复
+      if doer and doer._original_maxhealth and doer.components.health then
+        doer.components.health.maxhealth = doer._original_maxhealth
+      end
+      if doer and doer._original_maxhunger and doer.components.hunger then
+        doer.components.hunger.max = doer._original_maxhunger
+      end
+      if doer and doer._original_maxsanity and doer.components.sanity then
+        doer.components.sanity.max = doer._original_maxsanity
+      end
+      doer._original_maxhealth = nil
+      doer._original_maxhunger = nil
+      doer._original_maxsanity = nil
+      -- 伤害恢复
+      inst._damage_mult = 1
+      inst._planardamage_mult = 1
+    end
+  end)
 
   -- 销毁清理
   inst:ListenForEvent("onremove", function()

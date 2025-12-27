@@ -49,12 +49,14 @@ end
 
 --  基础信息
 name = L and "H-Cane Enhancement" or "H-手杖强化"
+version = "3.1"
 description =
     L and
-    "V2.9\n\nAll features can be turned on or off in the configuration options.\n\nEnhance your walking cane with features including custom movement speed bonuses, damage values (including planar damage values),Ramping Damage, ranged attacks and area-of-effect attacks, life leech (including restoring hunger and sanity), glowing (only when dropped on the ground), preventing being knocked off by bosses, being revivable via haunting, and being theft-proof, etc.\n\nIt also supports various multi-functional tool features, including axe, pickaxe, shovel (with customizable tool efficiency), hammer, circular harvesting, and other multi-functional tools. It can automatically pick harvestable crops around the player. It also features automatic tilling. The multi-functional tool features and light effect function of the cane can be turned off/on by right-clicking.\n\nIn addition, there are permanent features such as watering can, oar, freshwater fishing rod, brush, and razor (with a separate setting switch).\n\nYou can set to craft walrus ivory at the Alchemy Engine (1 bone and 2 fangs) or make walruses drop an extra walrus ivory. It can also resist lightning, rain, and maintain a constant temperature.\n\nYou can place seeds in the character's last inventory slot (the 15th one, closest to the equipment slot), and they will be sown automatically. You can also place gems, sand stones, bear skins (be careful of home destruction), etc., each of which has different abilities. But all abilities come with a hunger cost" or
-    "V2.9.2\n\n所有功能均可在配置项开启或关闭\n\n强化你的步行手杖，包括自定义移速加成、伤害值(包括位面伤害值)、越战越强、远程攻击与群体攻击、吸血(包括回复饥饿和理智)、发光（仅限丢在地上的时候）、防boss拍落、可作祟复活以及不会被偷窃等功能，\n\n还支持多种多功能工具功能，包括斧子、稿子、铲子（可自定义工具效率）、锤子、圆形收割等多功能工具，且可自动采摘玩家周围的可采摘作物，自动锄地。可通过右键关闭/开启手杖的多功能工具功能和光特效功能。\n\n另外有常驻功能浇水壶、船桨、淡水钓竿、刷子、剃刀（有单独设置开关）\n\n可以设置在二本合成海象牙（1骨头2犬牙）或让海象额外掉落一个海象牙，可以防雷、防雨、恒温。\n\n可以在人物最后一个格子（15个，最靠近装备那个）里放入种子，能自动播种。还可以放入宝石、沙之石、熊皮（小心拆家）等，都有不同的能力。但所有的能力都有饥饿代价。"
+    ("V" .. version .. "\n\n" .. "All features can be turned on or off in the configuration options.\n\nEnhance your walking cane with features including custom movement speed bonuses, damage values (including planar damage values),Ramping Damage, ranged attacks and area-of-effect attacks, life leech (including restoring hunger and sanity), glowing (only when dropped on the ground), preventing being knocked off by bosses, being revivable via haunting, and being theft-proof, etc.\n\nIt also supports various multi-functional tool features, including axe, pickaxe, shovel (with customizable tool efficiency), hammer, circular harvesting, and other multi-functional tools. It can automatically pick harvestable crops around the player. It also features automatic tilling. The multi-functional tool features and light effect function of the cane can be turned off/on by right-clicking.\n\nIn addition, there are permanent features such as watering can, oar, freshwater fishing rod, brush, and razor (with a separate setting switch).\n\nYou can set to craft walrus ivory at the Alchemy Engine (1 bone and 2 fangs) or make walruses drop an extra walrus ivory. It can also resist lightning, rain, and maintain a constant temperature.\n\nYou can place seeds in the character's last inventory slot (the 15th one, closest to the equipment slot), and they will be sown automatically. You can also place gems, sand stones, bear skins (be careful of home destruction), etc., each of which has different abilities. But all abilities come with a hunger cost") or
+    (
+      "V" .. version .. "\n\n" .. "所有功能均可在配置项开启或关闭\n\n强化你的步行手杖，包括自定义移速加成、伤害值(包括位面伤害值)、越战越强、远程攻击与群体攻击、吸血(包括回复饥饿和理智)、发光（仅限丢在地上的时候）、防boss拍落、可作祟复活以及不会被偷窃等功能，\n还支持多种多功能工具功能，包括斧子、稿子、铲子（可自定义工具效率）、锤子、圆形收割等多功能工具，且可自动采摘玩家周围的可采摘作物，自动锄地。可通过右键关闭/开启手杖的多功能工具功能和光特效功能。\n另外有常驻功能浇水壶、船桨、淡水钓竿、刷子、剃刀（有单独设置开关）\n可以设置在二本合成海象牙（1骨头2犬牙）或让海象额外掉落一个海象牙，可以防雷、防雨、恒温。\n可以在人物最后一个格子（15个，最靠近装备那个）里放入种子，能自动播种（包括杂草）。还可以放入宝石、沙之石、熊皮（小心拆家）等，都有不同的能力。但所有的能力都有饥饿代价。")
 author = "hehu"
-version = "2.9.2"
+
 api_version = 10
 dst_compatible = true
 all_clients_require_mod = true
@@ -64,8 +66,8 @@ icon = "modicon.tex"
 
 server_filter_tags = { "cane", "步行手杖", "移速", "speed", "伤害", "damage", "远程攻击", "range attack", "复活", "resurrection" }
 
---优先级调高(刚好压过Insight)
-priority = -10016
+--优先级调高
+priority = -16
 
 configuration_options = {
   -- 基础配置项
@@ -95,9 +97,8 @@ configuration_options = {
       {
         description = "116%",
         data = 1.16,
-        hover = L and "Close to speed 13, faster than saddled beefalo" or "接近13的速度了，比行牛加鞍具快一点点"
-      },
-      { description = "166%", data = 1.66, hover = L and "Close to speed 16, very fast" or "接近16的速度了，你跑的飞快了" }
+        hover = L and "Close to speed 13, faster than saddled beefalo" or "接近13的速度了，比行牛加鞍具快一点点，再快要炸档的。"
+      }
     },
     default = 0.66
   },
@@ -274,7 +275,7 @@ configuration_options = {
 
 
   -- 多功能配置项
-  addTitle(L and "Multi-Tool Configurations(right-click to control the switch)" or "多功能工具（右键可控制开关）"),
+  addTitle(L and "Multi-Tool Configurations(right-click to control the switch)" or "可开关工具"),
   -- 多工具组件
   addConfig(
     "tool_enable",
@@ -288,10 +289,9 @@ configuration_options = {
     "功能太多确实也不好",
     "Too many functions are indeed not good"
   ),
-  -- 多工具状态保留
   addConfig(
     "multi_tool_state_save",
-    "多功能工具状态保留",
+    "工具状态保留",
     "Multi Tool Multi Tool Multi Tool State",
     true,
     "卸下装备时是否保留多功能工具各组件的开启状态",
@@ -301,10 +301,46 @@ configuration_options = {
     "卸下时自动关闭所有工具组件，重新装备需手动右键开启",
     "Automatically disables all tool components when unequipped; manual right-click to re-enable after re-equipping"
   ),
+  addConfig(
+    "enable_light_fx",
+    "光特效",
+    "Enable Light Effect",
+    true,
+    "控制是否显示手杖的光特效",
+    "Control whether to display the cane's light effect",
+    "开启后将显示手杖的光特效",
+    "Enables the cane's following light effect when turned on",
+    "关闭后不再显示手杖的光特效",
+    "Disables the cane's light effect when turned off"
+  ),
+  addConfig(
+    "enable_tool_toggle_icon",
+    "切换图标",
+    "Sync Icon When Toggling Tools",
+    true,
+    "右键切换工具功能时同步切换图标显示（切换后会变成自定义图标）",
+    "Whether to sync icon display when right-click toggling tool functions",
+    "启用后右键切换工具功能时会自动切换对应图标",
+    "Enables automatic icon switching when right-click toggling tool functions",
+    "禁用后切换工具功能时保持原始图标不变",
+    "Disables icon changes when toggling tool functions (keeps original icon)"
+  ),
+  addConfig(
+    "enable_tool_toggle_rename",
+    "更改名称",
+    "Sync Name When Toggling Tools",
+    true,
+    "右键切换工具功能时同步更改手杖的名称",
+    "Whether to sync the display name of the cane when right-click toggling tool functions",
+    "启用后切换工具功能时会自动修改手杖名称为对应功能名称",
+    "Enables automatic renaming of the cane to the corresponding function name when toggling tools",
+    "禁用后切换工具功能时保持手杖原始名称不变",
+    "Disables name changes when toggling tool functions (keeps the original cane name)"
+  ),
   -- 锤子
   addConfig(
     "enable_hammer_action",
-    "启用敲击动作",
+    "锤子敲击动作",
     "Enable Hammer Action",
     true,
     "控制是否允许作为锤子使用",
@@ -314,10 +350,23 @@ configuration_options = {
     "禁用后无法执行敲击动作",
     "Disables all hammer actions"
   ),
+  -- 挖掘铲子
+  addConfig(
+    "enable_dig_action",
+    "铲子挖掘动作",
+    "Enable Shovel Dig Action",
+    true,
+    "控制是否允许作为挖掘铲子使用",
+    "Control whether to allow using as a shovel",
+    "启用后可执行挖掘动作",
+    "Enables shovel digging actions",
+    "禁用后无法执行挖掘动作",
+    "Disables all shovel digging actions"
+  ),
   -- 镰刀配置项
   addConfig(
     "enable_scythe",
-    "镰刀功能",
+    "镰刀收割功能",
     "Scythe Function",
     true,
     "控制是否启用镰刀功能",
@@ -359,20 +408,9 @@ configuration_options = {
     },
     default = 1
   },
-  addConfig(
-    "enable_light_fx",
-    "启用光特效，可指示多功能是否开启",
-    "Enable Light Effect",
-    true,
-    "控制是否显示手杖的光特效",
-    "Control whether to display the cane's light effect",
-    "开启后将显示手杖的光特效",
-    "Enables the cane's following light effect when turned on",
-    "关闭后不再显示手杖的光特效",
-    "Disables the cane's light effect when turned off"
-  ),
+
   -- 其他工具功能配置项
-  addTitle(L and "Other tools (permanently active functions)" or "其他工具（功能常驻）"),
+  addTitle(L and "Other tools (permanently active functions)" or "常驻工具"),
   -- 浇水壶
   addConfig(
     "enable_watering",
