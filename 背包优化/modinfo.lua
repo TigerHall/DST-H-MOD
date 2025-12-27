@@ -2,13 +2,18 @@
 local L = locale ~= "zh" and locale ~= "zhr"
 
 name = L and "H-Enhanced backpack" or "H-背包强化"
+version = "1.7"
 description = L
     and
-    "V1.5\n\nAll features can be turned on or off in the configuration options.\n\nSince backpacks and armor share the same equipment slot, it only makes sense for backpacks to provide armor effects too—including physical defense and planar defense. And if they have armor, why not add a counterattack ability as well?\n\nIt’s reasonable for a backpack to offer some insulation to keep you warm. If it can keep you warm, regaining a bit of Sanity (mental health) isn’t too much to ask. And if it helps with Sanity, shouldn’t it also protect you from rain? After all, raincoats share the same slot too.\n\nAdditionally, backpacks now have the ability to automatically collect nearby items on the ground (only picks up items that already exist in the backpack), freeing up your hands. Since they can auto-collect items, allowing infinite stack sizes for items inside feels perfectly logical!\n\nallow players to craft Krampus Sack (Need Stag Antler)\n\nThe Seed Pouch comes with the maximum tier of bonuses by default—after all, I’m a farming player. Farmers shouldn’t be disturbed… I’m just an old farmer tending to my crops."
-    or
-    "V1.5.6\n\n所有功能均可在配置项开启或关闭\n\n既然背包和护甲都在一个格子，那么就让背包也有护甲效果很合理吧。包括物理防御和位面防御。既然有护甲了，那是不是也应该可以反击呢？\n\n背包背着，有点保暖效果合理吧。能保暖了，回点SAN也不过分吧。能回san，那是不是不应该被雨淋了？毕竟雨衣也在这个格子里。\n\n另外增加自动采集地上物品到背包的能力（物品在背包中已存在才捡起），解放双手。都自动拣起地上的东西了，那东西可以无限堆叠很合理吧。\n\n可制作坎普斯背包（需要麋鹿茸）。\n\n种子袋默认是最强的一档，毕竟我是个种田玩家，种田的人不应该被打扰，我是个老农。"
+    ("V" ..
+      version ..
+      "\n\nAll features can be turned on or off in the configuration options.\n\nSince backpacks and armor share the same equipment slot, it only makes sense for backpacks to provide armor effects too—including physical defense and planar defense. And if they have armor, why not add a counterattack ability as well?\n\nIt’s reasonable for a backpack to offer some insulation to keep you warm. If it can keep you warm, regaining a bit of Sanity (mental health) isn’t too much to ask. And if it helps with Sanity, shouldn’t it also protect you from rain? After all, raincoats share the same slot too.\n\nAdditionally, backpacks now have the ability to automatically collect nearby items on the ground (only picks up items that already exist in the backpack), freeing up your hands. Since they can auto-collect items, allowing infinite stack sizes for items inside feels perfectly logical!\n\nallow players to craft Krampus Sack (Need Stag Antler)\n\nThe Seed Pouch comes with the maximum tier of bonuses by default—after all, I’m a farming player. Farmers shouldn’t be disturbed… I’m just an old farmer tending to my crops.")
+    or (
+      "V" ..
+      version ..
+      "\n\n所有功能均可在配置项开启或关闭\n\n既然背包和护甲都在一个格子，那么就让背包也有护甲效果很合理吧。包括物理防御和位面防御。既然有护甲了，那是不是也应该可以反击呢？\n\n背包背着，有点保暖效果合理吧。能保暖了，回点SAN也不过分吧。能回san，那是不是不应该被雨淋了？毕竟雨衣也在这个格子里。\n\n另外增加自动采集地上物品到背包的能力（物品在背包中已存在才捡起），解放双手。都自动拣起地上的东西了，那东西可以无限堆叠很合理吧。\n\n可制作坎普斯背包（需要麋鹿茸）。\n\n种子袋默认是最强的一档，毕竟我是个种田玩家，种田的人不应该被打扰，我是个老农。")
 author = "hehu"
-version = "1.5.6"
+
 api_version = 10
 dst_compatible = true
 all_clients_require_mod = true
@@ -18,7 +23,7 @@ icon = "modicon.tex"
 
 server_filter_tags = { "backpack", "背包", "Krampus Sack", "坎普斯背包" }
 --优先级调高(刚好压过Insight)
-priority = -10001
+priority = -17
 
 -- 通用开关配置函数（开关类型）
 local function addToggleConfig(
@@ -71,7 +76,7 @@ local backpack_params = {
     prefab = "backpack",
     ch_name = "普通背包",
     en_name = "Backpack",
-    def_default = 0.66,
+    def_default = 0.36,
     planar_default = 1.6,
     collect_default = true,
     insulate_default = 0,
@@ -88,7 +93,7 @@ local backpack_params = {
     prefab = "piggyback",
     ch_name = "猪皮包",
     en_name = "Piggyback",
-    def_default = 0.86,
+    def_default = 0.66,
     planar_default = 6.6,
     collect_default = true,
     insulate_default = 66,

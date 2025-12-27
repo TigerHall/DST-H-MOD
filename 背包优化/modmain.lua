@@ -79,7 +79,8 @@ local function DoCounterAttack(inst, owner, attacker)
   local dmg = config[inst.prefab].counter_dmg or 0
   if dmg <= 0 then return end
   -- 造成反击伤害
-  attacker.components.health:DoDelta(-dmg, false, inst.prefab)
+  -- attacker.components.health:DoDelta(-dmg, false, inst.prefab)
+  attacker.components.combat:GetAttacked(attacker, dmg, inst, nil)
   -- 播放音效
   if owner.SoundEmitter then
     owner.SoundEmitter:PlaySound("dontstarve/common/together/armor/cactus")
@@ -167,14 +168,24 @@ local function enhance_backpack(inst, prefab)
     inst.components.planardefense:SetBaseDefense(cfg.planardefense)
   end
 
-  -- 3. 保温功能
+  -- 3. 冬暖夏凉功能
   if cfg.insulate > 0 then
-    if not inst.components.insulator then
-      inst:AddComponent("insulator")
+    local function insulatorstate(inst)
+      if inst.components.insulator ~= nil then
+        inst:RemoveComponent("insulator")
+      end
+      if TheWorld.state.iswinter then
+        inst:AddComponent("insulator")
+        inst.components.insulator:SetWinter()
+        inst.components.insulator:SetInsulation(cfg.insulate)
+      elseif TheWorld.state.issummer then
+        inst:AddComponent("insulator")
+        inst.components.insulator:SetSummer()
+        inst.components.insulator:SetInsulation(cfg.insulate)
+      end
     end
-    inst.components.insulator:SetInsulation(cfg.insulate)
-    -- 默认为保温效果，下面的注释去掉则为隔热效果
-    -- inst.components.insulator:SetSummer()
+    inst:WatchWorldState("isday", insulatorstate)
+    insulatorstate(inst)
   end
 
   -- 4.防雨功能（简化为完全防雨/关闭）
@@ -192,16 +203,16 @@ local function enhance_backpack(inst, prefab)
       inst:AddComponent("equippable")
     end
     -- 按需求调整除数
-    inst.components.equippable.dapperness = cfg.sanity / 54
+    inst.components.equippable.dapperness = cfg.sanity / 60
   end
 
   -- 6. 保鲜功能实现
   if cfg.preserve then
-    -- 添加preserver组件并设置保鲜倍率为0（食物永不腐烂）
+    -- 添加preserver组件并设置微微反鲜
     if not inst.components.preserver then
       inst:AddComponent("preserver")
     end
-    inst.components.preserver:SetPerishRateMultiplier(0)
+    inst.components.preserver:SetPerishRateMultiplier(-0.16)
   end
 
   -- 7. 防火
@@ -218,12 +229,9 @@ local function enhance_backpack(inst, prefab)
   if cfg.collect then
     -- 修改自 心悦卿兮的宠物拾取代码
     local function spawn_fx(name, scale, pos)
-      -- 仅客户端生成特效（服务器不执行）
-      if not TheWorld.ismastersim then
-        local fx = SpawnPrefab(name)
-        fx.Transform:SetScale(scale, scale, scale)
-        fx.Transform:SetPosition(pos.x, 0, pos.z) -- 修正Y轴为地面高度（0）
-      end
+      local fx = SpawnPrefab(name)
+      fx.Transform:SetScale(scale, scale, scale)
+      fx.Transform:SetPosition(pos.x, 0, pos.z) -- 修正Y轴为地面高度（0）
     end
 
     local function collect_items_periodially(inst)
@@ -292,10 +300,15 @@ local function enhance_backpack(inst, prefab)
             targets[ent.prefab] = nil
           end
 
-          -- 触发特效（客户端执行，服务器不处理）
-          spawn_fx("sand_puff", 0.6, inst:GetPosition())
-
-          stop = true -- 保持一次拾取一个的逻辑
+          -- 触发特效
+          -- spawn_fx("sand_puff", 0.6, inst:GetPosition())
+          spawn_fx("monkey_morphin_power_players_fx", 0.66, inst:GetPosition())
+          -- carnival_streamer_fx
+          -- ghostflower_spirit1_fx
+          -- monkey_morphin_power_players_fx
+          -- ghostlyelixir_player_speed_fx
+          -- 保持一次拾取一个的逻辑
+          -- stop = true
         end
       end
     end
