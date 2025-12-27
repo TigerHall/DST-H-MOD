@@ -7,6 +7,7 @@ local config = {
   shrink_scale = GetModConfigData("OceanTreeShrinkScale"),
   ocean_tree_cooldown = GetModConfigData("ocean_tree_cooldown"),
   ovshrink_scale = GetModConfigData("OceanVineShrinkScale"),
+  ocean_tree_no_block = GetModConfigData("ocean_tree_no_block"),
   fig_harvest_count = GetModConfigData("fig_harvest_count"),
   show_leafcanopy = GetModConfigData("show_leafcanopy"),
   glommerfuel_edible = GetModConfigData("glommerfuel_edible"),
@@ -22,45 +23,63 @@ local config = {
 -- TUNING.OceanTreeLightRadius = GetModConfigData("OceanTreeLightRadius")
 
 -- 实体/特效引用
--- PrefabFiles = {
---   "OceanTree_light",
--- }
+PrefabFiles = {
+  "oceantree_light",
+}
 
 
 if config.OceanTreeShadeRange > 22 then
   TUNING.SHADE_CANOPY_RANGE_SMALL = config.OceanTreeShadeRange or 22
 end
 
+local function add_ocean_tree_cooldown(inst)
+  -- 此处给主机和客机都添加这个组件
+  if not inst.components.temperatureoverrider then
+    inst:AddComponent("temperatureoverrider")
+  end
+  if not TheWorld.ismastersim then
+    return
+  end
+  -- 此处是 deerclopseyeball_sentryward.lua 文件差不多 498 行官方的源代码
+  inst.components.temperatureoverrider:SetRadius(TUNING.SHADE_CANOPY_RANGE_SMALL)
+  inst.components.temperatureoverrider:SetTemperature(16)
+  -- 如果是我，我会选择添加个延迟，这个延迟函数差不多会在游戏完全加载完再执行
+  -- 为什么加这个延迟？因为原版需要塞眼球才会生效，那自然是游戏完全加载后（尽可能保持和原版逻辑接近）
+  -- 虽然可能意义不大，单纯了预防措施罢了
+  inst:DoTaskInTime(0.6, function()
+    inst.components.temperatureoverrider:Enable()
+  end)
+end
+
 -- 修改水中木
 AddPrefabPostInit("oceantree_pillar", function(inst)
+  -- 添加树冠控温效果 config.ocean_tree_cooldown
+  if config.ocean_tree_cooldown then
+    add_ocean_tree_cooldown(inst)
+  end
+
   -- 只在主机端执行修改
   if not TheWorld.ismastersim then
     return inst
   end
 
-  -- 范围为0时不添加发光效果
+  -- 范围不为0时添加发光效果
   if config.light_radius > 0 then
-    -- 添加发光组件
-    inst.entity:AddLight()
-
-    -- 初始化发光属性（默认关闭，等待时间判定）
-    inst.Light:Enable(false)
-    inst.Light:SetRadius(config.light_radius) -- 使用配置的发光范围
-    inst.Light:SetFalloff(0.6)                --衰减程度
-    inst.Light:SetIntensity(0.5)              --发光强度
-    inst.Light:SetColour(153 / 255, 204 / 255, 153 / 255)
-    inst.Light:EnableClientModulation(false)
-
-    -- 添加光源标签
-    inst:AddTag("lightsource")
-
+    inst.tree_light = SpawnPrefab('oceantree_light')
+    if inst.tree_light then
+      inst.tree_light.entity:SetParent(inst.entity)
+      inst.tree_light.Light:SetRadius(config.light_radius)
+      inst.tree_light.Light:Enable(true)
+    else
+      print("警告：树光效预制体创建失败！")
+    end
     -- 时间监听函数：整合判断逻辑
     local function UpdateLightState(inst, phase)
       -- 非白天时开启发光（范围已在外部判定>0）
       if phase ~= "day" then
-        inst.Light:Enable(true)
+        inst.tree_light.Light:Enable(true)
       else
-        inst.Light:Enable(false)
+        inst.tree_light.Light:Enable(false)
       end
     end
 
@@ -75,14 +94,21 @@ AddPrefabPostInit("oceantree_pillar", function(inst)
     inst.Transform:SetScale(config.shrink_scale, config.shrink_scale, config.shrink_scale)
   end
 
-  -- 添加树冠控温效果
-  if config.ocean_tree_cooldown then
-    inst:AddComponent("temperatureoverrider")
-    inst.components.temperatureoverrider:Enable()
-    inst.components.temperatureoverrider:SetRadius(TUNING.SHADE_CANOPY_RANGE_SMALL)
-    inst.components.temperatureoverrider:SetTemperature(16)
+  -- 不阻碍铺设地皮
+  if config.ocean_tree_no_block then
+    inst:AddTag("NOBLOCK")
   end
 
+
+  -- 销毁处理
+  inst:ListenForEvent("onremove", function()
+    if inst.components.temperatureoverrider then
+      inst.components.temperatureoverrider:Disable()
+    end
+    if inst.tree_light then
+      inst.tree_light.Light:Enable(false)
+    end
+  end)
   --修改结束
 end)
 
@@ -138,10 +164,13 @@ AddPrefabPostInit("glommerfuel", function(inst)
   end
   -- 修改格罗姆粘液的食用效果
   if config.glommerfuel_edible and inst.components.edible then
+    inst:AddTag("pre-preparedfood")
+    inst.components.edible.foodtype = FOODTYPE.GOODIES
     inst.components.edible.healthvalue = 166
     inst.components.edible.hungervalue = 166
     inst.components.edible.sanityvalue = -166
   end
+
   -- 修改格罗姆粘液的肥料效果
   if config.glmny_fl and inst.components.fertilizer then
     inst.components.fertilizer:SetNutrients(66, 66, 66)

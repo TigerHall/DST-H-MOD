@@ -48,13 +48,13 @@ local function addTitle(title)
 end
 
 name = L and "H-Enhanced Waterlogged Tree" or "H-水中木强化"
+version = "2.1"
 description = L
     and
-    "V1.6\n\nAllows transplanted Waterlogged Trees to glow, reduces the visual size of large trees, shrinks moss vines, increases the shade range of the fig Tree, and adjusts the number of figs obtained per harvest.Modify the production speed and consumption effect of Glommer's Goop, and modify the fertilizer effect of tree jam and Glommer's Goop. When fertilizing with Glommer's Goop, the transplant marker of the crop can be removed (after becoming a native plant, there is no need to fertilize again), and it should no longer wither. The ambient temperature under the tree is 16 degrees."
+    ("V" .. version .. "\n\nAllows transplanted Waterlogged Trees to glow, reduces the visual size of large trees, shrinks moss vines, increases the shade range of the fig Tree, and adjusts the number of figs obtained per harvest.Modify the production speed and consumption effect of Glommer's Goop, and modify the fertilizer effect of tree jam and Glommer's Goop. When fertilizing with Glommer's Goop, the transplant marker of the crop can be removed (after becoming a native plant, there is no need to fertilize again), and it should no longer wither. The ambient temperature under the tree is 16 degrees.")
     or
-    "V1.6.1\n\n让移植过来的水中木发光，减小大树视觉体积，自定义增大树荫范围，减小苔藓藤条体积，修改获得的无花果数量，修改格罗姆粘液的产出速度和食用效果，自定义格罗姆的会san光环效果，修改树果酱和格罗姆粘液的肥料效果。格罗姆粘液施肥时可移除作物的移植标记（变为原生植物以后不用再施肥了）同时应该不会再枯萎。树下环境温度16度。"
+    ("V" .. version .. "\n\n让移植过来的水中木发光（光芒能让作物晚上生长），减小大树视觉体积，自定义增大树荫范围，减小苔藓藤条体积，修改获得的无花果数量，修改格罗姆粘液的产出速度和食用效果（应该任何人都能吃），自定义格罗姆的会san光环效果，修改树果酱和格罗姆粘液的肥料效果。格罗姆粘液施肥时可移除作物的移植标记（变为原生植物以后不用再施肥了）同时应该不会再枯萎。树下环境温度16度。水中木不会挡着码头地皮铺设。")
 author = "hehu"
-version = "1.6.1"
 api_version = 10
 dst_compatible = true
 all_clients_require_mod = true
@@ -64,8 +64,8 @@ icon = "modicon.tex"
 
 server_filter_tags = { "oceantree_pillar", "水中木", "oceanvine", "苔藓藤条，无花果" }
 
---优先级调高(刚好压过Insight)
-priority = -10018
+--优先级调高
+-- priority = -18
 
 configuration_options = {
   -- 产物相关标题
@@ -127,6 +127,19 @@ configuration_options = {
     },
     default = 0.26
   },
+  -- 新增：水中木不阻碍码头铺设开关
+  addConfig(
+    "ocean_tree_no_block",
+    "水中木不阻碍码头铺设",
+    "Ocean Tree No Block Dock Placement",
+    true,
+    "是否允许在水中木区域铺设码头",
+    "Whether to allow dock placement in Ocean Tree areas",
+    "开启后，水中木不再阻挡码头的放置和建造",
+    "When enabled, Ocean Trees no longer block dock placement and construction",
+    "关闭后，水中木会阻碍码头铺设（原版逻辑）",
+    "When disabled, Ocean Trees block dock placement (original logic)"
+  ),
   -- 产物相关标题
   addTitle(L and "About Product" or "产物相关"),
   -- 缩小苔藓藤条大小
