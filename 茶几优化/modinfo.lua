@@ -49,12 +49,12 @@ end
 
 --  基础信息
 name = L and "H-Table Enhancement" or "H-茶几强化"
+version = "1.6"
 description =
     L and
-    "V1.3\n\nEnd Table Enhancement Mod: it can prevent the coffee table from being destroyed by BOSS and allow it to serve as a blocking device. It can make flowers last longer.\n\nThe bird in the cage lives forever." or
-    "V1.3.1\n\n茶几强化mod，可以让茶几无法被BOSS摧毁，能作为卡位装置。可通过燃烧去除，燃烧后会立刻消失。可以让花朵更长期存在。\n\n鸟笼内的鸟永久存活。"
+    ("V" .. version .. "\n\nEnd Table Enhancement Mod: it can prevent the coffee table from being destroyed by BOSS and allow it to serve as a blocking device. It can make flowers last longer.\n\nThe bird in the cage lives forever.\n\nSalt lick block has infinite durability.Ticoon enhanced.") or
+    ("V" .. version .. "\n\n茶几强化mod，可以让茶几无法被BOSS摧毁，能作为卡位装置。可通过燃烧去除，燃烧后会立刻消失。可以让花朵更长期存在。\n\n鸟笼内的鸟永久存活。\n\n牛牛的舔盐块无限耐久。\n\n大虎获得强化效果。\n\n麻刺节点不阻碍放置。")
 author = "hehu"
-version = "1.3.1"
 api_version = 10
 dst_compatible = true
 all_clients_require_mod = true
@@ -65,11 +65,11 @@ icon = "modicon.tex"
 server_filter_tags = { "End Table", "茶几" }
 
 --优先级调高(刚好压过Insight)
-priority = -10019
+priority = -19
 
 configuration_options = {
   -- 基础配置项
-  addTitle(L and "Basic Function Configurations" or "基本功能"),
+  addTitle(L and "Endtable Configurations" or "茶几功能"),
   -- 茶几防BOSS摧毁+卡位功能开关配置
   addConfig(
     "endtable_immune",
@@ -96,6 +96,7 @@ configuration_options = {
     "不做修改",
     "No change"
   ),
+  addTitle(L and "Birdcage Configurations" or "鸟笼功能"),
   -- 鸟笼不腐败配置
   addConfig(
     "birdcage_immortal",
@@ -108,5 +109,47 @@ configuration_options = {
     "The bird in the birdcage will exist permanently and will not die or disappear for any reason",
     "不做修改，鸟笼内的鸟遵循原版机制",
     "No change, the bird in the birdcage follows the original mechanism"
+  ),
+  addTitle(L and "Saltlick Configurations" or "无限舔盐块功能"),
+  -- 舔盐块耐久无限配置
+  addConfig(
+    "saltlick_unlimited",
+    "舔盐块耐久无限",
+    "Saltlick Unlimited Uses",
+    true,
+    "控制舔盐块是否拥有无限耐久",
+    "Control whether the saltlick has unlimited durability",
+    "舔盐块耐久无限，不会因舔食而消耗",
+    "The saltlick has unlimited durability and will not be consumed by licking",
+    "不做修改，舔盐块遵循原版机制",
+    "No change, the saltlick follows the original mechanism"
+  ),
+  addTitle(L and "Ticoon Configurations" or "大虎强化"),
+  -- 大虎强化配置
+  addConfig(
+    "ticoon_enhance",
+    "大虎强化",
+    "Ticoon Enhancement",
+    true,
+    "控制大虎是否获得强化效果",
+    "Control whether Ticoon gets enhancement effects",
+    "大虎获得强化效果：更高的生命值、更快的移动速度、更强的攻击力",
+    "Ticoon gets enhancement effects: higher health, faster movement speed, stronger attack power",
+    "不做修改，大虎遵循原版机制",
+    "No change, Ticoon follows the original mechanism"
+  ),
+  addTitle(L and "Fence Electric Configurations" or "麻刺节点强化"),
+  -- 麻刺节点强化配置
+  addConfig(
+    "fence_electric_enhance",
+    "麻刺节点强化",
+    "Fence Electric Enhancement",
+    true,
+    "控制麻刺节点是否获得强化效果",
+    "Control whether Fence Electric gets enhancement effects",
+    "麻刺节点获得强化效果：不阻碍放置",
+    "Fence Electric gets enhancement effects: higher health, faster movement speed, stronger attack power",
+    "不做修改，麻刺节点遵循原版机制",
+    "No change, Fence Electric follows the original mechanism"
   ),
 }
