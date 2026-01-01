@@ -1068,7 +1068,7 @@ AddPrefabPostInit("cane", function(inst)
       -- 定义破坏范围（可根据需求调整）
       local DESTROY_RADIUS = config.auto_work_range
       -- 筛选可破坏目标的标签（同原逻辑）
-      local WORKABLES_CANT_TAGS = { "insect", "INLIMBO", "structure", "wall", "ignorewalkableplatforms" }
+      local WORKABLES_CANT_TAGS = { "insect", "INLIMBO", "structure", "wall", "ignorewalkableplatforms", "ancienttree" }
       local WORKABLES_ONEOF_TAGS = { "CHOP_workable", "DIG_workable", "HAMMER_workable", "MINE_workable" }
 
       -- 核心破坏函数：传入坐标(x,y,z)，按范围破坏物体
@@ -1444,15 +1444,18 @@ AddPrefabPostInit("cane", function(inst)
       end
     end
     -- 种杂草
-    if HasTargetItem(items, { "forgetmelots", "tillweed", "firenettles" }) then
+    if HasTargetItem(items, { "forgetmelots", "forgetmelots_dried", "tillweed", "firenettles", "tillweed_dried", "firenettles_dried" }) then
       -- 杂草对应的实体
       local SPECIAL_SEED_WEED_MAP = {
         -- 必忘我
         forgetmelots = "weed_forgetmelots",
+        forgetmelots_dried = "weed_forgetmelots",
         -- 犁地草
         tillweed = "weed_tillweed",
+        tillweed_dried = "weed_tillweed",
         -- 火荨麻
-        firenettles = "weed_firenettle"
+        firenettles = "weed_firenettle",
+        firenettles_dried = "weed_firenettle",
       }
       for _, soil_ent in ipairs(TheSim:FindEntities(x, y, z, WORK_RADIUS, { "soil" }, { "NOCLICK" })) do
         local s_x, s_y, s_z = soil_ent.Transform:GetWorldPosition()
