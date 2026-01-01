@@ -47,15 +47,20 @@ end
 
 --  基础信息
 name = en_zh("H-SLOT", "H-无限格子")
-description = en_zh([[
-V0.5
-Chester Perish Quickly, Ice Chester resists spoilage. Infinite stacking of slots. Moonrockcrater Teleport Function.
-]], [[
-V0.5.1
-切斯特腐败加速（冰雪切斯特反鲜）、格子无限堆叠，带孔月岩传送功能。
+version = "0.9"
+description = en_zh("V" .. version .. [[
+
+Items in Chester's and Hutch's grids do not spoil. Items in Shadow Chester's grid spoil at an accelerated rate, while items in Ice Chester's grid are preserved (remain fresh).
+Items in Chester's and Hutch's grids can be stacked infinitely.
+The red moon eye can open the shadow space, and the green moon eye can open the poaching rabbit space. The shadow space and the poaching rabbit space can be set with infinite stacking, corruption acceleration, and anti-fresh acceleration.
+]], "V" .. version .. [[
+
+切斯特、哈奇格子内物品不腐败，暗影切斯特格子腐败加速，冰雪切斯特反鲜。
+切斯特、哈奇格子可无限堆叠。
+带孔月岩可传送到眼骨或星空处。
+红色月眼可打开暗影空间，绿色月眼可打开挖角兔空间。暗影空间和挖角兔空间可设置无限堆叠，腐败加速和反鲜加速。
 ]])
 author = "hehu"
-version = "0.5.1"
 api_version = 10
 dst_compatible = true
 all_clients_require_mod = true
@@ -66,75 +71,49 @@ icon = "modicon.tex"
 server_filter_tags = { "Infinite Slot", "无限格子", "Chester", "切斯特" }
 
 configuration_options = {
-  -- 基础配置项
-  addTitle("Chester Perish Quickly", "切斯特腐败/反鲜加成"),
-  -- 切斯特腐败加速
+  -- 合并的保鲜/腐败设置
+  addTitle("Preservation Settings", "保鲜/腐败设置"),
   addConfig(
-    "chester_preserver",
-    "切斯特腐败/反鲜加成",
-    "Chester Preserver Perish Quickly or Ice Resists",
+    "preserve_settings",
+    "切斯特与哈奇保鲜/腐败",
+    "Chester & Hutch Preservation",
     true,
-    "切斯特腐败加成",
-    "Chester perish quickly",
-    "切斯特腐败速度提升为正常的16倍",
-    "Chester's perish speed is increased to 16 times normal",
-    "不改变切斯特腐败速度",
-    "No change to Chester's preservation speed"
+    "统一控制切斯特和哈奇的保鲜/腐败行为",
+    "Unified control of preservation/decay behavior for Chester and Hutch",
+    "普通切斯特和哈奇停止腐败，冰雪切斯特反鲜，暗影切斯特加速腐败",
+    "Chester and Hutch stop decaying, Ice Chester prevents freshness loss, and Shadow Chester accelerates decaying.",
+    "不改变切斯特和哈奇的保鲜/腐败特性",
+    "No change to preservation/decay characteristics of Chester and Hutch"
   ),
-  -- 暗影切斯特腐败加速
+  -- 合并的无限堆叠设置
+  addTitle("Infinite Stack", "无限堆叠设置"),
   addConfig(
-    "shadow_chester_preserver",
-    "暗影切斯特腐败加成",
-    "Shadow Chester perish quickly",
+    "infinite_stack",
+    "切斯特与哈奇无限堆叠",
+    "Chester & Hutch Infinite Stack",
     true,
-    "暗影切斯特（暗影容器）腐败加成",
-    "Shadow Chester (shadow container) perish quickly",
-    "暗影切斯特腐败速度提升为正常的36倍",
-    "Shadow Chester's perish speed is increased to 36 times normal",
-    "不改变暗影切斯特腐败速度",
-    "No change to Shadow Chester's preservation speed"
+    "统一控制切斯特和哈奇的物品堆叠数量",
+    "Unified control of item stack quantity for Chester and Hutch",
+    "切斯特和哈奇所有格子物品堆叠数量无上限",
+    "All grid item stack quantities have no upper limit for Chester and Hutch",
+    "不改变切斯特和哈奇的物品堆叠数量限制",
+    "No change to item stack quantity limits for Chester and Hutch"
   ),
-  -- 切斯特/暗影切斯特格子无限堆叠
+  -- 新增：宠物强化设置
+  addTitle("Pet Enhancement", "宠物强化设置"),
   addConfig(
-    "chester_infinite_stack",
-    "切斯特无限堆叠",
-    "Chester infinite stack",
+    "pet_strong",
+    "眼骨/星空强化",
+    "Eye-bone/Star-sky Entity Enhancement",
     true,
-    "切斯特物品栏无限堆叠",
-    "Chester inventory infinite stack",
-    "切斯特所有格子物品堆叠数量无上限",
-    "Chester all grid item stack quantity has no upper limit",
-    "不改变切斯特格子堆叠数量限制",
-    "No change to Chester original item stack quantity limit"
+    "增强眼骨/星空相关的属性（血量、防御等）",
+    "Enhance attributes (health, defense, etc.) of Eye-bone/Star-sky related entities",
+    "眼骨/星空拥有更高的血量、防御，不易被摧毁",
+    "Eye-bone/Star-sky entities have higher health and defense, making them harder to destroy",
+    "眼骨/星空保持原版属性不变",
+    "Eye-bone/Star-sky entities retain their original attributes"
   ),
-  addTitle("Hutch Settings", "哈奇设置"),
-  -- 哈奇不腐败开关
-  addConfig(
-    "hutch_preserver",
-    "哈奇防腐功能",
-    "Hutch Preserve Function",
-    true,
-    "哈奇物品防腐功能设置",
-    "Hutch preservation function settings",
-    "哈奇内物品不会腐败",
-    "Items in Hutch will not perish",
-    "不改变哈奇的腐败速度",
-    "No change to Hutch's preservation speed"
-  ),
-  -- 哈奇无限堆叠
-  addConfig(
-    "hutch_infinite_stack",
-    "哈奇无限堆叠",
-    "Hutch Infinite Stack",
-    true,
-    "哈奇物品栏无限堆叠",
-    "Hutch inventory infinite stack",
-    "哈奇所有格子物品堆叠数量无上限",
-    "Hutch all grid item stack quantity has no upper limit",
-    "不改变哈奇格子堆叠数量限制",
-    "No change to Hutch original item stack quantity limit"
-  ),
-  addTitle("Other", "其他设置"),
+  addTitle("Mooneye Sets", "月眼设置"),
   -- 带孔月岩传送功能配置
   addConfig(
     "moonrockcrater_teleport",
@@ -147,5 +126,31 @@ configuration_options = {
     "Check moonrockcrater to teleport to the eyebone/hutch location",
     "不改变带孔月岩",
     "No change to moonrockcrater"
+  ),
+  -- 紫色月眼开关宠物格子功能配置
+  addConfig(
+    "colormooneye_toggle",
+    "各色月眼开关格子",
+    "Color Moon Eye Toggle Container",
+    true,
+    "通过各色月眼来开关各种格子",
+    "Whether to allow toggling container by inspecting color moon eye",
+    "点击各色月眼时会开关各种格子",
+    "Clicking color moon eye will toggle pet container",
+    "禁用各色月眼的格子开关功能",
+    "Disable color moon eye's pet container toggle function"
+  ),
+  addTitle("Trade Settings", "物品交易设置"),
+  addConfig(
+    "item_trade_function",
+    "眼骨/星空交易功能",
+    "Eye-bone/Star-sky Item Exchange",
+    true,
+    "控制眼骨/星空实体的物品兑换交易功能",
+    "Item exchange By Eye-bone/Star-sky",
+    "通过眼骨/星空兑换彩虹宝石、启迪碎片等物品",
+    "Exchange Iridescent Gem, Enlightened Shard Or Something Else By Eye-bone/Star-sky",
+    "禁用眼骨/星空交易功能",
+    "Disables item exchange By Eye-bone/Star-sky"
   ),
 }
