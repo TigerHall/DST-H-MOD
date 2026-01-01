@@ -48,12 +48,12 @@ local function addTitle(title)
 end
 
 name = L and "H-Enhanced Waterlogged Tree" or "H-水中木强化"
-version = "2.1"
+version = "2.0"
 description = L
     and
     ("V" .. version .. "\n\nAllows transplanted Waterlogged Trees to glow, reduces the visual size of large trees, shrinks moss vines, increases the shade range of the fig Tree, and adjusts the number of figs obtained per harvest.Modify the production speed and consumption effect of Glommer's Goop, and modify the fertilizer effect of tree jam and Glommer's Goop. When fertilizing with Glommer's Goop, the transplant marker of the crop can be removed (after becoming a native plant, there is no need to fertilize again), and it should no longer wither. The ambient temperature under the tree is 16 degrees.")
     or
-    ("V" .. version .. "\n\n让移植过来的水中木发光（光芒能让作物晚上生长），减小大树视觉体积，自定义增大树荫范围，减小苔藓藤条体积，修改获得的无花果数量，修改格罗姆粘液的产出速度和食用效果（应该任何人都能吃），自定义格罗姆的会san光环效果，修改树果酱和格罗姆粘液的肥料效果。格罗姆粘液施肥时可移除作物的移植标记（变为原生植物以后不用再施肥了）同时应该不会再枯萎。树下环境温度16度。水中木不会挡着码头地皮铺设。")
+    ("V" .. version .. "\n\n让移植过来的水中木发光（光芒能让作物晚上生长），减小大树视觉体积，自定义增大树荫范围，减小苔藓藤条体积，修改获得的无花果数量，修改格罗姆粘液的产出速度和食用效果（应该任何人都能吃），自定义格罗姆的会san光环效果，修改树果酱和格罗姆粘液的肥料效果。格罗姆粘液施肥时可移除作物的移植标记（变为原生植物以后不用再施肥了）同时应该不会再枯萎。树下环境温度16度。水中木不会挡着码头地皮铺设。格罗姆可自带回血，海带无间隔放置。")
 author = "hehu"
 api_version = 10
 dst_compatible = true
@@ -238,6 +238,18 @@ configuration_options = {
     "保留原版格罗姆粘液的食用效果，不做数值修改",
     "don't change the original edible effect of Glommer's Goop"
   ),
+  addConfig(
+    "glommer_strong",
+    "格罗姆更强一点，不容易gg",
+    "Glommer Stronger",
+    true,
+    "修改格罗姆的血量等，让它更强一点",
+    "Make Glommer Stronger",
+    "修改后格罗姆血量666，伤害吸收百分比60%，每6s恢复66滴血",
+    "Modified effect: Glommer has 666 health, 60% damage absorption, and restores 66 health every 6 seconds",
+    "保留原版格罗姆的属性，不做修改",
+    "don't change the original of Glommer"
+  ),
   -- 回san光环效果修改
   {
     name = "glommer_sanityaura",
@@ -259,5 +271,16 @@ configuration_options = {
     default = 6.6
   },
 
-
+  addConfig(
+    "bullkelp_no_placement_space",
+    "公牛海带可叠放无物理间隔",
+    "Bull Kelp Stackable No Placement Space",
+    true,
+    "移除公牛海带放置时的物理间距限制，支持重叠放置",
+    "Remove the physical spacing limit when placing Bull Kelp, support overlapping placement",
+    "开启后可将多个公牛海带叠放在同一位置，无物理间隔限制",
+    "When enabled, multiple Bull Kelp can be stacked in the same position without physical spacing limits",
+    "关闭后恢复原版规则，公牛海带需间隔一定距离才能放置",
+    "When disabled, restore the original rules, Bull Kelp requires a certain distance to be placed"
+  )
 }

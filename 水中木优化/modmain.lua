@@ -17,6 +17,8 @@ local config = {
   sgj_fl = GetModConfigData("sgj_fl"),
   glmny_fl = GetModConfigData("glmny_fl"),
   OceanTreeShadeRange = GetModConfigData("OceanTreeShadeRange"),
+  glommer_strong = GetModConfigData("glommer_strong"),
+  bullkelp_no_placement_space = GetModConfigData("bullkelp_no_placement_space"),
 }
 
 -- 设置全局调优参数
@@ -154,6 +156,14 @@ AddPrefabPostInit("glommer", function(inst)
   if config.glommer_sanityaura > 0 and inst.components.sanityaura then
     inst.components.sanityaura.aura = config.glommer_sanityaura
   end
+  if config.glommer_strong then
+    -- 回血和伤害吸收百分比
+    if inst.components.health then
+      inst.components.health:SetMaxHealth(666)
+      inst.components.health:StartRegen(66, 6)
+      inst.components.health:SetAbsorptionAmount(0.06)
+    end
+  end
 end)
 
 -- 修改格罗姆粘液
@@ -222,3 +232,15 @@ if config.glommerfuel_remove_transplant then
   -- 所有可移植作物变为原生
   AddComponentPostInit("pickable", refertilize)
 end
+
+
+-- 修改公牛海带
+AddPrefabPostInit("bullkelp_plant", function(inst)
+  -- 只在主机端执行修改
+  if not TheWorld.ismastersim then
+    return inst
+  end
+  if config.bullkelp_no_placement_space then
+    inst:AddTag("NOBLOCK")
+  end
+end)
