@@ -187,15 +187,18 @@ AddPrefabPostInit("cane", function(inst)
     local function ApplyDamageConversions(attacker, damage)
       -- 生命转换
       if config.life_drain_ratio > 0 and attacker.components.health then
-        attacker.components.health:DoDelta(damage * config.life_drain_ratio, false, "cane")
+        if attacker.components.oldager then
+          attacker.components.oldager:StopDamageOverTime()
+        end
+        attacker.components.health:DoDelta(damage * config.life_drain_ratio, false, inst.prefab)
       end
       -- 饥饿转换
       if config.hunger_conversion_ratio > 0 and attacker.components.hunger then
-        attacker.components.hunger:DoDelta(damage * config.hunger_conversion_ratio, false, "cane")
+        attacker.components.hunger:DoDelta(damage * config.hunger_conversion_ratio, false, inst.prefab)
       end
       -- 理智转换
       if config.sanity_conversion_ratio > 0 and attacker.components.sanity then
-        attacker.components.sanity:DoDelta(damage * config.sanity_conversion_ratio, false, "cane")
+        attacker.components.sanity:DoDelta(damage * config.sanity_conversion_ratio, false, inst.prefab)
       end
     end
 
@@ -881,7 +884,7 @@ AddPrefabPostInit("cane", function(inst)
             -- 将物品放入玩家物品栏
             doer.components.inventory:GiveItem(ent, nil, v_pos)
           end
-          ApplyHungerCost(owner, -0.6, 0.66, "cane")
+          ApplyHungerCost(owner, -0.6, 0.66, inst.prefab)
           return
         end
       end
@@ -905,9 +908,9 @@ AddPrefabPostInit("cane", function(inst)
       -- 生命回复
       if math.random() < 0.16 then
         -- 饥饿代价
-        ApplyHungerCost(owner, -1.6, 0.66, "cane")
+        ApplyHungerCost(owner, -1.6, 0.66, inst.prefab)
         if owner.components.health then
-          owner.components.health:DoDelta(6, false, "cane")
+          owner.components.health:DoDelta(6, false, inst.prefab)
         end
       end
     end
@@ -926,9 +929,9 @@ AddPrefabPostInit("cane", function(inst)
       -- 理智回复
       if math.random() < 0.16 then
         -- 饥饿代价
-        ApplyHungerCost(owner, -1.6, 0.66, "cane")
+        ApplyHungerCost(owner, -1.6, 0.66, inst.prefab)
         if owner.components.sanity then
-          owner.components.sanity:DoDelta(6, false, "cane")
+          owner.components.sanity:DoDelta(6, false, inst.prefab)
         end
       end
     end
@@ -957,7 +960,7 @@ AddPrefabPostInit("cane", function(inst)
           end
           -- 4. 放入物品栏（自动叠加到14栏物品中）
           doer.components.inventory:GiveItem(item_copy)
-          ApplyHungerCost(owner, -16.6, 0.66, "cane")
+          ApplyHungerCost(owner, -16.6, 0.66, inst.prefab)
         end
       end
       if owner.components.hunger then
@@ -993,7 +996,7 @@ AddPrefabPostInit("cane", function(inst)
     -- 天体珠宝开始
     if HasTargetItem(items, { "lunar_seed" }) then
       owner:Hide()
-      ApplyHungerCost(owner, -1, 0.36, "cane")
+      ApplyHungerCost(owner, -1, 0.36, inst.prefab)
     else
       owner:Show()
     end
@@ -1085,7 +1088,7 @@ AddPrefabPostInit("cane", function(inst)
             SpawnPrefab("collapse_small").Transform:SetPosition(target.Transform:GetWorldPosition())
             -- 执行破坏（玩家为主体，可刷勋章）
             target.components.workable:Destroy(owner)
-            ApplyHungerCost(owner, -0.6, 0.36, "cane")
+            ApplyHungerCost(owner, -0.6, 0.36, inst.prefab)
           end
         end
       end
@@ -1103,7 +1106,7 @@ AddPrefabPostInit("cane", function(inst)
       if math.random() < 0.16 then
         -- 理智
         if owner.components.sanity then
-          owner.components.sanity:DoDelta(16, false, "cane")
+          owner.components.sanity:DoDelta(16, false, inst.prefab)
         end
       end
     end
@@ -1236,19 +1239,19 @@ AddPrefabPostInit("cane", function(inst)
       if doer._sanity_mult ~= sanity_mult then
         doer.components.sanity.max = doer._original_maxsanity * sanity_mult
         doer._sanity_mult = sanity_mult
-        owner.components.sanity:DoDelta(1, false, "cane")
+        owner.components.sanity:DoDelta(1, false, inst.prefab)
       end
 
       if doer._health_mult ~= health_mult then
         doer.components.health.maxhealth = doer._original_maxhealth * health_mult
         doer._health_mult = health_mult
-        owner.components.health:DoDelta(1, false, "cane")
+        owner.components.health:DoDelta(1, false, inst.prefab)
       end
 
       if doer._hunger_mult ~= hunger_mult then
         doer.components.hunger.max = doer._original_maxhunger * hunger_mult
         doer._hunger_mult = hunger_mult
-        owner.components.hunger:DoDelta(1, false, "cane")
+        owner.components.hunger:DoDelta(1, false, inst.prefab)
       end
     end
     -- 三维修改类结束
@@ -1258,7 +1261,7 @@ AddPrefabPostInit("cane", function(inst)
     if HasTargetItem(items, { "nightmarefuel", "horrorfuel" }) then
       -- 理智减少
       if owner.components.sanity then
-        owner.components.sanity:DoDelta(-16, false, "cane")
+        owner.components.sanity:DoDelta(-16, false, inst.prefab)
       end
     end
     -- 理智减少结束
@@ -1268,15 +1271,15 @@ AddPrefabPostInit("cane", function(inst)
       if math.random() < 0.16 then
         -- 生命
         if owner.components.health then
-          owner.components.health:DoDelta(6, false, "cane")
+          owner.components.health:DoDelta(6, false, inst.prefab)
         end
         -- 饥饿
         if owner.components.hunger then
-          owner.components.hunger:DoDelta(6, false, "cane")
+          owner.components.hunger:DoDelta(6, false, inst.prefab)
         end
         -- 理智
         if owner.components.sanity then
-          owner.components.sanity:DoDelta(6, false, "cane")
+          owner.components.sanity:DoDelta(6, false, inst.prefab)
         end
       end
     end
@@ -1310,24 +1313,6 @@ AddPrefabPostInit("cane", function(inst)
         if beefalo:IsValid() and beefalo.components.domesticatable then
           beefalo.components.domesticatable:DeltaDomestication(0.0006)
         end
-        -- 1. 确保牛有坐骑组件和移动组件
-        if beefalo.components.rideable and beefalo.components.locomotor then
-          -- 保存原始速度（若未保存过）
-          if not beefalo.old_train_speed then
-            beefalo.old_train_speed = beefalo.components.locomotor:GetRunSpeed()
-          end
-          -- 2. 计算最终速度：原始速度 × (1 + 配置加成)
-          beefalo.components.locomotor.runspeed = beefalo.old_train_speed * (1 + config.speed_buff)
-        end
-      end
-    else
-      -- 恢复牛的原始速度
-      local beefalos = TheSim:FindEntities(x, y, z, WORK_RADIUS + 16,
-        { "beefalo" },                 -- 只找牛
-        { "INLIMBO", "dead", "ghost" } -- 排除无效目标
-      )
-      for _, beefalo in ipairs(beefalos) do
-        beefalo.components.locomotor.runspeed = beefalo.old_train_speed or beefalo.components.locomotor:GetRunSpeed()
       end
     end
     -- 范围训牛结束
@@ -1344,7 +1329,7 @@ AddPrefabPostInit("cane", function(inst)
         if sinkhole:IsValid() then
           -- 直接移除蚁狮坑
           sinkhole:Remove()
-          ApplyHungerCost(owner, -6.6, 0.66, "cane")
+          ApplyHungerCost(owner, -6.6, 0.66, inst.prefab)
           -- 可选：生成消除特效
           local fx = SpawnPrefab("collapse_small")
           if fx then

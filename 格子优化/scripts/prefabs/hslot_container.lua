@@ -1,16 +1,10 @@
--- ======================== 核心配置（仅单个hslot容器） ========================
-local HSLOT_NAME = "hslot"                               -- 容器唯一标识
-local HSLOT_PREFAB = "hslot_container"                   -- 预制体名称
-local HSLOT_UI = "anim/ui_portal_rabbitkinghorn_3x4.zip" -- 替换为你的UI资源
-local HSLOT_WIDGET = "hslot_container"                   -- UI组件名称
+-- scripts/prefabs/hslot_container.lua
+-- 仅创建一个名为 "hslot" 的私有空间容器
 
--- ======================== 网络同步事件（极简版） ========================
 local function OnAnyOpenStorage(inst, data)
   if inst.components.container.opencount > 1 then
-    --multiple users, make it global to all players now
     inst.Network:SetClassifiedTarget(nil)
   else
-    --just one user, only network to that player
     inst.Network:SetClassifiedTarget(data.doer)
   end
 end
@@ -18,91 +12,79 @@ end
 local function OnAnyCloseStorage(inst, data)
   local opencount = inst.components.container.opencount
   if opencount == 0 then
-    --all closed, disable networking
     inst.Network:SetClassifiedTarget(inst)
   elseif opencount == 1 then
-    --only one user remaining, only network to that player
     local opener = next(inst.components.container.openlist)
     inst.Network:SetClassifiedTarget(opener)
   end
 end
 
--- ======================== 注册UI组件（极简3x4格子） ========================
-local function RegisterHSlotWidget()
-  local Widget = require "widgets/widget"
-  local Image = require "widgets/image"
-  local ItemSlot = require "widgets/itemslot"
-
-  -- 直接定义3x4格子的UI，无多余配置
-  local HSlotWidget = Class(Widget, function(self, owner)
-    Widget._ctor(self, HSLOT_WIDGET)
-    self.owner = owner
-
-    -- UI背景（核心属性仅保留背景和格子）
-    self.bg = self:AddChild(Image(HSLOT_UI, "ui_hslot_container_3x4.tex"))
-    self.bg:SetScale(0.8)
-
-    -- 固定3x4格子坐标（简化计算，直接写死）
-    local slotpos = {
-      { -100, 75 }, { -25, 75 }, { 50, 75 },
-      { -100, 0 }, { -25, 0 }, { 50, 0 },
-      { -100, -75 }, { -25, -75 }, { 50, -75 },
-      { -100, -150 }, { -25, -150 }, { 50, -150 },
-    }
-
-    -- 创建格子（仅保留核心功能）
-    self.slots = {}
-    for i, pos in ipairs(slotpos) do
-      local slot = self:AddChild(ItemSlot(nil, owner))
-      slot:SetPosition(pos[1], pos[2])
-      slot:SetSize(64, 64)
-      self.slots[i] = slot
-    end
-  end)
-
-  -- 注册到全局，无需单独widgets文件
-  package.loaded["widgets/" .. HSLOT_WIDGET] = HSlotWidget
-end
-RegisterHSlotWidget()
-
--- ======================== 创建hslot容器预制体（核心逻辑） ========================
 local assets = {
-  Asset("ANIM", HSLOT_UI),
+  Asset("ANIM", "anim/ui_boat_ancient_4x4.zip"),
 }
+
+local containers = require("containers")
+local params = containers.params
+
+-- 给容器对象添加一个名为 hslot 的容器，用的是坎普斯背包的配置修改的
+params.hslot = {
+  widget = {
+    slotpos = {},
+    animbank = "ui_boat_ancient_4x4",
+    animbuild = "ui_boat_ancient_4x4",
+    pos = Vector3(300, -70, 0)
+  },
+  type = "hslot",
+  itemtestfn = function(inst, item, slot) -- 容器里可以装的物品的条件
+    return not item:HasTag("_container") and not item:HasTag("bundle") and not item:HasTag("irreplaceable") and
+        item.prefab ~= "hslot_flower"
+  end
+}
+
+-- 循环容器里小格子
+
+for y = 3, 0, -1 do
+  for x = 0, 3 do
+    table.insert(params.hslot.widget.slotpos, Vector3(75 * x - 116, 75 * y - 116, 0))
+  end
+end
 
 local function fn()
   local inst = CreateEntity()
 
-  -- 服务器端添加Transform（仅用于数据保存）
   if TheWorld.ismastersim then
     inst.entity:AddTransform()
   end
 
-  -- 核心组件（仅保留必须的）
   inst.entity:AddNetwork()
-  inst.entity:Hide()                       -- 隐藏实体，纯逻辑容器
-  inst:AddTag("CLASSIFIED")                -- 减少网络同步
-  inst:AddTag("pocketdimension_container") -- 兼容官方逻辑
-  inst:AddTag("irreplaceable")             -- 防止被替换
+  inst.entity:AddServerNonSleepable()
+  inst.entity:SetCanSleep(false)
+  inst.entity:Hide()
 
-  -- 客户端直接返回
+  inst:AddTag("CLASSIFIED")
+  inst:AddTag("irreplaceable")
+  inst:AddTag("pocket_container")
+
   inst.entity:SetPristine()
+
   if not TheWorld.ismastersim then
     return inst
   end
 
-  -- 容器核心配置（极简）
-  inst:AddComponent("container")
-  inst.components.container:WidgetSetup(HSLOT_WIDGET)
-  inst.components.container.skipautoclose = true          -- 禁用自动关闭
-  inst.components.container.onopenfn = OnAnyOpenStorage   -- 绑定打开事件
-  inst.components.container.onclosefn = OnAnyCloseStorage -- 绑定关闭事件
+  inst.Network:SetClassifiedTarget(inst)
 
-  -- 注册到世界，方便全局获取
-  TheWorld:SetPocketDimensionContainer(HSLOT_NAME, inst)
+  inst:AddComponent("container")
+  inst.components.container:WidgetSetup("hslot") -- ← 修改这里！
+
+  inst.components.container.skipclosesnd = true
+  inst.components.container.skipopensnd = true
+  inst.components.container.skipautoclose = true
+  inst.components.container.onanyopenfn = OnAnyOpenStorage
+  inst.components.container.onanyclosefn = OnAnyCloseStorage
+
+  TheWorld:SetPocketDimensionContainer("hslot", inst) -- 注册为 "hslot"
 
   return inst
 end
 
--- 仅导出单个hslot容器预制体
-return Prefab(HSLOT_PREFAB, fn, assets)
+-- return Prefab("hslot_container", fn, assets)

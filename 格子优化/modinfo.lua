@@ -47,7 +47,7 @@ end
 
 --  基础信息
 name = en_zh("H-SLOT", "H-无限格子")
-version = "0.9"
+version = "1.0"
 description = en_zh("V" .. version .. [[
 
 Items in Chester's and Hutch's grids do not spoil. Items in Shadow Chester's grid spoil at an accelerated rate, while items in Ice Chester's grid are preserved (remain fresh).
@@ -57,8 +57,9 @@ The red moon eye can open the shadow space, and the green moon eye can open the 
 
 切斯特、哈奇格子内物品不腐败，暗影切斯特格子腐败加速，冰雪切斯特反鲜。
 切斯特、哈奇格子可无限堆叠。
-带孔月岩可传送到眼骨或星空处。
+带孔月岩可传送到眼骨或星空处。黄色、橙色、紫色月眼可传送至某些特定位置。
 红色月眼可打开暗影空间，绿色月眼可打开挖角兔空间。暗影空间和挖角兔空间可设置无限堆叠，腐败加速和反鲜加速。
+后续版本将增加一个更大的的空间，预计通过蓝色月眼打开，敬请期待！
 ]])
 author = "hehu"
 api_version = 10
@@ -108,7 +109,7 @@ configuration_options = {
     true,
     "增强眼骨/星空相关的属性（血量、防御等）",
     "Enhance attributes (health, defense, etc.) of Eye-bone/Star-sky related entities",
-    "眼骨/星空拥有更高的血量、防御，不易被摧毁",
+    "眼骨/星空拥有更高的血量、防御，更快的速度，不易被摧毁",
     "Eye-bone/Star-sky entities have higher health and defense, making them harder to destroy",
     "眼骨/星空保持原版属性不变",
     "Eye-bone/Star-sky entities retain their original attributes"
@@ -127,7 +128,7 @@ configuration_options = {
     "不改变带孔月岩",
     "No change to moonrockcrater"
   ),
-  -- 紫色月眼开关宠物格子功能配置
+  -- 各色月眼开关宠物格子功能配置
   addConfig(
     "colormooneye_toggle",
     "各色月眼开关格子",
@@ -153,4 +154,19 @@ configuration_options = {
     "禁用眼骨/星空交易功能",
     "Disables item exchange By Eye-bone/Star-sky"
   ),
+  addTitle("Auto Collect Settings", "自动收集设置"),
+  -- 眼骨/星空自动收集范围配置
+  {
+    name = "auto_get_range",
+    label = en_zh("Eye-bone/Star-sky Auto Collect Range", "眼骨/星空自动收集范围"),
+    hover = en_zh("How far you can Eye-bone/Star-sky Auto Collect", "眼骨/星空可以自动收集多远"),
+    options = {
+      { description = "0", data = 0, hover = en_zh("No Auto Collect", "不自动采集") },
+      { description = "6", data = 6.6, hover = en_zh("One and A Half Turfs Radius", "1.5个地皮远") },
+      { description = "10", data = 10.6, hover = en_zh("2.5 * Turfs Radius", "2.5个地皮远") },
+      { description = "16", data = 16.6, hover = en_zh("4 * Turfs Radius", "4个地皮远") },
+      { description = "20", data = 20.6, hover = en_zh("5 * Turfs Radius", "5个地皮那么远") },
+    },
+    default = 6.6
+  },
 }

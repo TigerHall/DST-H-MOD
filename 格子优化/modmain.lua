@@ -15,6 +15,7 @@ local config = {
   colormooneye_toggle = GetModConfigData("colormooneye_toggle"),
   -- 眼骨/星空配置
   item_trade_function = GetModConfigData("item_trade_function"),
+  auto_get_range = GetModConfigData("auto_get_range"),
 }
 
 -- 实体/特效引用
@@ -22,12 +23,21 @@ PrefabFiles = {
   "hslot_container",
 }
 
+-- 注册动画资源（放在 modmain.lua 开头）
+Assets = {
+  -- 加载自定义UI动画包
+  -- Asset("ANIM", "anim/ui_boat_ancient_4x4.zip"),
+}
+
+
 -- 物品交换映射表（简化：直接定义核心映射关系）
 local TRADE_MAPPING = {
   ["opalpreciousgem"] = "alterguardianhatshard",
   ["dreadstone"] = "opalpreciousgem",
   ["boneshard"] = "houndstooth",
   ["walrus_tusk"] = "klaussackkey",
+  ["dragon_scales"] = "ancienttree_seed",
+  ["treegrowthsolution"] = "monkey_mediumhat",
 }
 
 -- 简化版交易成功回调：核心逻辑保留，精简冗余判断和注释
@@ -72,6 +82,54 @@ local function AddTradeComponent(inst)
   inst.components.trader.onaccept = OnGivenItem
 end
 
+-- 定义自动收集函数
+local function AutoCollectItems(inst)
+  local collect_range = config.auto_get_range or 6.6
+  -- 查找眼骨周围6.6单位内的可拾取物品
+  local x, y, z = inst.Transform:GetWorldPosition()
+  local items = TheSim:FindEntities(x, y, z, collect_range,
+    { "_inventoryitem" },                                                           -- 包含标签
+    { "INLIMBO", "NOCLICK", "catchable", "fire", "irreplaceable", "donotautopick" } -- 排除标签
+  )
+
+  -- 标记是否成功收集了物品（用于控制特效只显示一次）
+  local has_collected = false
+
+  if #items > 0 then
+    -- 获取兔洞容器
+    local rabbit_container = TheWorld:GetPocketDimensionContainer("rabbitkinghorn")
+    if rabbit_container and rabbit_container.components.container then
+      local container = rabbit_container.components.container
+
+      -- 尝试将物品放入容器
+      for _, item in ipairs(items) do
+        -- 校验条件：物品有效 + 未被持有 + 容器有空间
+        if item:IsValid()
+            and not item.components.inventoryitem:IsHeld()
+            and item.prefab ~= "cane"
+            and container:CanAcceptCount(item, 1) > 0 then
+          container:GiveItem(item)
+          has_collected = true -- 只要收集到一个物品就标记为true
+        end
+      end
+
+      -- 特效生成函数（封装复用）
+      local function spawn_fx(name, scale, pos)
+        local fx = SpawnPrefab(name)
+        if fx then                                  -- 增加空值校验，避免报错
+          fx.Transform:SetScale(scale, scale, scale)
+          fx.Transform:SetPosition(pos.x, 0, pos.z) -- Y轴设为地面高度
+        end
+      end
+
+      -- 只有成功收集到物品时，才显示一次特效
+      if has_collected then
+        spawn_fx("carnival_streamer_fx", 0.66, inst:GetPosition())
+      end
+    end
+  end
+end
+
 -- 眼骨
 AddPrefabPostInit("chester_eyebone", function(inst)
   if not TheWorld.ismastersim then
@@ -80,6 +138,10 @@ AddPrefabPostInit("chester_eyebone", function(inst)
   if config.item_trade_function then
     AddTradeComponent(inst)
     inst:AddTag("NOBLOCK")
+  end
+  -- 启动定时收集任务（每隔1.6秒执行一次）
+  if config.auto_get_range > 0 then
+    inst:DoPeriodicTask(1.6, AutoCollectItems)
   end
 end)
 
@@ -91,6 +153,10 @@ AddPrefabPostInit("hutch_fishbowl", function(inst)
   if config.item_trade_function then
     AddTradeComponent(inst)
     inst:AddTag("NOBLOCK")
+  end
+  -- 启动定时收集任务（每隔1.6秒执行一次）
+  if config.auto_get_range > 0 then
+    inst:DoPeriodicTask(1.6, AutoCollectItems)
   end
 end)
 
@@ -166,6 +232,10 @@ AddPrefabPostInit("chester", function(inst)
       inst.components.health:StartRegen(66, 6)
       inst.components.health:SetAbsorptionAmount(0.66)
     end
+    if inst.components.locomotor then
+      inst.components.locomotor.walkspeed = 10
+      inst.components.locomotor.runspeed = 10
+    end
   end
 end)
 
@@ -191,116 +261,189 @@ AddPrefabPostInit("hutch", function(inst)
       inst.components.health:StartRegen(66, 6)
       inst.components.health:SetAbsorptionAmount(0.66)
     end
+    if inst.components.locomotor then
+      inst.components.locomotor.walkspeed = 10
+      inst.components.locomotor.runspeed = 10
+    end
   end
 end)
 
--- 带孔月岩传送
+-- 通用月眼传送函数（支持传入多个目标，仅传送到第一个有效目标）
+local function GenericMoonEyeTeleport(inst, viewer, target_prefabs)
+  -- 1. 基础有效性验证
+  if not viewer or not viewer:IsValid() or not viewer:HasTag("player") then
+    return
+  end
+  -- 验证目标列表有效性
+  if not target_prefabs or type(target_prefabs) ~= "table" or #target_prefabs == 0 then
+    if viewer.components.talker then
+      viewer.components.talker:Say("󰀯") -- 无传送目标提示
+    end
+    return
+  end
+
+  -- 2. 搜索目标实体（仅取第一个有效目标）
+  local target = nil
+  for _, prefab in ipairs(target_prefabs) do
+    local entities = TheSim:FindEntities(0, 0, 0, 9999, { prefab })
+    if #entities > 0 and entities[1]:IsValid() then
+      target = entities[1]
+      break -- 找到第一个有效目标后立即退出循环
+    end
+  end
+
+  -- 3. 初始化激活状态（防止重复触发）
+  if inst._is_teleport_activated == nil then
+    inst._is_teleport_activated = false
+  end
+
+  -- 4. 清理任务的通用方法
+  local function ClearAllTasks()
+    if inst._teleport_task ~= nil then
+      inst._teleport_task:Cancel()
+      inst._teleport_task = nil
+    end
+    if inst._talk_task ~= nil then
+      inst._talk_task:Cancel()
+      inst._talk_task = nil
+    end
+    inst._is_teleport_activated = false
+  end
+
+  -- 5. 防止重复触发
+  if inst._is_teleport_activated then
+    ClearAllTasks()
+    return
+  else
+    ClearAllTasks()
+    inst._is_teleport_activated = true
+  end
+
+  -- 6. 执行传送逻辑
+  if target then
+    -- 玩家说话动画
+    inst._talk_task = inst:DoTaskInTime(0.6, function()
+      if viewer.components.talker then
+        viewer.components.talker:Say("󰀏󰀏󰀏󰀃")
+        inst._talk_task = inst:DoTaskInTime(1.0, function()
+          viewer.components.talker:Say("󰀏󰀏󰀃")
+          inst._talk_task = inst:DoTaskInTime(1.0, function()
+            viewer.components.talker:Say("󰀏󰀃")
+          end)
+        end)
+      end
+    end)
+
+    -- 延时传送
+    inst._teleport_task = inst:DoTaskInTime(3.6, function()
+      if viewer and viewer:IsValid() and target and target:IsValid() then
+        local x, y, z = target.Transform:GetWorldPosition()
+        if viewer.components.talker then
+          viewer.components.talker:Say("󰀃")
+        end
+        -- 执行传送
+        if viewer.Physics then
+          viewer.Physics:Teleport(x, y, z)
+        else
+          viewer.Transform:SetPosition(x, y, z)
+        end
+      end
+      ClearAllTasks()
+    end)
+  else
+    -- 未找到任何目标的提示
+    inst._talk_task = inst:DoTaskInTime(0.6, function()
+      if viewer.components.talker then
+        viewer.components.talker:Say("󰀯")
+      end
+      ClearAllTasks()
+    end)
+  end
+end
+
+-- 带孔月岩传送眼骨/星空
 AddPrefabPostInit("moonrockcrater", function(inst)
   -- 仅在服务端执行
   if not TheWorld.ismastersim then return inst end
+  -- 开启传送功能（可通过配置控制）
+  if config.moonrockcrater_teleport then
+    -- 劫持检查组件的GetDescription方法
+    local old_GetDescription = inst.components.inspectable.GetDescription
+    inst.components.inspectable.GetDescription = function(self, viewer)
+      -- 触发传送：传入当前月眼、玩家、黄色月眼的目标（眼骨/星空）
+      if viewer and viewer:HasTag("player") and viewer:IsValid() then
+        GenericMoonEyeTeleport(inst, viewer, { "chester_eyebone", "hutch_fishbowl" })
+      end
+      -- 执行原版检查逻辑
+      return old_GetDescription(self, viewer)
+    end
+  end
+end)
+
+-- 黄色月眼传送：月台/中庭柱子
+AddPrefabPostInit("yellowmooneye", function(inst)
+  if not TheWorld.ismastersim then
+    return inst
+  end
+  -- 开启传送功能（可通过配置控制）
+  if config.moonrockcrater_teleport then
+    -- 劫持检查组件的GetDescription方法
+    local old_GetDescription = inst.components.inspectable.GetDescription
+    inst.components.inspectable.GetDescription = function(self, viewer)
+      if viewer and viewer:HasTag("player") and viewer:IsValid() then
+        GenericMoonEyeTeleport(inst, viewer, { "moonbase", "pillar_atrium" })
+      end
+      -- 执行原版检查逻辑
+      return old_GetDescription(self, viewer)
+    end
+  end
+end)
+
+-- 橙色月眼传送 宠物巢穴/梦魇疯猪
+AddPrefabPostInit("orangemooneye", function(inst)
+  -- 仅在服务端执行
+  if not TheWorld.ismastersim then
+    return inst
+  end
 
   -- 开启传送功能
   if config.moonrockcrater_teleport then
-    -- . 定义传送核心函数
-    local function DoTeleport(viewer)
-      -- 验证玩家有效性
-      if not viewer or not viewer:IsValid() or not viewer:HasTag("player") then
-        return
-      end
-      -- 搜索目标：眼骨/星空
-      local target = nil
-      local targetPrefabs = { "chester_eyebone", "hutch_fishbowl" }
-      for _, prefab in ipairs(targetPrefabs) do
-        local entities = TheSim:FindEntities(0, 0, 0, 9999, { prefab })
-        if #entities > 0 and entities[1]:IsValid() then
-          target = entities[1]
-          break
-        end
-      end
-
-      -- 初始化激活状态标识（若未初始化）
-      if inst._is_teleport_activated == nil then
-        inst._is_teleport_activated = false
-      end
-
-      -- 延迟执行传送（添加任务标识，避免重复触发）
-      local function ClearAllTasks()
-        if inst._teleport_task ~= nil then
-          inst._teleport_task:Cancel()
-        end
-        if inst._talk_task ~= nil then
-          inst._talk_task:Cancel()
-        end
-        -- 重置激活状态
-        inst._is_teleport_activated = false
-      end
-      if inst._is_teleport_activated then
-        -- 当前处于激活状态，直接清理所有任务并返回
-        ClearAllTasks()
-        return
-      else
-        -- 当前未激活，先清理残留任务（保险），再标记为激活状态
-        ClearAllTasks()
-        inst._is_teleport_activated = true
-      end
-      -- 执行传送逻辑
-      if target then
-        -- 先让玩家说话
-        inst._talk_task = inst:DoTaskInTime(0.6, function()
-          if viewer.components.talker then
-            viewer.components.talker:Say("󰀏󰀏󰀏󰀃")
-            inst._talk_task = inst:DoTaskInTime(1.0, function()
-              viewer.components.talker:Say("󰀏󰀏󰀃")
-              inst._talk_task = inst:DoTaskInTime(1.0, function()
-                viewer.components.talker:Say("󰀏󰀃")
-              end)
-            end)
-          end
-        end)
-
-        -- 延时传送玩家到目标位置
-        inst._teleport_task = inst:DoTaskInTime(3.6, function()
-          -- 再次验证玩家和目标的有效性（防止延迟期间对象被销毁）
-          if viewer and viewer:IsValid() and target and target:IsValid() then
-            local x, y, z = target.Transform:GetWorldPosition()
-            if viewer.components.talker then
-              viewer.components.talker:Say("󰀃")
-            end
-            if viewer.Physics then
-              viewer.Physics:Teleport(x, y, z)
-            else
-              viewer.Transform:SetPosition(x, y, z)
-            end
-          end
-          -- 传送完成后清理任务并重置状态
-          ClearAllTasks()
-        end)
-      else
-        inst._talk_task = inst:DoTaskInTime(0.6, function()
-          if viewer.components.talker then
-            viewer.components.talker:Say("󰀯")
-          end
-          -- 提示后清理任务并重置状态
-          ClearAllTasks()
-        end)
-      end
-    end
-
-    -- 3. 劫持检查组件的GetDescription方法（核心）
+    -- 劫持检查组件的GetDescription方法
     local old_GetDescription = inst.components.inspectable.GetDescription
     inst.components.inspectable.GetDescription = function(self, viewer)
-      -- 执行传送逻辑（仅当玩家点击/右键检查时触发，悬停不触发）
       if viewer and viewer:HasTag("player") and viewer:IsValid() then
-        DoTeleport(viewer)
+        GenericMoonEyeTeleport(inst, viewer, { "critterlab", "daywalker_pillar", "daywalker" })
       end
-      -- 执行原版的检查描述逻辑
+      -- 执行原版检查逻辑
+      return old_GetDescription(self, viewer)
+    end
+  end
+end)
+
+-- 紫色月眼传送 猪王/远古守护者
+AddPrefabPostInit("purplemooneye", function(inst)
+  -- 仅在服务端执行
+  if not TheWorld.ismastersim then
+    return inst
+  end
+
+  -- 开启传送功能
+  if config.moonrockcrater_teleport then
+    -- 劫持检查组件的GetDescription方法
+    local old_GetDescription = inst.components.inspectable.GetDescription
+    inst.components.inspectable.GetDescription = function(self, viewer)
+      if viewer and viewer:HasTag("player") and viewer:IsValid() then
+        GenericMoonEyeTeleport(inst, viewer,
+          { "glommerflower", "statueglommer", "minotaur", "pillar_ruins", "insanityrock", "sanityrock", })
+      end
+      -- 执行原版检查逻辑
       return old_GetDescription(self, viewer)
     end
   end
 end)
 
 -- 共享空间设置
--- 兔洞格子相关修改
+-- 兔洞格子相关修改（反鲜）
 AddPrefabPostInit("rabbitkinghorn_container", function(inst)
   if not TheWorld.ismastersim then
     return inst
@@ -318,7 +461,7 @@ AddPrefabPostInit("rabbitkinghorn_container", function(inst)
   end
 end)
 
--- 修改暗影格子属性
+-- 修改暗影格子属性（腐败）
 AddPrefabPostInit("shadow_container", function(inst)
   -- 只在主机端执行修改
   if not TheWorld.ismastersim then
@@ -362,6 +505,7 @@ local function TogglePocketDimensionChest(viewer, container_key)
     container:Open(viewer)
   end
 end
+
 -- 绿色月眼打开兔洞格子
 AddPrefabPostInit("greenmooneye", function(inst)
   if not TheWorld.ismastersim then
@@ -392,9 +536,17 @@ AddPrefabPostInit("redmooneye", function(inst)
   end
 end)
 
--- 黄色月眼：打开自制格子（未完成）
-AddPrefabPostInit("yellowmooneye", function(inst)
+-- 蓝色月眼打开自制格子（未完成）
+AddPrefabPostInit("bluemooneye", function(inst)
   if not TheWorld.ismastersim then
     return inst
   end
+  -- 劫持检查方法，调用通用抽象函数
+  -- local old_GetDescription = inst.components.inspectable.GetDescription
+  -- inst.components.inspectable.GetDescription = function(self, viewer)
+  --   if config.colormooneye_toggle then
+  --     TogglePocketDimensionChest(viewer, "hslot")
+  --   end
+  --   return old_GetDescription(self, viewer)
+  -- end
 end)
