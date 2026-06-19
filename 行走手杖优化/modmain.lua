@@ -549,6 +549,84 @@ AddPrefabPostInit("cane", function(inst)
     end
   end
 
+  -- 手杖呼吸染色效果（跑马灯版）
+  local BREATH_SPEED = 1.2            -- 呼吸周期（秒，越小呼吸越快）
+  local BREATH_INTENSITY = 0.45       -- 呼吸强度（0~0.5，越大颜色越鲜艳）
+  local COLOR_CYCLE_SPEED = 3.0       -- 颜色跑马灯周期（秒，越小颜色变化越快）
+  local cane_tint_task = nil          -- 呼吸定时器
+  local cane_tint_time = 0            -- 呼吸计时器
+
+  local function HueToRGB(hue)
+    local r = (math.sin(hue) + 1) / 2
+    local g = (math.sin(hue + 2.094) + 1) / 2
+    local b = (math.sin(hue + 4.189) + 1) / 2
+    return r, g, b
+  end
+
+  local function StopCaneBreathTint()
+    if cane_tint_task then
+      cane_tint_task:Cancel()
+      cane_tint_task = nil
+    end
+    cane_tint_time = 0
+    -- 清除实体染色
+    if inst.AnimState then
+      inst.AnimState:SetAddColour(0, 0, 0, 0)
+    end
+    -- 清除玩家装备染色
+    local owner_t = inst.components.inventoryitem and inst.components.inventoryitem:GetGrandOwner()
+    if owner_t and owner_t:HasTag("player") and owner_t.AnimState then
+      owner_t.AnimState:SetSymbolMultColour("swap_object", 1, 1, 1, 1)
+      owner_t.AnimState:SetSymbolAddColour("swap_object", 0, 0, 0, 0)
+    end
+  end
+
+  local function StartCaneBreathTint()
+    StopCaneBreathTint()
+    cane_tint_time = 0
+    cane_tint_task = inst:DoPeriodicTask(0.05, function()  -- 每0.05秒更新一次，让呼吸平滑
+      cane_tint_time = cane_tint_time + 0.05
+
+      -- 呼吸强度：0 → 1 → 0 平滑变化
+      local phase = (math.sin(cane_tint_time * 2 * math.pi / BREATH_SPEED) + 1) / 2
+      local intensity = phase * BREATH_INTENSITY
+
+      -- 跑马灯色相：随时间循环
+      local hue = cane_tint_time * 2 * math.pi / COLOR_CYCLE_SPEED
+      local cr, cg, cb = HueToRGB(hue)
+
+      -- 1. 手杖实体染色（地上/背包里）→ 彩色发光呼吸
+      if inst.AnimState then
+        inst.AnimState:SetAddColour(cr * intensity, cg * intensity, cb * intensity, 0)
+      end
+
+      -- 2. 玩家手持染色（装备栏 swap_object 符号）
+      local owner_t2 = inst.components.inventoryitem and inst.components.inventoryitem:GetGrandOwner()
+      if owner_t2 and owner_t2:HasTag("player") and owner_t2.AnimState then
+        -- MultColour：模型本身轻微偏色（1-intensity*0.2 到 1 之间变化，按当前色相偏转）
+        local cm = 1 - intensity * 0.25
+        local mr = 1 - (1 - cr) * intensity * 0.25
+        local mg = 1 - (1 - cg) * intensity * 0.25
+        local mb = 1 - (1 - cb) * intensity * 0.25
+        owner_t2.AnimState:SetSymbolMultColour("swap_object", mr, mg, mb, 1)
+
+        -- AddColour：彩色发光叠加层
+        local glow_intensity = intensity * 0.8
+        if cr + cg + cb > 0.01 then
+          owner_t2.AnimState:SetSymbolAddColour("swap_object", cr * glow_intensity, cg * glow_intensity, cb * glow_intensity, 0)
+        end
+      end
+    end)
+  end
+
+  local function UpdateCaneTint()
+    if inst.all_active then
+      StartCaneBreathTint()
+    else
+      StopCaneBreathTint()
+    end
+  end
+
   -- 统一更新所有功能
   local function UpdateAllFeatures()
     UpdateToolState()
@@ -556,6 +634,8 @@ AddPrefabPostInit("cane", function(inst)
     UpdateAutoFarm()
     -- 光效
     UpdateLightFX()
+    -- 手杖呼吸染色
+    UpdateCaneTint()
   end
 
 
@@ -1516,6 +1596,11 @@ AddPrefabPostInit("cane", function(inst)
         if inst.components.blinkstaff then
           inst:RemoveComponent("blinkstaff")
         end
+        -- 手杖呼吸染色清理（防止遗留在玩家身上）
+        if doer.AnimState then
+          doer.AnimState:SetSymbolMultColour("swap_object", 1, 1, 1, 1)
+          doer.AnimState:SetSymbolAddColour("swap_object", 0, 0, 0, 0)
+        end
         -- 右键状态
         if config.multi_tool_state_save then
           -- 卸下时同步所有右键控制功能状态
@@ -1554,6 +1639,12 @@ AddPrefabPostInit("cane", function(inst)
       doer._original_maxhealth = nil
       doer._original_maxhunger = nil
       doer._original_maxsanity = nil
+      -- 手杖呼吸染色清理（掉落时清除玩家身上的染色）
+      StopCaneBreathTint()
+      if doer.AnimState then
+        doer.AnimState:SetSymbolMultColour("swap_object", 1, 1, 1, 1)
+        doer.AnimState:SetSymbolAddColour("swap_object", 0, 0, 0, 0)
+      end
       -- 伤害恢复
       inst._damage_mult = 1
       inst._planardamage_mult = 1
@@ -1571,6 +1662,8 @@ AddPrefabPostInit("cane", function(inst)
     if auto_work_task then
       auto_work_task:Cancel()
     end
+    -- 呼吸染色清理
+    StopCaneBreathTint()
     -- 光效清理
     if inst.light_fx then
       inst.light_fx:Remove()
