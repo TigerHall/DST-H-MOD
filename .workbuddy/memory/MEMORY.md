@@ -15,3 +15,9 @@
 - 用 `local config = { ... }` 统一读取配置
 - 中文注释标注每个功能块
 - 所有定时任务在 `onremove` 事件中清理
+
+### 配置项规范
+- 所有 MOD 的配置项有且仅有两种类型：
+  1. **是否选项（Boolean）**：使用 `addConfig()` 辅助函数，生成 On/Off 两个选项
+  2. **多选项（Multi-option）**：在 `configuration_options` 中直接写 `options = { ... }` 数组，自行指定 `default`
+- 任何配置修改后必须更新 `version`

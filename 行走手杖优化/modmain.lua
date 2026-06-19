@@ -27,6 +27,7 @@ local config = {
   auto_work_range = GetModConfigData("auto_work_range"),
   auto_farm_range = GetModConfigData("auto_farm_range"),
   enable_light_fx = GetModConfigData("enable_light_fx"),
+  fx_particle_type = GetModConfigData("fx_particle_type"),
   enable_tool_toggle_icon = GetModConfigData("enable_tool_toggle_icon"),
   enable_tool_toggle_rename = GetModConfigData("enable_tool_toggle_rename"),
   -- 常驻功能配置项
@@ -50,7 +51,8 @@ TUNING.hcanelight = GetModConfigData("hcane_light")
 -- 实体/特效引用
 PrefabFiles = {
   "hehu_light",
-  "cane_hh_fx"
+  "cane_hh_fx",
+  "cane_shadow_fx"
 }
 
 -- 注册动画资源（放在 modmain.lua 开头）
@@ -527,19 +529,36 @@ AddPrefabPostInit("cane", function(inst)
     end
   end
 
-  -- 光特效更新函数
+  -- 呼吸灯效果更新函数（由 enable_light_fx 控制）
   local function UpdateLightFX()
-    if not config.enable_light_fx then
-      if inst.light_fx then
-        inst.light_fx:Remove()
-        inst.light_fx = nil
-      end
-      return
-    end
-    if inst.all_active then
-      if not inst.light_fx then
-        inst.light_fx = SpawnPrefab("cane_hh_fx")
-        inst.light_fx.entity:SetParent(inst.entity)
+    -- 此函数已废弃，呼吸灯效果由 UpdateCaneTint() 处理
+    -- 保留空函数避免调用报错
+  end
+
+  -- 粒子特效更新函数（由 fx_particle_type 多选项控制）
+  local PARTICLE_PREFABS = {
+    sparkle = "cane_hh_fx",
+    shadow = "cane_shadow_fx",
+  }
+
+  local function GetParticlePrefabName()
+    return PARTICLE_PREFABS[config.fx_particle_type] or "cane_hh_fx"
+  end
+
+  local function UpdateParticleFX()
+    if inst.all_active and config.fx_particle_type ~= "none" then
+      local prefab_name = GetParticlePrefabName()
+      if not inst.light_fx or not inst.light_fx:IsValid() or inst.light_fx.prefab ~= prefab_name then
+        -- 移除旧粒子
+        if inst.light_fx then
+          inst.light_fx:Remove()
+          inst.light_fx = nil
+        end
+        -- 生成新粒子
+        inst.light_fx = SpawnPrefab(prefab_name)
+        if inst.light_fx then
+          inst.light_fx.entity:SetParent(inst.entity)
+        end
       end
     else
       if inst.light_fx then
@@ -550,11 +569,11 @@ AddPrefabPostInit("cane", function(inst)
   end
 
   -- 手杖呼吸染色效果（跑马灯版）
-  local BREATH_SPEED = 1.2            -- 呼吸周期（秒，越小呼吸越快）
-  local BREATH_INTENSITY = 0.45       -- 呼吸强度（0~0.5，越大颜色越鲜艳）
-  local COLOR_CYCLE_SPEED = 3.0       -- 颜色跑马灯周期（秒，越小颜色变化越快）
-  local cane_tint_task = nil          -- 呼吸定时器
-  local cane_tint_time = 0            -- 呼吸计时器
+  local BREATH_SPEED = 1.2      -- 呼吸周期（秒，越小呼吸越快）
+  local BREATH_INTENSITY = 0.45 -- 呼吸强度（0~0.5，越大颜色越鲜艳）
+  local COLOR_CYCLE_SPEED = 3.0 -- 颜色跑马灯周期（秒，越小颜色变化越快）
+  local cane_tint_task = nil    -- 呼吸定时器
+  local cane_tint_time = 0      -- 呼吸计时器
 
   local function HueToRGB(hue)
     local r = (math.sin(hue) + 1) / 2
@@ -584,7 +603,7 @@ AddPrefabPostInit("cane", function(inst)
   local function StartCaneBreathTint()
     StopCaneBreathTint()
     cane_tint_time = 0
-    cane_tint_task = inst:DoPeriodicTask(0.05, function()  -- 每0.05秒更新一次，让呼吸平滑
+    cane_tint_task = inst:DoPeriodicTask(0.05, function() -- 每0.05秒更新一次，让呼吸平滑
       cane_tint_time = cane_tint_time + 0.05
 
       -- 呼吸强度：0 → 1 → 0 平滑变化
@@ -613,14 +632,15 @@ AddPrefabPostInit("cane", function(inst)
         -- AddColour：彩色发光叠加层
         local glow_intensity = intensity * 0.8
         if cr + cg + cb > 0.01 then
-          owner_t2.AnimState:SetSymbolAddColour("swap_object", cr * glow_intensity, cg * glow_intensity, cb * glow_intensity, 0)
+          owner_t2.AnimState:SetSymbolAddColour("swap_object", cr * glow_intensity, cg * glow_intensity,
+            cb * glow_intensity, 0)
         end
       end
     end)
   end
 
   local function UpdateCaneTint()
-    if inst.all_active then
+    if config.enable_light_fx and inst.all_active then
       StartCaneBreathTint()
     else
       StopCaneBreathTint()
@@ -632,8 +652,8 @@ AddPrefabPostInit("cane", function(inst)
     UpdateToolState()
     UpdateAutoHarvest()
     UpdateAutoFarm()
-    -- 光效
-    UpdateLightFX()
+    -- 粒子特效
+    UpdateParticleFX()
     -- 手杖呼吸染色
     UpdateCaneTint()
   end
@@ -1639,12 +1659,6 @@ AddPrefabPostInit("cane", function(inst)
       doer._original_maxhealth = nil
       doer._original_maxhunger = nil
       doer._original_maxsanity = nil
-      -- 手杖呼吸染色清理（掉落时清除玩家身上的染色）
-      StopCaneBreathTint()
-      if doer.AnimState then
-        doer.AnimState:SetSymbolMultColour("swap_object", 1, 1, 1, 1)
-        doer.AnimState:SetSymbolAddColour("swap_object", 0, 0, 0, 0)
-      end
       -- 伤害恢复
       inst._damage_mult = 1
       inst._planardamage_mult = 1

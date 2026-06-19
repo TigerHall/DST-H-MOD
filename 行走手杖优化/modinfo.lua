@@ -49,7 +49,7 @@ end
 
 --  基础信息
 name = L and "H-Cane Enhancement" or "H-手杖强化"
-version = "3.4"
+version = "3.5"
 description =
     L and
     ("V" .. version .. "\n\n" .. "All features can be turned on or off in the configuration options.\n\nEnhance your walking cane with features including custom movement speed bonuses, damage values (including planar damage values),Ramping Damage, ranged attacks and area-of-effect attacks, life leech (including restoring hunger and sanity), glowing (only when dropped on the ground), preventing being knocked off by bosses, being revivable via haunting, and being theft-proof, etc.\n\nIt also supports various multi-functional tool features, including axe, pickaxe, shovel (with customizable tool efficiency), hammer, circular harvesting, and other multi-functional tools. It can automatically pick harvestable crops around the player. It also features automatic tilling. The multi-functional tool features and light effect function of the cane can be turned off/on by right-clicking.\n\nIn addition, there are permanent features such as watering can, oar, freshwater fishing rod, brush, and razor (with a separate setting switch).\n\nYou can set to craft walrus ivory at the Alchemy Engine (1 bone and 2 fangs) or make walruses drop an extra walrus ivory. It can also resist lightning, rain, and maintain a constant temperature.\n\nYou can place seeds in the character's last inventory slot (the 15th one, closest to the equipment slot), and they will be sown automatically. You can also place gems, sand stones, bear skins (be careful of home destruction), etc., each of which has different abilities. But all abilities come with a hunger cost") or
@@ -303,16 +303,45 @@ configuration_options = {
   ),
   addConfig(
     "enable_light_fx",
-    "光特效",
-    "Enable Light Effect",
+    "呼吸灯特效",
+    "Enable Breathing Light",
     true,
-    "控制是否显示手杖的光特效",
-    "Control whether to display the cane's light effect",
-    "开启后将显示手杖的光特效",
-    "Enables the cane's following light effect when turned on",
-    "关闭后不再显示手杖的光特效",
-    "Disables the cane's light effect when turned off"
+    "控制手杖开启多功能时是否有彩色呼吸灯效果",
+    "Control whether the cane shows a colorful breathing light effect when multi-function is on",
+    "开启后手杖会有彩色呼吸灯效果",
+    "Enables colorful breathing light effect on the cane",
+    "关闭后手杖无呼吸灯效果",
+    "Disables the breathing light effect on the cane"
   ),
+  -- 粒子特效类型（多选项）
+  {
+    name = "fx_particle_type",
+    label = L and "Particle Effect Type" or "粒子特效类型",
+    hover = L and "Select the particle effect type when multi-function is on" or "选择手杖多功能开启时的粒子特效类型",
+    options = {
+      {
+        description = L and "Disabled" or "关闭",
+        data = "none",
+        hover = L and "No particle effects" or "不显示任何粒子特效"
+      },
+      {
+        description = L and "Sparkle Particles" or "闪光粒子",
+        data = "sparkle",
+        hover = L and "Original green sparkle particle effect" or "原本的绿色闪光粒子效果"
+      },
+      {
+        description = L and "Shadow Particles" or "暗影粒子",
+        data = "shadow",
+        hover = L and "Original green sparkle particle effect" or "原本的绿色闪光粒子效果"
+      },
+      {
+        description = L and "Shadow Particles" or "暗影粒子",
+        data = "shadow",
+        hover = L and "Shadowy purple particle effect inspired by Alarming Clock" or "暗紫色暗影粒子效果，灵感来自Alarming Clock"
+      },
+    },
+    default = "sparkle"
+  },
   addConfig(
     "enable_tool_toggle_icon",
     "切换图标",
