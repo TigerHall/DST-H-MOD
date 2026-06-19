@@ -1,0 +1,43 @@
+{
+    // Lua 运行时版本
+    "Lua.runtime.version": "Lua 5.1",
+
+    // 不要引用任何外部库，只在游戏里测试
+    "Lua.workspace.library": [],
+
+    // 全局关闭 LLS 的代码检查（靠游戏实测，不靠静态检查）
+    "Lua.diagnostics.disable": [
+        "unused-local",
+        "unused-function",
+        "unused-vararg",
+        "param-type-mismatch",
+        "redefined-local",
+        "lowercase-global",
+        "assign-type-mismatch",
+        "missing-parameter",
+        "need-check-nil",
+        "codestyle-check"
+    ],
+    "Lua.workspace.ignoreDir": [
+        "参考代码",
+        ".git",
+        ".vscode"
+    ],
+    "Lua.workspace.preloadFileSize": 500,
+
+    // 编辑器排除：只隐藏 .git
+    "search.exclude": {
+        "**/.git": true
+    },
+
+    // DST 全局变量白名单：GLOBAL 视为 _G，不报未定义
+    "Lua.runtime.special": {
+        "GLOBAL": "_G"
+    },
+    "Lua.runtime.builtin": {
+        "basic": "enable",
+        "table": "enable",
+        "string": "enable",
+        "math": "enable"
+    }
+}
