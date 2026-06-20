@@ -16,8 +16,11 @@
         "assign-type-mismatch",
         "missing-parameter",
         "need-check-nil",
-        "codestyle-check"
+        "codestyle-check",
+        "undefined-global"
     ],
+    // DST MOD 全局变量（关闭了 undefined-global 诊断后，以下配置可选）
+    "Lua.diagnostics.globals": [],
     "Lua.workspace.ignoreDir": [
         "参考代码",
         ".git",
