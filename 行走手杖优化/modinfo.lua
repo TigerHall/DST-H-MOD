@@ -49,7 +49,7 @@ end
 
 --  基础信息
 name = L and "H-Cane Enhancement" or "H-手杖强化"
-version = "3.5"
+version = "3.6"
 description =
     L and
     ("V" .. version .. "\n\n" .. "All features can be turned on or off in the configuration options.\n\nEnhance your walking cane with features including custom movement speed bonuses, damage values (including planar damage values),Ramping Damage, ranged attacks and area-of-effect attacks, life leech (including restoring hunger and sanity), glowing (only when dropped on the ground), preventing being knocked off by bosses, being revivable via haunting, and being theft-proof, etc.\n\nIt also supports various multi-functional tool features, including axe, pickaxe, shovel (with customizable tool efficiency), hammer, circular harvesting, and other multi-functional tools. It can automatically pick harvestable crops around the player. It also features automatic tilling. The multi-functional tool features and light effect function of the cane can be turned off/on by right-clicking.\n\nIn addition, there are permanent features such as watering can, oar, freshwater fishing rod, brush, and razor (with a separate setting switch).\n\nYou can set to craft walrus ivory at the Alchemy Engine (1 bone and 2 fangs) or make walruses drop an extra walrus ivory. It can also resist lightning, rain, and maintain a constant temperature.\n\nYou can place seeds in the character's last inventory slot (the 15th one, closest to the equipment slot), and they will be sown automatically. You can also place gems, sand stones, bear skins (be careful of home destruction), etc., each of which has different abilities. But all abilities come with a hunger cost") or
@@ -358,7 +358,7 @@ configuration_options = {
     "enable_tool_toggle_rename",
     "更改名称",
     "Sync Name When Toggling Tools",
-    true,
+    false,
     "右键切换工具功能时同步更改手杖的名称",
     "Whether to sync the display name of the cane when right-click toggling tool functions",
     "启用后切换工具功能时会自动修改手杖名称为对应功能名称",
@@ -504,6 +504,19 @@ configuration_options = {
     "Can be used as a razor when enabled",
     "关闭后无法作为剃刀使用",
     "Cannot be used as a razor when disabled"
+  ),
+  -- 锄头配置项
+  addConfig(
+    "enable_hoe",
+    "锄头功能",
+    "Hoe Function",
+    true,
+    "控制是否启用锄头功能（可耕作土地）",
+    "Control whether to enable the hoe function (can till soil)",
+    "开启后可作为锄头使用，右键耕地",
+    "Can be used as a hoe for tilling when enabled",
+    "关闭后无法作为锄头使用",
+    "Cannot be used as a hoe when disabled"
   ),
 
   -- 其他配置项

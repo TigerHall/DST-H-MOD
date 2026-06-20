@@ -35,6 +35,7 @@ local config = {
   enable_paddling = GetModConfigData("enable_paddling"),
   enable_fishingrod = GetModConfigData("enable_fishingrod"),
   enable_brush = GetModConfigData("enable_brush"),
+  enable_hoe = GetModConfigData("enable_hoe"),
   enable_razor = GetModConfigData("enable_razor"),
   -- 其他配置项
   anti_lose = GetModConfigData("anti_lose_enable"),
@@ -152,6 +153,21 @@ AddPrefabPostInit("cane", function(inst)
           fx.Transform:SetPosition(x, y, z)
           fx.Transform:SetScale(0.8, 0.8, 0.8)
         end
+        -- 作祟复活后恢复三维（饥饿、血量、理智）到满值（百分比回复）
+        -- 使用2.5秒延迟确保复活动画完全结束后才恢复，避免被动画覆盖
+        inst:DoTaskInTime(2.5, function()
+          if haunter and haunter:IsValid() and not haunter:HasTag("playerghost") then
+            if haunter.components.health ~= nil and not haunter.components.health:IsDead() then
+              haunter.components.health:SetPercent(1)
+            end
+            if haunter.components.hunger ~= nil then
+              haunter.components.hunger:SetPercent(1)
+            end
+            if haunter.components.sanity ~= nil then
+              haunter.components.sanity:SetPercent(1)
+            end
+          end
+        end)
         return true -- 表示作祟成功
       end
       return false  -- 非玩家鬼魂作祟不处理
@@ -377,6 +393,13 @@ AddPrefabPostInit("cane", function(inst)
   -- 剃刀
   if config.enable_razor and not inst.components.shaver then
     inst:AddComponent("shaver")
+  end
+  -- 锄头功能（通过 AddInherentAction + farmtiller 组件实现，区别于传统 tool 系统）
+  if config.enable_hoe then
+    if not inst.components.farmtiller then
+      inst:AddComponent("farmtiller")
+    end
+    inst:AddInherentAction(ACTIONS.TILL)
   end
   -- 淡水钓鱼竿
   if config.enable_fishingrod and not inst.components.fishingrod then
@@ -1000,17 +1023,32 @@ AddPrefabPostInit("cane", function(inst)
       -- 1. 自身灭火（仅当燃烧时）
       if doer.components.burnable and doer.components.burnable:IsBurning() then
         doer.components.burnable:Extinguish()
-        if doer.components.inventory
-        then
+        if doer.components.inventory then
           doer.components.inventory:GiveItem(SpawnPrefab("ash"), nil, doer:GetPosition())
         end
       end
-      -- 生命回复
+      -- 范围治疗周围的友方实体（参考 spider_healer 群体治疗机制 + wortox 灵魂治疗特效）
       if math.random() < 0.16 then
-        -- 饥饿代价
         ApplyHungerCost(owner, -1.6, 0.66, inst.prefab)
-        if owner.components.health then
-          owner.components.health:DoDelta(6, false, inst.prefab)
+        local x, y, z = doer.Transform:GetWorldPosition()
+        local HEAL_RADIUS = 6
+        local ents = TheSim:FindEntities(x, y, z, HEAL_RADIUS,
+          { "_health" },
+          { "INLIMBO", "dead", "FX" }
+        )
+        for _, ent in ipairs(ents) do
+          -- 治疗范围内所有有血量的生物（包括中立目标），排除史诗级Boss和建筑/墙体
+          if ent.components.health and not ent.components.health:IsDead()
+              and not ent:HasTag("epic")
+              and not ent:HasTag("wall") and not ent:HasTag("structure") then
+            ent.components.health:DoDelta(16, false, inst.prefab)
+            -- 播放 wortox 灵魂治疗特效
+            local fx = SpawnPrefab("wortox_soul_heal_fx")
+            if fx and ent.components.combat and ent.components.combat.hiteffectsymbol then
+              fx.entity:AddFollower():FollowSymbol(ent.GUID, ent.components.combat.hiteffectsymbol, 0, -50, 0)
+              fx:Setup(ent)
+            end
+          end
         end
       end
     end
@@ -1021,17 +1059,20 @@ AddPrefabPostInit("cane", function(inst)
       -- 2. 自身解冻（仅当冻结时）
       if doer.components.freezable and doer.components.freezable:IsFrozen() then
         doer.components.freezable:Unfreeze()
-        if doer.components.inventory
-        then
+        if doer.components.inventory then
           doer.components.inventory:GiveItem(SpawnPrefab("ice"), nil, doer:GetPosition())
         end
       end
-      -- 理智回复
+      -- 自身理智恢复（10%）
       if math.random() < 0.16 then
-        -- 饥饿代价
         ApplyHungerCost(owner, -1.6, 0.66, inst.prefab)
-        if owner.components.sanity then
-          owner.components.sanity:DoDelta(6, false, inst.prefab)
+        if doer.components.sanity then
+          doer.components.sanity:DoDelta(16, false, inst.prefab)
+          -- 播放 superjump_fx 特效
+          local fx = SpawnPrefab("superjump_fx")
+          if fx then
+            fx.Transform:SetPosition(doer.Transform:GetWorldPosition())
+          end
         end
       end
     end
