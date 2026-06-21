@@ -8,7 +8,15 @@
 
 ### 目录联接 (Junction)
 - GitHub 项目与 DST 游戏 `mods/` 目录通过 `mklink /J`（或 `New-Item -ItemType Junction`）建立联接，实现修改即同步
-- 行走手杖优化 → hcane
+
+### 模块映射（用户报错前缀 → GitHub 目录名，硬链接对应）
+- `hcane`  = "行走手杖优化"
+- `hslot`  = "格子优化"
+- `hfood`  = "零食优化"
+- `htree`  = "水中木优化"
+- `htable` = "茶几优化"
+- `hpack`  = "背包优化"
+- `hh`     = "实验代码"
 
 ### 代码风格
 - 使用 `AddPrefabPostInit` + 闭包结构

@@ -16,6 +16,8 @@ local config = {
   -- 眼骨/星空配置
   item_trade_function = GetModConfigData("item_trade_function"),
   auto_get_range = GetModConfigData("auto_get_range"),
+  -- 自动修复配置
+  repair_to_full = GetModConfigData("repair_to_full"),
 }
 
 -- 实体/特效引用
@@ -188,7 +190,7 @@ local function AutoCollectItems(inst)
   end
 end
 
--- 每6秒修复容器内物品：耐久/燃料/护甲/新鲜度恢复至100%（跳过 ≤1% 将毁的）
+-- 每6秒修复容器内物品：耐久/燃料/护甲/新鲜度恢复至100%（跳过 ≤1% 将毁的物品，使用 0.9999 避免浮点精度将 100% 误判）
 local function RepairContainerItems(inst)
   if not inst or not inst:IsValid() then return end
   local container = inst.components.container
@@ -197,22 +199,22 @@ local function RepairContainerItems(inst)
     local item = container:GetItemInSlot(i)
     if item and item:IsValid() then
       local repaired = false
-      -- 耐久/燃料/护甲：跳过 ≤1%（接近损坏）和 100%（已满）的物品
+      -- 耐久/燃料/护甲：跳过 ≤1%（接近损坏）和 ≈100%（已满）的物品
       if item.components.finiteuses then
         local pct = item.components.finiteuses:GetPercent()
-        if pct > 0.01 and pct < 1.0 then
+        if pct > 0.01 and pct < 0.9999 then
           item.components.finiteuses:SetPercent(1.0)
           repaired = true
         end
       elseif item.components.fueled then
         local pct = item.components.fueled:GetPercent()
-        if pct > 0.01 and pct < 1.0 then
+        if pct > 0.01 and pct < 0.9999 then
           item.components.fueled:SetPercent(1.0)
           repaired = true
         end
       elseif item.components.armor then
         local pct = item.components.armor:GetPercent()
-        if pct > 0.01 and pct < 1.0 then
+        if pct > 0.01 and pct < 0.9999 then
           item.components.armor:SetPercent(1.0)
           repaired = true
         end
@@ -220,7 +222,7 @@ local function RepairContainerItems(inst)
       -- 食物新鲜度恢复至100%（和反鲜机制互补，即时拉满）
       if item.components.perishable then
         local pct = item.components.perishable:GetPercent()
-        if pct > 0.01 and pct < 1.0 then
+        if pct > 0.01 and pct < 0.9999 then
           item.components.perishable:SetPercent(1.0)
           repaired = true
         end
@@ -604,15 +606,17 @@ AddPrefabPostInit("rabbitkinghorn_container", function(inst)
     inst.components.preserver:SetPerishRateMultiplier(-36)
   end
 
-  -- 每6秒修复容器内1%以上耐久物品（替代关闭时修复，避免组件方法调用问题）
-  local repair_task = inst:DoPeriodicTask(6, function()
-    RepairContainerItems(inst)
-  end)
+  -- 每6秒修复容器内1%以上耐久物品（通过配置项控制开关）
+  if config.repair_to_full then
+    local repair_task = inst:DoPeriodicTask(6, function()
+      RepairContainerItems(inst)
+    end)
 
-  -- 实体移除时清理定时任务
-  inst:ListenForEvent("onremove", function()
-    repair_task:Cancel()
-  end)
+    -- 实体移除时清理定时任务
+    inst:ListenForEvent("onremove", function()
+      repair_task:Cancel()
+    end)
+  end
 end)
 
 -- 修改暗影格子属性（腐败）
