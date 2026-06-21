@@ -30,14 +30,72 @@ Assets = {
 }
 
 
--- 物品交换映射表（简化：直接定义核心映射关系）
+-- 物品交换映射表（按交易链分组，方便查看连续交易）
+-- 格式：["输入物品"] = "输出物品",
 local TRADE_MAPPING = {
-  ["opalpreciousgem"] = "alterguardianhatshard",
-  ["dreadstone"] = "opalpreciousgem",
-  ["boneshard"] = "houndstooth",
-  ["walrus_tusk"] = "klaussackkey",
-  ["dragon_scales"] = "ancienttree_seed",
-  ["treegrowthsolution"] = "monkey_mediumhat",
+  -- 绝望石 → 彩虹宝石 → 启迪碎片
+  ["dreadstone"]          = "opalpreciousgem",
+  ["opalpreciousgem"]     = "alterguardianhatshard",
+  -- 骨片 → 犬牙 → 一角鲸角
+  ["boneshard"]           = "houndstooth",
+  ["houndstooth"]         = "gnarwail_horn",
+  -- 海象牙 → 克劳斯钥匙
+  ["walrus_tusk"]         = "klaussackkey",
+  -- 龙鳞 → 古树种子
+  ["dragon_scales"]       = "ancienttree_seed",
+  -- 树汁酱 → 猴王冠
+  ["treegrowthsolution"]  = "monkey_mediumhat",
+  -- 花瓣 → 暗红花瓣
+  ["petals"]              = "petals_evil",
+  -- 海带 → 公牛海带茎
+  ["kelp"]                = "bullkelp_root",
+
+  -- 蝴蝶 → 黄油
+  ["butterfly"]           = "butter",
+
+  -- 石果 →岩石 → 燧石 → 硝石 → 大理石 → 月岩 → 盐晶
+  ["rock_avocado_fruit"]  = "rocks",
+  ["rocks"]               = "flint",
+  ["flint"]               = "nitre",
+  ["nitre"]               = "marble",
+  ["marble"]              = "moonrocknugget",
+  ["moonrocknugget"]      = "saltrock",
+
+  -- 干海带 → 黄金 → 齿轮
+  ["kelp_dried"]          = "goldnugget",
+  ["goldnugget"]          = "gears",
+
+  -- 灰烬 → 月亮碎片 → 空瓶子 → 瓶中信
+  ["ash"]                 = "moonglass",
+  ["moonglass"]           = "messagebottleempty",
+  ["messagebottleempty"]  = "messagebottle",
+
+  -- 腐烂物 → 粪肥 → 鸟粪 → 腐烂鸟蛋
+  ["spoiled_food"]        = "poop",
+  ["poop"]                = "guano",
+  ["guano"]               = "rottenegg",
+
+  -- 无花果 → 格罗姆粘液 → 嗡嗡肥料 → 受潮营养砖
+  ["fig"]                 = "glommerfuel",
+  ["glommerfuel"]         = "mosquitofertilizer",
+  ["mosquitofertilizer"]  = "wx78_foodbrick",
+
+  -- 怪物肉 → 肉 → 猪皮 → 兔绒 → 兔子
+  ["monstermeat"]         = "meat",
+  ["meat"]                = "pigskin",
+  ["pigskin"]             = "manrabbit_tail",
+  ["manrabbit_tail"]      = "rabbit",
+
+  -- 棕榈松果树鳞片 → 棕榈松果树芽
+  ["palmcone_scale"]      = "palmcone_seed",
+  -- 香蕉 → 香蕉丛
+  ["cave_banana"]         = "dug_bananabush",
+  -- 荧光果 → 球状光虫
+  ["lightbulb"]           = "lightflier",
+
+  -- 种子 → 外壳碎片 → 发光蟹
+  ["seeds"]               = "slurtle_shellpieces",
+  ["slurtle_shellpieces"] = "lightcrab",
 }
 
 -- 简化版交易成功回调：核心逻辑保留，精简冗余判断和注释
@@ -130,6 +188,74 @@ local function AutoCollectItems(inst)
   end
 end
 
+-- 每6秒修复容器内物品：耐久/燃料/护甲/新鲜度恢复至100%（跳过 ≤1% 将毁的）
+local function RepairContainerItems(inst)
+  if not inst or not inst:IsValid() then return end
+  local container = inst.components.container
+  if not container then return end
+  for i = 1, container:GetNumSlots() do
+    local item = container:GetItemInSlot(i)
+    if item and item:IsValid() then
+      local repaired = false
+      -- 耐久/燃料/护甲：跳过 ≤1%（接近损坏）和 100%（已满）的物品
+      if item.components.finiteuses then
+        local pct = item.components.finiteuses:GetPercent()
+        if pct > 0.01 and pct < 1.0 then
+          item.components.finiteuses:SetPercent(1.0)
+          repaired = true
+        end
+      elseif item.components.fueled then
+        local pct = item.components.fueled:GetPercent()
+        if pct > 0.01 and pct < 1.0 then
+          item.components.fueled:SetPercent(1.0)
+          repaired = true
+        end
+      elseif item.components.armor then
+        local pct = item.components.armor:GetPercent()
+        if pct > 0.01 and pct < 1.0 then
+          item.components.armor:SetPercent(1.0)
+          repaired = true
+        end
+      end
+      -- 食物新鲜度恢复至100%（和反鲜机制互补，即时拉满）
+      if item.components.perishable then
+        local pct = item.components.perishable:GetPercent()
+        if pct > 0.01 and pct < 1.0 then
+          item.components.perishable:SetPercent(1.0)
+          repaired = true
+        end
+      end
+      if repaired then
+        item:PushEvent("repaired")
+      end
+    end
+  end
+end
+
+-- 打开格子的通用函数
+local function TogglePocketDimensionChest(viewer, container_key)
+  -- 1. 基础有效性校验
+  if not viewer or not viewer:HasTag("player") or not viewer:IsValid() then
+    return
+  end
+
+  -- 2. 获取目标储物格容器
+  local target_chest = TheWorld:GetPocketDimensionContainer(container_key)
+  if not target_chest or not target_chest.components.container then
+    return -- 容器不存在或无container组件则退出
+  end
+
+  -- 3. 切换容器开关状态（仅影响当前玩家）
+  local container = target_chest.components.container
+  if container:IsOpen() and container:IsOpenedBy(viewer) then
+    -- 仅关闭当前玩家的界面（传入viewer作为参数）
+    container:Close(viewer)
+  else
+    -- 打开容器，让当前查看者成为打开者
+    container:Open(viewer)
+  end
+end
+
 -- 眼骨
 AddPrefabPostInit("chester_eyebone", function(inst)
   if not TheWorld.ismastersim then
@@ -142,6 +268,15 @@ AddPrefabPostInit("chester_eyebone", function(inst)
   -- 启动定时收集任务（每隔1.6秒执行一次）
   if config.auto_get_range > 0 then
     inst:DoPeriodicTask(1.6, AutoCollectItems)
+  end
+
+  -- 右键检查打开兔子洞空间（同绿色月眼逻辑）
+  local old_EyeboneGetDesc = inst.components.inspectable.GetDescription
+  inst.components.inspectable.GetDescription = function(self, viewer)
+    if config.colormooneye_toggle then
+      TogglePocketDimensionChest(viewer, "rabbitkinghorn")
+    end
+    return old_EyeboneGetDesc(self, viewer)
   end
 end)
 
@@ -157,6 +292,15 @@ AddPrefabPostInit("hutch_fishbowl", function(inst)
   -- 启动定时收集任务（每隔1.6秒执行一次）
   if config.auto_get_range > 0 then
     inst:DoPeriodicTask(1.6, AutoCollectItems)
+  end
+
+  -- 右键检查打开兔子洞空间（同绿色月眼逻辑）
+  local old_FishbowlGetDesc = inst.components.inspectable.GetDescription
+  inst.components.inspectable.GetDescription = function(self, viewer)
+    if config.colormooneye_toggle then
+      TogglePocketDimensionChest(viewer, "rabbitkinghorn")
+    end
+    return old_FishbowlGetDesc(self, viewer)
   end
 end)
 
@@ -459,6 +603,16 @@ AddPrefabPostInit("rabbitkinghorn_container", function(inst)
     end
     inst.components.preserver:SetPerishRateMultiplier(-36)
   end
+
+  -- 每6秒修复容器内1%以上耐久物品（替代关闭时修复，避免组件方法调用问题）
+  local repair_task = inst:DoPeriodicTask(6, function()
+    RepairContainerItems(inst)
+  end)
+
+  -- 实体移除时清理定时任务
+  inst:ListenForEvent("onremove", function()
+    repair_task:Cancel()
+  end)
 end)
 
 -- 修改暗影格子属性（腐败）
@@ -481,30 +635,6 @@ AddPrefabPostInit("shadow_container", function(inst)
 
   -- 结束
 end)
-
--- 打开格子的通用函数
-local function TogglePocketDimensionChest(viewer, container_key)
-  -- 1. 基础有效性校验
-  if not viewer or not viewer:HasTag("player") or not viewer:IsValid() then
-    return
-  end
-
-  -- 2. 获取目标储物格容器
-  local target_chest = TheWorld:GetPocketDimensionContainer(container_key)
-  if not target_chest or not target_chest.components.container then
-    return -- 容器不存在或无container组件则退出
-  end
-
-  -- 3. 切换容器开关状态（仅影响当前玩家）
-  local container = target_chest.components.container
-  if container:IsOpen() and container:IsOpenedBy(viewer) then
-    -- 仅关闭当前玩家的界面（传入viewer作为参数）
-    container:Close(viewer)
-  else
-    -- 打开容器，让当前查看者成为打开者
-    container:Open(viewer)
-  end
-end
 
 -- 绿色月眼打开兔洞格子
 AddPrefabPostInit("greenmooneye", function(inst)
