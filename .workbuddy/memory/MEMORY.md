@@ -93,17 +93,17 @@ end
 ### 服务端 → 客户端通信
 
 - **标签（Tag）**：`inst:AddTag("xxx")` / `inst:RemoveTag("xxx")`，自动同步到客户端，客户端用 `inst:HasTag("xxx")` 检测。简单但有延迟，需要轮询。
-- **net_bool**：`GLOBAL.net_bool(guid, "key", "dirty_event")`，值变化时自动推事件，客户端监听可实现零轮询。需要 `AddComponentPostInit` 修改 inventoryitem_replica，更复杂但更正统。
+- **net_bool**：`GLOBAL.net_bool(guid, "key", "dirty_event")`，值变化时自动同步到客户端。**但 dirty_event 是网络层内部事件，不会自动转发到 Widget 层**。要做事件驱动需配合 `AddComponentPostInit("inventoryitem_replica")` + 显式 `PushEvent`，类似潮湿系统的 `SetIsWet` → `PushEvent("wetnesschange")`。工程量较大时，0.5s 轮询更实际。
 
 ### 常见坑
 
-| 坑 | 原因 | 解法 |
-|----|------|------|
-| `Text` 是 nil | modmain.lua 没有 `Text`/`Image` 全局变量 | `GLOBAL.require("widgets/text")` |
-| `SetMultColour` 不染色 UI 图标 | ItemTile 用独立 Image，不读 AnimState | 直接 `self.image:SetTint()` |
-| 配置关闭后图标/名称未恢复 | 切换逻辑只在 toggle 回调中，不在 UpdateAllFeatures | 将图标/名称切换抽成独立函数，加入 UpdateAllFeatures，内部判断 config OFF 时恢复默认值 |
-| `ChangeImageName` 不即时刷新 | ItemTile 的 Image 只在 RebuildLayout 时重建，运行时改 imagename 不会触发 Widget 重绘。**右键切换后要移动物品到其他格子才刷新** | 避免用 `ChangeImageName` 做实时图标切换，考虑用 `self.image:SetTint()` 或叠加层代替 |
-| 皮肤贴图被硬编码默认值覆盖 | `_cane_default_imagename = "cane"` 写死了无皮肤版 | 从 `invitem.imagename` / `invitem.atlasname` 动态读取创建时的实际值 |
+| 坑                             | 原因                                                                                                                           | 解法                                                                                  |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| `Text` 是 nil                  | modmain.lua 没有 `Text`/`Image` 全局变量                                                                                       | `GLOBAL.require("widgets/text")`                                                      |
+| `SetMultColour` 不染色 UI 图标 | ItemTile 用独立 Image，不读 AnimState                                                                                          | 直接 `self.image:SetTint()`                                                           |
+| 配置关闭后图标/名称未恢复      | 切换逻辑只在 toggle 回调中，不在 UpdateAllFeatures                                                                             | 将图标/名称切换抽成独立函数，加入 UpdateAllFeatures，内部判断 config OFF 时恢复默认值 |
+| `ChangeImageName` 不即时刷新   | ItemTile 的 Image 只在 RebuildLayout 时重建，运行时改 imagename 不会触发 Widget 重绘。**右键切换后要移动物品到其他格子才刷新** | 避免用 `ChangeImageName` 做实时图标切换，考虑用 `self.image:SetTint()` 或叠加层代替   |
+| 皮肤贴图被硬编码默认值覆盖     | `_cane_default_imagename = "cane"` 写死了无皮肤版                                                                              | 从 `invitem.imagename` / `invitem.atlasname` 动态读取创建时的实际值                   |
 
 ### 文字标签中插入 DST 图标
 
@@ -113,11 +113,11 @@ end
 
 ItemTile 的绿色光晕（`Image` widget + `SetTint`）要实现呼吸效果，可选方案：
 
-| 方案 | 做法 | 优缺点 |
-|------|------|--------|
-| **α 正弦波** | 用 `DoPeriodicTask(0.05)` 高频更新 glow 的 alpha，`alpha = 0.3 + 0.2 * sin(time * 3)` | 轻量纯代码，无需额外资源。唯一缺点：CPU 略增（20fps × 1 widget，可忽略） |
-| **UIAnim 动画** | 仿潮湿蓝框，创建自定义 bank/build 动画文件 | 最省 CPU，但需要制作动画资源（bank/build/anim），流程繁琐 |
-| **改用 AddColour** | 服务端 cane 实体已有呼吸 `SetAddColour`，客户端 ItemTile 用 `image:SetTint` 时叠加 add 通道不可行（Image 不支持 AddColour） | 不可行 |
+| 方案               | 做法                                                                                                                        | 优缺点                                                                   |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| **α 正弦波**       | 用 `DoPeriodicTask(0.05)` 高频更新 glow 的 alpha，`alpha = 0.3 + 0.2 * sin(time * 3)`                                       | 轻量纯代码，无需额外资源。唯一缺点：CPU 略增（20fps × 1 widget，可忽略） |
+| **UIAnim 动画**    | 仿潮湿蓝框，创建自定义 bank/build 动画文件                                                                                  | 最省 CPU，但需要制作动画资源（bank/build/anim），流程繁琐                |
+| **改用 AddColour** | 服务端 cane 实体已有呼吸 `SetAddColour`，客户端 ItemTile 用 `image:SetTint` 时叠加 add 通道不可行（Image 不支持 AddColour） | 不可行                                                                   |
 
 最实际的是 α 正弦波方案，需要在现有的 0.5s 轮询之外另起一个高频 DoPeriodicTask（0.03~0.05s），并在 `onremove` 时取消。
 

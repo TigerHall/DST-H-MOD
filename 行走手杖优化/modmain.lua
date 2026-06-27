@@ -309,6 +309,15 @@ AddPrefabPostInit("cane", function(inst)
   inst.all_active = false
   inst.light_fx = nil
 
+  -- 同步高亮标签到客户端
+  local function SyncCaneState()
+    if inst.all_active then
+      inst:AddTag("caneon")
+    else
+      inst:RemoveTag("caneon")
+    end
+  end
+
   -- 多工具组件管理
   -- 加多工具组件
   local function AddToolComponents()
@@ -697,12 +706,7 @@ AddPrefabPostInit("cane", function(inst)
     if not owner or not owner:HasTag("player") then return false end
     -- 切换开关状态
     inst.all_active = not inst.all_active
-    -- 同步高亮标签（客户端通过标签检测来决定图标着色）
-    if inst.all_active then
-      inst:AddTag("caneon")
-    else
-      inst:RemoveTag("caneon")
-    end
+    SyncCaneState()
     UpdateAllFeatures()
     -- 切换贴图（换皮肤会丢失logo）
     if config.enable_tool_toggle_icon then
@@ -738,12 +742,7 @@ AddPrefabPostInit("cane", function(inst)
 
   inst.OnPreLoad = function(inst, data)
     inst.all_active = data and data.all_active or false
-    -- 同步高亮标签
-    if inst.all_active then
-      inst:AddTag("caneon")
-    else
-      inst:RemoveTag("caneon")
-    end
+    SyncCaneState()
     UpdateAllFeatures()
   end
 
@@ -1682,7 +1681,7 @@ AddPrefabPostInit("cane", function(inst)
         else
           -- 不保存状态时，关闭全部右键控制项
           inst.all_active = false
-          inst:RemoveTag("caneon")
+          SyncCaneState()
           UpdateAllFeatures()
         end
       end
@@ -1783,14 +1782,14 @@ if not GLOBAL.TheNet:IsDedicated() then
     if invitem.prefab ~= "cane" then return end
 
     -- 添加状态文字（仿照 DST 的堆叠数量/百分比文字系统）
-    self._cane_label = self:AddChild(Text(NUMBERFONT, 38))
+    self._cane_label = self:AddChild(Text(NUMBERFONT, 40))
     self._cane_label:SetPosition(0, -22, 0)
     self._cane_label:Hide()
 
     -- 文字跑马灯动画（HueToRGB 色相循环）
     local color_cycle_time = 0
     local color_task = nil
-    local COLOR_CYCLE_SPEED = 8.0  -- 跑马灯周期（秒，8 秒一圈）
+    local COLOR_CYCLE_SPEED = 1.6 -- 跑马灯周期（秒，N 秒一圈）
 
     -- 复制服务端的 HueToRGB（客户端闭包内无法访问服务端 local 函数）
     local function HueToRGB(hue)
@@ -1826,7 +1825,12 @@ if not GLOBAL.TheNet:IsDedicated() then
     -- 刷新高亮状态的函数（0.5s 轮询检测 ON/OFF 切换）
     local function UpdateCaneTileHighlight()
       if not self._cane_label or not self.image then return end
-      if self.item and self.item:HasTag("caneon") then
+      local is_on = self.item and self.item:HasTag("caneon")
+      -- 状态无变化则跳过，避免无谓的 SetTint/SetString
+      if is_on == self._cane_last_on then return end
+      self._cane_last_on = is_on
+
+      if is_on then
         if config.cane_icon_text then
           -- 开：图标 + 文字均跟跑马灯变色
           self._cane_label:SetString("󰀏 开")
@@ -1852,15 +1856,14 @@ if not GLOBAL.TheNet:IsDedicated() then
       end
     end
 
-    -- 首次检查（等标签同步过来）
-    self.inst:DoTaskInTime(0.15, UpdateCaneTileHighlight)
-    -- 定期刷新（0.5 秒间隔，足够响应右键切换）
+    -- 立即刷新（文字跟随图标同时出现）
+    UpdateCaneTileHighlight()
+    -- 0.5s 轮询（服务端 tag 变化没有 netvar 事件到 Widget 层）
     local task = self.inst:DoPeriodicTask(0.5, UpdateCaneTileHighlight)
 
     -- 清理
     self.inst:ListenForEvent("onremove", function()
       if task then task:Cancel() end
-      StopColorCycle()
       if self._cane_label then
         self._cane_label:Kill(); self._cane_label = nil
       end
