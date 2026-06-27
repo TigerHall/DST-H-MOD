@@ -696,6 +696,12 @@ AddPrefabPostInit("cane", function(inst)
     if not owner or not owner:HasTag("player") then return false end
     -- 切换开关状态
     inst.all_active = not inst.all_active
+    -- 同步高亮标签（客户端通过标签检测来决定图标着色）
+    if inst.all_active then
+      inst:AddTag("caneon")
+    else
+      inst:RemoveTag("caneon")
+    end
     UpdateAllFeatures()
     -- 切换贴图（换皮肤会丢失logo）
     if config.enable_tool_toggle_icon then
@@ -731,6 +737,12 @@ AddPrefabPostInit("cane", function(inst)
 
   inst.OnPreLoad = function(inst, data)
     inst.all_active = data and data.all_active or false
+    -- 同步高亮标签
+    if inst.all_active then
+      inst:AddTag("caneon")
+    else
+      inst:RemoveTag("caneon")
+    end
     UpdateAllFeatures()
   end
 
@@ -1669,6 +1681,7 @@ AddPrefabPostInit("cane", function(inst)
         else
           -- 不保存状态时，关闭全部右键控制项
           inst.all_active = false
+          inst:RemoveTag("caneon")
           UpdateAllFeatures()
         end
       end
@@ -1755,3 +1768,57 @@ AddPrefabPostInit("walrus", function(inst)
     inst.components.lootdropper:AddChanceLoot("walrus_tusk", 1.00)
   end
 end)
+
+-- 客户端：手杖图标高亮 + "开/关"文字显示
+-- 参考 Insight 2189004162 的 Widget 着色方式：直接操纵 ItemTile 的 image:SetTint()
+-- 参考 DST 原生潮湿系统：通过标签 + 定期检测来控制 UI 叠加层显示
+if not GLOBAL.TheNet:IsDedicated() then
+  -- 导入 widget 类（modmain.lua 全局作用域中没有 Text/Image）
+  local Text = GLOBAL.require("widgets/text")
+  local Image = GLOBAL.require("widgets/image")
+  local NUMBERFONT = GLOBAL.NUMBERFONT
+
+  AddClassPostConstruct("widgets/itemtile", function(self, invitem)
+    if invitem.prefab ~= "cane" then return end
+
+    -- 添加"开"文字（仿照 DST 的堆叠数量/百分比文字系统）
+    self._cane_label = self:AddChild(Text(NUMBERFONT, 28))
+    self._cane_label:SetPosition(0, -22, 0)
+    self._cane_label:SetString("开")
+    self._cane_label:SetColour(0.3, 1, 0.3, 1)  -- 绿色文字
+    self._cane_label:Hide()
+
+    -- 添加绿色背景光晕（复用 inventory_bg 做底色层）
+    self._cane_glow = self:AddChild(Image("images/hud.xml", "inv_slot.tex"))
+    self._cane_glow:SetClickable(false)
+    self._cane_glow:SetTint(0.2, 1, 0.2, 0.5)
+    self._cane_glow:SetScale(1.15, 1.15, 1)
+    self._cane_glow:Hide()
+
+    -- 刷新高亮状态的函数
+    local function UpdateCaneTileHighlight()
+      if not self._cane_label or not self.image then return end
+      if self.item and self.item:HasTag("caneon") then
+        self.image:SetTint(0.4, 1, 0.4, 1)     -- 图标偏绿
+        self._cane_label:Show()                   -- 显示"开"
+        self._cane_glow:Show()                    -- 显示绿底光晕
+      else
+        self.image:SetTint(1, 1, 1, 1)           -- 恢复原色
+        self._cane_label:Hide()
+        self._cane_glow:Hide()
+      end
+    end
+
+    -- 首次检查（等标签同步过来）
+    self.inst:DoTaskInTime(0.15, UpdateCaneTileHighlight)
+    -- 定期刷新（0.5 秒间隔，足够响应右键切换）
+    local task = self.inst:DoPeriodicTask(0.5, UpdateCaneTileHighlight)
+
+    -- 清理
+    self.inst:ListenForEvent("onremove", function()
+      if task then task:Cancel() end
+      if self._cane_label then self._cane_label:Kill(); self._cane_label = nil end
+      if self._cane_glow then self._cane_glow:Kill(); self._cane_glow = nil end
+    end)
+  end)
+end
