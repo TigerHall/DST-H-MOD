@@ -49,7 +49,7 @@ end
 
 --  基础信息
 name = L and "H-Cane Enhancement" or "H-手杖强化"
-version = "3.8"
+version = "3.6.4"
 description =
     L and
     ("V" .. version .. "\n\n" .. "All features can be turned on or off in the configuration options.\n\nEnhance your walking cane with features including custom movement speed bonuses, damage values (including planar damage values),Ramping Damage, ranged attacks and area-of-effect attacks, life leech (including restoring hunger and sanity), glowing (only when dropped on the ground), preventing being knocked off by bosses, being revivable via haunting, and being theft-proof, etc.\n\nIt also supports various multi-functional tool features, including axe, pickaxe, shovel (with customizable tool efficiency), hammer, circular harvesting, and other multi-functional tools. It can automatically pick harvestable crops around the player. It also features automatic tilling. The multi-functional tool features and light effect function of the cane can be turned off/on by right-clicking.\n\nIn addition, there are permanent features such as watering can, oar, freshwater fishing rod, brush, and razor (with a separate setting switch).\n\nYou can set to craft walrus ivory at the Alchemy Engine (1 bone and 2 fangs) or make walruses drop an extra walrus ivory. It can also resist lightning, rain, and maintain a constant temperature.\n\nYou can place seeds in the character's last inventory slot (the 15th one, closest to the equipment slot), and they will be sown automatically. You can also place gems, sand stones, bear skins (be careful of home destruction), etc., each of which has different abilities. But all abilities come with a hunger cost") or
@@ -365,6 +365,18 @@ configuration_options = {
     "Enables automatic renaming of the cane to the corresponding function name when toggling tools",
     "禁用后切换工具功能时保持手杖原始名称不变",
     "Disables name changes when toggling tool functions (keeps the original cane name)"
+  ),
+  addConfig(
+    "cane_icon_text",
+    "小图标状态文字",
+    "Icon Status Text",
+    true,
+    "手杖开关时在背包小图标上显示开关状态文字",
+    "Display ON/OFF status text on the cane's inventory icon",
+    "当关闭/关状态时显示灰色关字",
+    "When OFF: shows gray text on icon",
+    "始终保持小图标无文字叠加和图标着色",
+    "No text overlay or icon tinting on the inventory icon"
   ),
   -- 锤子
   addConfig(

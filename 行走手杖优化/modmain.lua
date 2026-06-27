@@ -30,6 +30,7 @@ local config = {
   fx_particle_type = GetModConfigData("fx_particle_type"),
   enable_tool_toggle_icon = GetModConfigData("enable_tool_toggle_icon"),
   enable_tool_toggle_rename = GetModConfigData("enable_tool_toggle_rename"),
+  cane_icon_text = GetModConfigData("cane_icon_text"),
   -- 常驻功能配置项
   enable_watering = GetModConfigData("enable_watering"),
   enable_paddling = GetModConfigData("enable_paddling"),
@@ -593,8 +594,8 @@ AddPrefabPostInit("cane", function(inst)
 
   -- 手杖呼吸染色效果（跑马灯版）
   local BREATH_SPEED = 1.2      -- 呼吸周期（秒，越小呼吸越快）
-  local BREATH_INTENSITY = 0.45 -- 呼吸强度（0~0.5，越大颜色越鲜艳）
-  local COLOR_CYCLE_SPEED = 3.0 -- 颜色跑马灯周期（秒，越小颜色变化越快）
+  local BREATH_INTENSITY = 0.6  -- 呼吸强度（0~0.5，越大颜色越鲜艳）
+  local COLOR_CYCLE_SPEED = 1.6 -- 颜色跑马灯周期（秒，越小颜色变化越快）
   local cane_tint_task = nil    -- 呼吸定时器
   local cane_tint_time = 0      -- 呼吸计时器
 
@@ -1781,31 +1782,73 @@ if not GLOBAL.TheNet:IsDedicated() then
   AddClassPostConstruct("widgets/itemtile", function(self, invitem)
     if invitem.prefab ~= "cane" then return end
 
-    -- 添加"开"文字（仿照 DST 的堆叠数量/百分比文字系统）
-    self._cane_label = self:AddChild(Text(NUMBERFONT, 28))
+    -- 添加状态文字（仿照 DST 的堆叠数量/百分比文字系统）
+    self._cane_label = self:AddChild(Text(NUMBERFONT, 38))
     self._cane_label:SetPosition(0, -22, 0)
-    self._cane_label:SetString("开")
-    self._cane_label:SetColour(0.3, 1, 0.3, 1)  -- 绿色文字
     self._cane_label:Hide()
 
-    -- 添加绿色背景光晕（复用 inventory_bg 做底色层）
-    self._cane_glow = self:AddChild(Image("images/hud.xml", "inv_slot.tex"))
-    self._cane_glow:SetClickable(false)
-    self._cane_glow:SetTint(0.2, 1, 0.2, 0.5)
-    self._cane_glow:SetScale(1.15, 1.15, 1)
-    self._cane_glow:Hide()
+    -- 文字跑马灯动画（HueToRGB 色相循环）
+    local color_cycle_time = 0
+    local color_task = nil
+    local COLOR_CYCLE_SPEED = 8.0  -- 跑马灯周期（秒，8 秒一圈）
 
-    -- 刷新高亮状态的函数
+    -- 复制服务端的 HueToRGB（客户端闭包内无法访问服务端 local 函数）
+    local function HueToRGB(hue)
+      local r = (math.sin(hue) + 1) / 2
+      local g = (math.sin(hue + 2.094) + 1) / 2
+      local b = (math.sin(hue + 4.189) + 1) / 2
+      return r, g, b
+    end
+
+    local function StopColorCycle()
+      if color_task then
+        color_task:Cancel()
+        color_task = nil
+      end
+      color_cycle_time = 0
+    end
+
+    local function StartColorCycle()
+      StopColorCycle()
+      color_task = self.inst:DoPeriodicTask(0.05, function()
+        color_cycle_time = color_cycle_time + 0.05
+
+        -- 跑马灯文字颜色 + 图标着色（HueToRGB 色相循环）
+        if self._cane_label and self._cane_label.shown then
+          local hue = color_cycle_time * 2 * math.pi / COLOR_CYCLE_SPEED
+          local cr, cg, cb = HueToRGB(hue)
+          self._cane_label:SetColour(cr, cg, cb, 1)
+          self.image:SetTint(cr, cg, cb, 1)
+        end
+      end)
+    end
+
+    -- 刷新高亮状态的函数（0.5s 轮询检测 ON/OFF 切换）
     local function UpdateCaneTileHighlight()
       if not self._cane_label or not self.image then return end
       if self.item and self.item:HasTag("caneon") then
-        self.image:SetTint(0.4, 1, 0.4, 1)     -- 图标偏绿
-        self._cane_label:Show()                   -- 显示"开"
-        self._cane_glow:Show()                    -- 显示绿底光晕
+        if config.cane_icon_text then
+          -- 开：图标 + 文字均跟跑马灯变色
+          self._cane_label:SetString("󰀏 开")
+          self._cane_label:Show()
+          StartColorCycle()
+        else
+          -- 配置关闭：图标和文字都不动
+          self.image:SetTint(1, 1, 1, 1)
+          self._cane_label:Hide()
+          StopColorCycle()
+        end
       else
-        self.image:SetTint(1, 1, 1, 1)           -- 恢复原色
-        self._cane_label:Hide()
-        self._cane_glow:Hide()
+        -- 关：恢复原色，停止动画
+        self.image:SetTint(1, 1, 1, 1)
+        StopColorCycle()
+        if config.cane_icon_text then
+          self._cane_label:SetString("󰀜 关")
+          self._cane_label:SetColour(1, 1, 1, 1)
+          self._cane_label:Show()
+        else
+          self._cane_label:Hide()
+        end
       end
     end
 
@@ -1817,8 +1860,10 @@ if not GLOBAL.TheNet:IsDedicated() then
     -- 清理
     self.inst:ListenForEvent("onremove", function()
       if task then task:Cancel() end
-      if self._cane_label then self._cane_label:Kill(); self._cane_label = nil end
-      if self._cane_glow then self._cane_glow:Kill(); self._cane_glow = nil end
+      StopColorCycle()
+      if self._cane_label then
+        self._cane_label:Kill(); self._cane_label = nil
+      end
     end)
   end)
 end
