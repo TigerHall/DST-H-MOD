@@ -47,7 +47,7 @@ end
 
 --  基础信息
 name = en_zh("H-SLOT", "H-无限格子")
-version = "1.8"
+version = "1.9"
 description = en_zh("V" .. version .. [[
 
 Items in Chester's and Hutch's grids do not spoil. Items in Shadow Chester's grid spoil at an accelerated rate, while items in Ice Chester's grid are preserved (remain fresh).
@@ -175,14 +175,14 @@ configuration_options = {
   addTitle("Repair Settings", "自动修复设置"),
   addConfig(
     "repair_to_full",
-    "容器内物品自动修复",
-    "Auto Repair Container Items",
+    "容器内物品自动修复/降级",
+    "Auto Repair/Degrade Container Items",
     true,
-    "自动将容器内耐久/燃料/护甲/新鲜度未满的物品恢复至100%",
-    "Automatically repair durability/fuel/armor/freshness in container items to 100%",
-    "每6秒自动修复容器内未满物品至100%",
-    "Repair container items to 100% every 6 seconds",
-    "禁用容器物品自动修复功能",
-    "Disable auto repair function"
+    "绿眼空间每6秒将容器内物品修复至100%；红眼空间每6秒将容器内物品降级至6%",
+    "Green-eye space repairs container items to 100% every 6s; Red-eye space degrades items to 6% every 6s",
+    "绿眼自动修复至100%，红眼自动降级至6%",
+    "Green-eye auto repair to 100%, Red-eye auto degrade to 6%",
+    "禁用容器物品自动修复/降级功能",
+    "Disable auto repair/degrade function"
   ),
 }

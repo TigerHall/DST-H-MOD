@@ -97,6 +97,7 @@ end
 | 配置关闭后图标/名称未恢复      | 切换逻辑不在 UpdateAllFeatures → 抽成独立函数加入统一调度                                                                          |
 | `HueToRGB` 客户端不可用        | 是服务端闭包内的 local function → 客户端单独复制一份                                                                               |
 | `self.bg` 可能被其他 MOD 移除  | 不可靠 → 用 `self:AddChild` + 手动 `table.remove/insert` 调 z-order                                                                |
+| `finiteuses.Use` 无耐久预检   | `Use(n)` 直接 `SetUses(current - n)`，没有 `if current < n then return` 的检查——即使耐久不够也会执行动作然后碎掉                |
 
 ---
 

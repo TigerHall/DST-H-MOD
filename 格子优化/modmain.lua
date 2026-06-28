@@ -234,6 +234,50 @@ local function RepairContainerItems(inst)
   end
 end
 
+-- 反修复：将容器内物品耐久/燃料/护甲/新鲜度降低至 6%（红眼暗影空间用）
+local function DegradeContainerItems(inst)
+  if not inst or not inst:IsValid() then return end
+  local container = inst.components.container
+  if not container then return end
+  for i = 1, container:GetNumSlots() do
+    local item = container:GetItemInSlot(i)
+    if item and item:IsValid() then
+      local degraded = false
+      -- 耐久/燃料/护甲：将 > 6% 的物品降到 6%（跳过 ≤ 1% 将毁的物品）
+      if item.components.finiteuses then
+        local pct = item.components.finiteuses:GetPercent()
+        if pct > 0.0601 then
+          item.components.finiteuses:SetPercent(0.06)
+          degraded = true
+        end
+      elseif item.components.fueled then
+        local pct = item.components.fueled:GetPercent()
+        if pct > 0.0601 then
+          item.components.fueled:SetPercent(0.06)
+          degraded = true
+        end
+      elseif item.components.armor then
+        local pct = item.components.armor:GetPercent()
+        if pct > 0.0601 then
+          item.components.armor:SetPercent(0.06)
+          degraded = true
+        end
+      end
+      -- 食物新鲜度也降到 6%（跳过 ≤ 1% 已腐烂的食物）
+      if item.components.perishable then
+        local pct = item.components.perishable:GetPercent()
+        if pct > 0.0601 then
+          item.components.perishable:SetPercent(0.06)
+          degraded = true
+        end
+      end
+      if degraded then
+        item:PushEvent("repaired")
+      end
+    end
+  end
+end
+
 -- 打开格子的通用函数
 local function TogglePocketDimensionChest(viewer, container_key)
   -- 1. 基础有效性校验
@@ -635,6 +679,18 @@ AddPrefabPostInit("shadow_container", function(inst)
       inst:AddComponent("preserver")
     end
     inst.components.preserver:SetPerishRateMultiplier(36)
+  end
+
+  -- 每6秒将容器内物品耐久降低至6%（反修复，和兔洞空间修复逻辑相反）
+  if config.repair_to_full then
+    local degrade_task = inst:DoPeriodicTask(6, function()
+      DegradeContainerItems(inst)
+    end)
+
+    -- 实体移除时清理定时任务
+    inst:ListenForEvent("onremove", function()
+      degrade_task:Cancel()
+    end)
   end
 
   -- 结束
