@@ -852,6 +852,7 @@ AddPrefabPostInit("cane", function(inst)
   }
 
   -- 独立的自动工作函数
+  local _ripening_counter = 0
   local function DoAutotask(inst)
     -- 存在工作范围才开始
     local WORK_RADIUS = config.auto_work_range
@@ -1541,6 +1542,102 @@ AddPrefabPostInit("cane", function(inst)
       end
     end
     -- 高级耕作先驱帽结束
+
+    -- 格罗姆之花/友好果蝇果开始（催熟周围作物和植物）
+    if HasTargetItem(items, { "glommerflower", "fruitflyfruit" }) then
+        -- 催熟频率：每调用10次自动工作执行一次催熟（≈3.6秒）
+        _ripening_counter = _ripening_counter + 1
+        if _ripening_counter >= 10 then
+            _ripening_counter = 0
+
+            -- 查找范围内可催熟的目标
+            local ents = TheSim:FindEntities(x, y, z, WORK_RADIUS, nil,
+                { "INLIMBO", "FX", "burnt", "dead", "stump" })
+
+            -- 仿官方 trygrowth 催熟逻辑（带过熟保护）
+            local function TryGrowth(ent)
+                if not ent:IsValid() then return end
+
+                -- 前置跳过：枯萎/腐烂的植物不再处理
+                if ent:HasTag("withered") or ent:HasTag("farm_plant_killjoy") then
+                    return
+                end
+
+                -- 前置跳过：已可采摘 → 防止过熟（对应 stage 5 full / 浆果成熟）
+                if ent.components.pickable ~= nil and ent.components.pickable:CanBePicked() then
+                    return
+                end
+
+                -- 前置跳过：crop 已成熟
+                if ent.components.crop ~= nil and ent.components.crop.matured then
+                    return
+                end
+
+                -- 1. Growable 组件（树木、农场作物等）
+                if ent.components.growable ~= nil then
+                    if ent.components.simplemagicgrower ~= nil then
+                        ent.components.simplemagicgrower:StartGrowing()
+                        return
+                    elseif ent.components.growable.domagicgrowthfn ~= nil then
+                        -- 农场作物（domagicgrowthfn）：额外检查是否已到最终腐烂阶段
+                        if ent.components.growable.stage >= #ent.components.growable.stages then
+                            return
+                        end
+                        ent.components.growable:DoMagicGrowth()
+                        return
+                    else
+                        ent.components.growable:DoGrowth()
+                        return
+                    end
+                end
+
+                -- 2. Pickable 组件（浆果丛、草根等）— 仅催熟未成熟的
+                if ent.components.pickable ~= nil then
+                    if not ent.components.pickable:CanBePicked() or not ent.components.pickable.caninteractwith then
+                        if ent.components.pickable:FinishGrowing() then
+                            ent.components.pickable:ConsumeCycles(1)
+                        end
+                    end
+                    return
+                end
+
+                -- 3. Crop 组件（旧版农场作物）
+                if ent.components.crop ~= nil and (ent.components.crop.rate or 0) > 0 then
+                    ent.components.crop:DoGrow(1 / ent.components.crop.rate, true)
+                    return
+                end
+
+                -- 4. Harvestable 组件（蘑菇农场等）
+                if ent.components.harvestable ~= nil then
+                    if ent.components.harvestable:IsMagicGrowable() then
+                        ent.components.harvestable:DoMagicGrowth()
+                    elseif not ent.components.harvestable:CanBeHarvested() then
+                        ent.components.harvestable:Grow()
+                    end
+                    return
+                end
+            end
+
+            for _, ent in ipairs(ents) do
+                TryGrowth(ent)
+            end
+
+            -- 为作物补充营养（仿 MaximizePlant / 高级耕作先驱帽）
+            if TheWorld.components.farming_manager then
+                local center_tile_x, center_tile_z = TheWorld.Map:GetTileCoordsAtPoint(x, y, z)
+                for dx = -2, 2 do
+                    for dz = -2, 2 do
+                        TheWorld.components.farming_manager:AddTileNutrients(
+                            center_tile_x + dx, center_tile_z + dz, 12, 12, 12
+                        )
+                    end
+                end
+            end
+
+            ApplyHungerCost(owner, -1, 0.36, inst.prefab)
+        end
+    end
+    -- 格罗姆之花/友好果蝇果结束
 
     -- 范围催眠开始（H-装备）
     if HasTargetItem(items, { "mandrake", "panflute" }) then
