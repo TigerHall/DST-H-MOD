@@ -18,6 +18,8 @@ local config = {
   auto_get_range = GetModConfigData("auto_get_range"),
   -- 自动修复配置
   repair_to_full = GetModConfigData("repair_to_full"),
+  -- 定时整理配置
+  auto_sort_repair = GetModConfigData("auto_sort_repair"),
 }
 
 -- 实体/特效引用
@@ -275,6 +277,104 @@ local function DegradeContainerItems(inst)
         item:PushEvent("repaired")
       end
     end
+  end
+end
+
+-- 一键整理容器：清除空洞 → 合并堆叠 → 按物品名排序
+local function ArrangeContainerItems(inst)
+  if not inst or not inst:IsValid() then return end
+  local container = inst.components.container
+  if not container then return end
+
+  container.ignoreoverstacked = true -- 允许整理时保留超上限堆叠
+
+  -- Step 1: 从后往前取出所有物品
+  local items = {}
+  for i = container:GetNumSlots(), 1, -1 do
+    local item = container:RemoveItemBySlot(i)
+    if item then
+      table.insert(items, item)
+    end
+  end
+
+  -- Step 2: 堆叠合并（直接 SetStackSize 合并总量，避免 stackable:Put 受 maxsize 限制）
+  for i = #items, 1, -1 do
+    local src = items[i]
+    if src and src.components.stackable then
+      local src_size = src.components.stackable:StackSize()
+      for j = 1, i - 1 do
+        local dst = items[j]
+        if dst and dst.components.stackable and dst.prefab == src.prefab then
+          local dst_size = dst.components.stackable:StackSize()
+          dst.components.stackable:SetStackSize(dst_size + src_size)
+          src:Remove()
+          table.remove(items, i)
+          break
+        end
+      end
+    end
+  end
+
+  -- Step 3: 按 prefab 字母顺序排序
+  table.sort(items, function(a, b)
+    return a.prefab < b.prefab
+  end)
+
+  -- Step 4: 重新放入容器
+  for _, item in ipairs(items) do
+    container:GiveItem(item)
+  end
+
+  container.ignoreoverstacked = false
+end
+
+-- 统一的整理逻辑：先排序，再根据容器做修复或降级（按钮和定时任务共用）
+local function DoSortAndRepair(inst)
+  if not inst or not inst:IsValid() then return end
+  ArrangeContainerItems(inst)
+  local prefab = inst.prefab
+  if prefab == "rabbitkinghorn_container" then
+    RepairContainerItems(inst)
+  elseif prefab == "shadow_container" then
+    DegradeContainerItems(inst)
+  end
+end
+
+-- 给两个容器添加原生 buttoninfo 按钮：排序 + 对应空间的修复/降级（一步到位）
+local function SetupOneButtonPerContainer()
+  if not config.repair_to_full then return end -- 配置关闭则不生成按钮
+
+  local containers = GLOBAL.require("containers")
+  local params = containers.params
+
+  -- 统一的按钮回调：先整理，再根据容器做修复或降级
+  local function btn_fn(inst, doer)
+    if inst.components.container ~= nil then                                          -- 服务端
+      DoSortAndRepair(inst)
+    elseif inst.replica.container ~= nil and not inst.replica.container:IsBusy() then -- 客户端
+      SendRPCToServer(RPC.DoWidgetButtonAction, nil, inst, nil)
+    end
+  end
+
+  local function validfn(inst)
+    return inst.replica.container ~= nil and not inst.replica.container:IsEmpty()
+  end
+
+  if params.shadow_container then
+    params.shadow_container.widget.buttoninfo = {
+      text = "󰀞  󰀯",
+      position = Vector3(0, -190, 0),
+      fn = btn_fn,
+      validfn = validfn,
+    }
+  end
+  if params.rabbitkinghorn_container then
+    params.rabbitkinghorn_container.widget.buttoninfo = {
+      text = "󰀞  󰀨",
+      position = Vector3(0, -190, 0),
+      fn = btn_fn,
+      validfn = validfn,
+    }
   end
 end
 
@@ -649,16 +749,13 @@ AddPrefabPostInit("rabbitkinghorn_container", function(inst)
     end
     inst.components.preserver:SetPerishRateMultiplier(-36)
   end
-
-  -- 每6秒修复容器内1%以上耐久物品（通过配置项控制开关）
-  if config.repair_to_full then
-    local repair_task = inst:DoPeriodicTask(6, function()
-      RepairContainerItems(inst)
+  -- 定时整理修复（每6秒自动排序+修复至100%）
+  if config.auto_sort_repair then
+    local task = inst:DoPeriodicTask(6, function()
+      DoSortAndRepair(inst)
     end)
-
-    -- 实体移除时清理定时任务
     inst:ListenForEvent("onremove", function()
-      repair_task:Cancel()
+      task:Cancel()
     end)
   end
 end)
@@ -680,16 +777,13 @@ AddPrefabPostInit("shadow_container", function(inst)
     end
     inst.components.preserver:SetPerishRateMultiplier(36)
   end
-
-  -- 每6秒将容器内物品耐久降低至6%（反修复，和兔洞空间修复逻辑相反）
-  if config.repair_to_full then
-    local degrade_task = inst:DoPeriodicTask(6, function()
-      DegradeContainerItems(inst)
+  -- 定时整理降级（每6秒自动排序+降级至6%）
+  if config.auto_sort_repair then
+    local task = inst:DoPeriodicTask(6, function()
+      DoSortAndRepair(inst)
     end)
-
-    -- 实体移除时清理定时任务
     inst:ListenForEvent("onremove", function()
-      degrade_task:Cancel()
+      task:Cancel()
     end)
   end
 
@@ -740,3 +834,20 @@ AddPrefabPostInit("bluemooneye", function(inst)
   --   return old_GetDescription(self, viewer)
   -- end
 end)
+
+-- 给 rabbitkinghorn_container 和 shadow_container 添加原生 buttoninfo 按钮
+SetupOneButtonPerContainer()
+
+-- 客户端：调大这两个容器按钮的字体
+if not GLOBAL.TheNet:IsDedicated() then
+  AddClassPostConstruct("widgets/containerwidget", function(self)
+    local old_Open = self.Open
+    self.Open = function(self, container, doer)
+      old_Open(self, container, doer)
+      local prefab = container and container.prefab
+      if (prefab == "rabbitkinghorn_container" or prefab == "shadow_container") and self.button then
+        self.button:SetTextSize(36)
+      end
+    end
+  end)
+end
