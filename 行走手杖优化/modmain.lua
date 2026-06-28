@@ -297,7 +297,37 @@ AddPrefabPostInit("cane", function(inst)
             if aoe_planar_damage > 0 then
               ApplyDamageConversions(attacker, aoe_planar_damage)
             end
+
+            -- 群攻目标也带火焰/冰冻效果
+            if inst._has_redgem then
+              if ent.components.burnable and not ent.components.burnable:IsBurning() then
+                if ent.components.burnable.canlight or ent.components.combat ~= nil then
+                  ent.components.burnable:Ignite(true, attacker)
+                end
+              end
+            end
+            if inst._has_bluegem then
+              if ent.components.freezable and not ent.components.freezable:IsFrozen() then
+                ent.components.freezable:AddColdness(16)
+                ent.components.freezable:SpawnShatterFX()
+              end
+            end
           end
+        end
+      end
+
+      -- 4. 红宝石/蓝宝石攻击效果——由扫描标志控制
+      if inst._has_redgem then
+        if target.components.burnable and not target.components.burnable:IsBurning() then
+          if target.components.burnable.canlight or target.components.combat ~= nil then
+            target.components.burnable:Ignite(true, attacker)
+          end
+        end
+      end
+      if inst._has_bluegem then
+        if target.components.freezable and not target.components.freezable:IsFrozen() then
+          target.components.freezable:AddColdness(16)
+          target.components.freezable:SpawnShatterFX()
         end
       end
     end
@@ -1044,8 +1074,13 @@ AddPrefabPostInit("cane", function(inst)
     end
     -- 橙色宝石结束
 
+    -- 重置宝石攻击标志（由扫描决定是否启用冰火攻击）
+    inst._has_redgem = nil
+    inst._has_bluegem = nil
+
     -- 红色宝石开始
     if HasTargetItem(items, { "redgem", "redmooneye", "amulet" }) then
+      inst._has_redgem = true
       -- 1. 自身灭火（仅当燃烧时）
       if doer.components.burnable and doer.components.burnable:IsBurning() then
         doer.components.burnable:Extinguish()
@@ -1082,6 +1117,7 @@ AddPrefabPostInit("cane", function(inst)
 
     -- 蓝色宝石开始
     if HasTargetItem(items, { "bluegem", "bluemooneye", "blueamulet" }) then
+      inst._has_bluegem = true
       -- 2. 自身解冻（仅当冻结时）
       if doer.components.freezable and doer.components.freezable:IsFrozen() then
         doer.components.freezable:Unfreeze()
@@ -1094,8 +1130,8 @@ AddPrefabPostInit("cane", function(inst)
         ApplyHungerCost(owner, -1.6, 0.66, inst.prefab)
         if doer.components.sanity then
           doer.components.sanity:DoDelta(16, false, inst.prefab)
-          -- 播放 superjump_fx 特效
-          local fx = SpawnPrefab("superjump_fx")
+          -- 播放 ghostflower_spirit1_fx 特效
+          local fx = SpawnPrefab("ghostflower_spirit1_fx")
           if fx then
             fx.Transform:SetPosition(doer.Transform:GetWorldPosition())
           end
