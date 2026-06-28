@@ -49,12 +49,12 @@ end
 
 --  基础信息
 name = L and "H-Cane Enhancement" or "H-手杖强化"
-version = "3.7"
+version = "3.8.1"
 description =
     L and
-    ("V" .. version .. "\n\n" .. "All features can be turned on or off in the configuration options.\n\nEnhance your walking cane with features including custom movement speed bonuses, damage values (including planar damage values),Ramping Damage, ranged attacks and area-of-effect attacks, life leech (including restoring hunger and sanity), glowing (only when dropped on the ground), preventing being knocked off by bosses, being revivable via haunting, and being theft-proof, etc.\n\nIt also supports various multi-functional tool features, including axe, pickaxe, shovel (with customizable tool efficiency), hammer, circular harvesting, and other multi-functional tools. It can automatically pick harvestable crops around the player. It also features automatic tilling. The multi-functional tool features and light effect function of the cane can be turned off/on by right-clicking.\n\nIn addition, there are permanent features such as watering can, oar, freshwater fishing rod, brush, and razor (with a separate setting switch).\n\nYou can set to craft walrus ivory at the Alchemy Engine (1 bone and 2 fangs) or make walruses drop an extra walrus ivory. It can also resist lightning, rain, and maintain a constant temperature.\n\nYou can place seeds in the character's last inventory slot (the 15th one, closest to the equipment slot), and they will be sown automatically. You can also place gems, sand stones, bear skins (be careful of home destruction), etc., each of which has different abilities. But all abilities come with a hunger cost") or
+    ("V" .. version .. "\n\n" .. "󰀏All features can be turned on or off in the configuration options.\n\nEnhance your walking cane with features including custom movement speed bonuses, damage values (including planar damage values),Ramping Damage, ranged attacks and area-of-effect attacks, life leech (including restoring hunger and sanity), glowing (only when dropped on the ground), preventing being knocked off by bosses, being revivable via haunting, and being theft-proof, etc.\n\nIt also supports various multi-functional tool features, including axe, pickaxe, shovel (with customizable tool efficiency), hammer, circular harvesting, and other multi-functional tools. It can automatically pick harvestable crops around the player. It also features automatic tilling. The multi-functional tool features and light effect function of the cane can be turned off/on by right-clicking.\n\nIn addition, there are permanent features such as watering can, oar, freshwater fishing rod, brush, and razor (with a separate setting switch).\n\nYou can set to craft walrus ivory at the Alchemy Engine (1 bone and 2 fangs) or make walruses drop an extra walrus ivory. It can also resist lightning, rain, and maintain a constant temperature.\n\nYou can place seeds in the character's last inventory slot (the 15th one, closest to the equipment slot), and they will be sown automatically. You can also place gems, sand stones, bear skins (be careful of home destruction), etc., each of which has different abilities. But all abilities come with a hunger cost") or
     (
-      "V" .. version .. "\n\n" .. "所有功能均可在配置项开启或关闭\n\n强化你的步行手杖，包括自定义移速加成、伤害值(包括位面伤害值)、越战越强、远程攻击与群体攻击、吸血(包括回复饥饿和理智)、发光（仅限丢在地上的时候）、防boss拍落、可作祟复活以及不会被偷窃等功能，\n还支持多种多功能工具功能，包括斧子、稿子、铲子（可自定义工具效率）、锤子、圆形收割等多功能工具，且可自动采摘玩家周围的可采摘作物，自动锄地。可通过右键关闭/开启手杖的多功能工具功能和光特效功能。\n另外有常驻功能浇水壶、船桨、淡水钓竿、刷子、剃刀（有单独设置开关）\n可以设置在二本合成海象牙（1骨头2犬牙）或让海象额外掉落一个海象牙，可以防雷、防雨、恒温。\n可以在人物最后一个格子（15个，最靠近装备那个）里放入种子，能自动播种（包括杂草）。还可以放入宝石、沙之石、熊皮（小心拆家）等，都有不同的能力。但所有的能力都有饥饿代价。")
+      "V" .. version .. "\n\n" .. "󰀏所有功能均可在配置项开启或关闭\n\n强化你的步行手杖，包括自定义移速加成、伤害值(包括位面伤害值)、越战越强、远程攻击与群体攻击、吸血(包括回复饥饿和理智)、发光（仅限丢在地上的时候）、防boss拍落、可作祟复活以及不会被偷窃等功能，\n还支持多种多功能工具功能，包括斧子、稿子、铲子（可自定义工具效率）、锤子、圆形收割等多功能工具，且可自动采摘玩家周围的可采摘作物，自动锄地。可通过右键关闭/开启手杖的多功能工具功能和光特效功能。\n另外有常驻功能浇水壶、船桨、淡水钓竿、刷子、剃刀（有单独设置开关）\n可以设置在二本合成海象牙（1骨头2犬牙）或让海象额外掉落一个海象牙，可以防雷、防雨、恒温。\n可以在人物最后一个格子（15个，最靠近装备那个）里放入种子，能自动播种（包括杂草）。还可以放入宝石、沙之石、熊皮（小心拆家）等，都有不同的能力。但所有的能力都有饥饿代价。")
 author = "hehu"
 
 api_version = 10
@@ -313,6 +313,18 @@ configuration_options = {
     "关闭后手杖无呼吸灯效果",
     "Disables the breathing light effect on the cane"
   ),
+  addConfig(
+    "cane_icon_text",
+    "小图标状态文字",
+    "Icon Status Text",
+    true,
+    "手杖开关时在背包小图标上显示开/关状态文字",
+    "Display ON/OFF status text on the cane's inventory icon",
+    "开启后小图标显示开/关字，颜色由呼吸灯特效决定",
+    "Shows status text; color controlled by Breathing Light setting",
+    "关闭后小图标无任何文字叠加",
+    "No text overlay on the inventory icon"
+  ),
   -- 粒子特效类型（多选项）
   {
     name = "fx_particle_type",
@@ -365,18 +377,6 @@ configuration_options = {
     "Enables automatic renaming of the cane to the corresponding function name when toggling tools",
     "禁用后切换工具功能时保持手杖原始名称不变",
     "Disables name changes when toggling tool functions (keeps the original cane name)"
-  ),
-  addConfig(
-    "cane_icon_text",
-    "小图标状态文字",
-    "Icon Status Text",
-    true,
-    "手杖开关时在背包小图标上显示开关状态文字",
-    "Display ON/OFF status text on the cane's inventory icon",
-    "当关闭/关状态时显示灰色关字",
-    "When OFF: shows gray text on icon",
-    "始终保持小图标无文字叠加和图标着色",
-    "No text overlay or icon tinting on the inventory icon"
   ),
   -- 锤子
   addConfig(

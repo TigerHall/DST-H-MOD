@@ -1811,39 +1811,49 @@ if not GLOBAL.TheNet:IsDedicated() then
       StopColorCycle()
       color_task = self.inst:DoPeriodicTask(0.05, function()
         color_cycle_time = color_cycle_time + 0.05
+        local hue = color_cycle_time * 2 * math.pi / COLOR_CYCLE_SPEED
+        local cr, cg, cb = HueToRGB(hue)
 
-        -- 跑马灯文字颜色 + 图标着色（HueToRGB 色相循环）
+        -- 图标着色（混入白色提亮暗色图标：40%颜色+60%白底）
+        self.image:SetTint(cr * 0.4 + 0.6, cg * 0.4 + 0.6, cb * 0.4 + 0.6, 1)
+
+        -- 文字着色（仅当文字可见时）
         if self._cane_label and self._cane_label.shown then
-          local hue = color_cycle_time * 2 * math.pi / COLOR_CYCLE_SPEED
-          local cr, cg, cb = HueToRGB(hue)
           self._cane_label:SetColour(cr, cg, cb, 1)
-          self.image:SetTint(cr, cg, cb, 1)
         end
       end)
     end
 
-    -- 刷新高亮状态的函数（0.5s 轮询检测 ON/OFF 切换）
+    -- 刷新高亮状态的函数（0.2s 轮询检测 ON/OFF 切换）
     local function UpdateCaneTileHighlight()
       if not self._cane_label or not self.image then return end
       local is_on = self.item and self.item:HasTag("caneon")
-      -- 状态无变化则跳过，避免无谓的 SetTint/SetString
+      -- 状态无变化则跳过
       if is_on == self._cane_last_on then return end
       self._cane_last_on = is_on
 
       if is_on then
-        if config.cane_icon_text then
-          -- 开：图标 + 文字均跟跑马灯变色
-          self._cane_label:SetString("󰀏 开")
-          self._cane_label:Show()
+        -- 图标着色 + 文字颜色（受 enable_light_fx 控制）
+        if config.enable_light_fx then
+          self.image:SetTint(0.4, 1, 0.4, 1)  -- 初始绿色，跑马灯会接管
           StartColorCycle()
         else
-          -- 配置关闭：图标和文字都不动
           self.image:SetTint(1, 1, 1, 1)
-          self._cane_label:Hide()
           StopColorCycle()
         end
+        -- 文字（受 cane_icon_text 控制）
+        if config.cane_icon_text then
+          self._cane_label:SetString("󰀏 开")
+          if config.enable_light_fx then
+            -- 跑马灯颜色由动画驱动
+          else
+            self._cane_label:SetColour(1, 1, 1, 1)  -- 纯白
+          end
+          self._cane_label:Show()
+        else
+          self._cane_label:Hide()
+        end
       else
-        -- 关：恢复原色，停止动画
         self.image:SetTint(1, 1, 1, 1)
         StopColorCycle()
         if config.cane_icon_text then
@@ -1856,10 +1866,13 @@ if not GLOBAL.TheNet:IsDedicated() then
       end
     end
 
-    -- 立即刷新（文字跟随图标同时出现）
+    -- 立即刷新
     UpdateCaneTileHighlight()
-    -- 0.5s 轮询（服务端 tag 变化没有 netvar 事件到 Widget 层）
-    local task = self.inst:DoPeriodicTask(0.5, UpdateCaneTileHighlight)
+    -- 轮询（仅当至少一个功能开启时才需要）
+    local task = nil
+    if config.enable_light_fx or config.cane_icon_text then
+      task = self.inst:DoPeriodicTask(0.2, UpdateCaneTileHighlight)
+    end
 
     -- 清理
     self.inst:ListenForEvent("onremove", function()
