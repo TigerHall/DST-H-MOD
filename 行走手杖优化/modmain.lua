@@ -703,11 +703,17 @@ AddPrefabPostInit("cane", function(inst)
             cb * glow_intensity, 0)
         end
 
-        -- 3. 玩家全身跑马灯（呼吸灯特效开启时自动生效）
-        local body_intensity = intensity * 0.46 -- 全身效果淡一些
-        if cr + cg + cb > 0.01 then
-          owner_t2.AnimState:SetAddColour(cr * body_intensity, cg * body_intensity,
-            cb * body_intensity, 0)
+        -- 3. 玩家全身跑马灯——仅在手持装备时才显示，物品栏/丢地时清除
+        local is_equipped = owner_t2.components.inventory and
+            owner_t2.components.inventory:GetEquippedItem(EQUIPSLOTS.HANDS) == inst
+        if is_equipped then
+          local body_intensity = intensity * 0.46 -- 全身效果淡一些
+          if cr + cg + cb > 0.01 then
+            owner_t2.AnimState:SetAddColour(cr * body_intensity, cg * body_intensity,
+              cb * body_intensity, 0)
+          else
+            owner_t2.AnimState:SetAddColour(0, 0, 0, 0)
+          end
         else
           owner_t2.AnimState:SetAddColour(0, 0, 0, 0)
         end
@@ -1826,6 +1832,7 @@ AddPrefabPostInit("cane", function(inst)
         if doer.AnimState then
           doer.AnimState:SetSymbolMultColour("swap_object", 1, 1, 1, 1)
           doer.AnimState:SetSymbolAddColour("swap_object", 0, 0, 0, 0)
+          doer.AnimState:SetAddColour(0, 0, 0, 0) -- 清除全身跑马灯
         end
         -- 右键状态
         if config.multi_tool_state_save then
