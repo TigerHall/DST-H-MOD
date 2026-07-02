@@ -27,6 +27,7 @@ local config = {
   auto_work_range = GetModConfigData("auto_work_range"),
   auto_farm_range = GetModConfigData("auto_farm_range"),
   enable_light_fx = GetModConfigData("enable_light_fx"),
+  enable_player_glow = GetModConfigData("enable_player_glow"),
   fx_particle_type = GetModConfigData("fx_particle_type"),
   enable_tool_toggle_icon = GetModConfigData("enable_tool_toggle_icon"),
   enable_tool_toggle_rename = GetModConfigData("enable_tool_toggle_rename"),
@@ -706,7 +707,7 @@ AddPrefabPostInit("cane", function(inst)
         -- 3. 玩家全身跑马灯——仅在手持装备时才显示，物品栏/丢地时清除
         local is_equipped = owner_t2.components.inventory and
             owner_t2.components.inventory:GetEquippedItem(EQUIPSLOTS.HANDS) == inst
-        if is_equipped then
+        if is_equipped and config.enable_player_glow then
           local body_intensity = intensity * 0.46 -- 全身效果淡一些
           if cr + cg + cb > 0.01 then
             owner_t2.AnimState:SetAddColour(cr * body_intensity, cg * body_intensity,
@@ -780,16 +781,14 @@ AddPrefabPostInit("cane", function(inst)
         end
       end
       -- 通过快速卸装触发客户端 ItemTile 重建来刷新 UI（替代轮询）
-      if config.enable_tool_toggle_icon or config.enable_tool_toggle_rename or config.enable_light_fx then
-        if inst.components.equippable:IsEquipped() and owner.components.inventory then
-          inst._quick_re_equip = true
-          local eslot = inst.components.equippable.equipslot
-          local returned = owner.components.inventory:Unequip(eslot)
-          if returned then
-            owner.components.inventory:Equip(returned)
-          end
-          inst._quick_re_equip = nil
+      if inst.components.equippable:IsEquipped() and owner.components.inventory then
+        inst._quick_re_equip = true
+        local eslot = inst.components.equippable.equipslot
+        local returned = owner.components.inventory:Unequip(eslot)
+        if returned then
+          owner.components.inventory:Equip(returned)
         end
+        inst._quick_re_equip = nil
       end
       return false
     end)

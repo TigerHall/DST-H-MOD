@@ -49,7 +49,7 @@ end
 
 --  基础信息
 name = L and "H-Cane Enhancement" or "H-手杖强化"
-version = "4.0"
+version = "4.1"
 description =
     L and
     ("V" .. version .. "\n\n" .. "󰀏All features can be turned on or off in the configuration options.\n\nEnhance your walking cane with features including custom movement speed bonuses, damage values (including planar damage values),Ramping Damage, ranged attacks and area-of-effect attacks, life leech (including restoring hunger and sanity), glowing (only when dropped on the ground), preventing being knocked off by bosses, being revivable via haunting, and being theft-proof, etc.\n\nIt also supports various multi-functional tool features, including axe, pickaxe, shovel (with customizable tool efficiency), hammer, circular harvesting, and other multi-functional tools. It can automatically pick harvestable crops around the player. It also features automatic tilling. The multi-functional tool features and light effect function of the cane can be turned off/on by right-clicking.\n\nIn addition, there are permanent features such as watering can, oar, freshwater fishing rod, brush, and razor (with a separate setting switch).\n\nYou can set to craft walrus ivory at the Alchemy Engine (1 bone and 2 fangs) or make walruses drop an extra walrus ivory. It can also resist lightning, rain, and maintain a constant temperature.\n\nYou can place seeds in the character's last inventory slot (the 15th one, closest to the equipment slot), and they will be sown automatically. You can also place gems, sand stones, bear skins (be careful of home destruction), etc., each of which has different abilities. But all abilities come with a hunger cost") or
@@ -314,6 +314,18 @@ configuration_options = {
     "Disables the breathing light effect on the cane"
   ),
   addConfig(
+    "enable_player_glow",
+    "人物呼吸灯效果",
+    "Player Glow Effect",
+    true,
+    "仅当呼吸灯开启时生效：控制人物身上是否展示彩色呼吸灯效果",
+    "Only effective when Breathing Light is on: controls whether the character shows colored breathing glow",
+    "开启后人物身体会随呼吸灯彩色变化",
+    "The character's body will glow with the breathing light colors",
+    "关闭后仅手杖本身有呼吸灯，人物不受影响",
+    "Only the cane glows; the character is unaffected"
+  ),
+  addConfig(
     "cane_icon_text",
     "小图标状态文字",
     "Icon Status Text",
@@ -504,7 +516,7 @@ configuration_options = {
     "enable_razor",
     "剃刀功能",
     "Razor Function",
-    true,
+    false,
     "控制是否启用剃刀功能",
     "Control whether to enable the razor function",
     "开启后可作为剃刀使用",
@@ -517,7 +529,7 @@ configuration_options = {
     "enable_hoe",
     "锄头功能",
     "Hoe Function",
-    true,
+    false,
     "控制是否启用锄头功能（可耕作土地）",
     "Control whether to enable the hoe function (can till soil)",
     "开启后可作为锄头使用，右键耕地",
