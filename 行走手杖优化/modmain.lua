@@ -771,16 +771,28 @@ AddPrefabPostInit("cane", function(inst)
     end
     -- 任务栏小图标显示文字（待实现）
     local status_text = inst.all_active and "󰀏 开/ON 󰀏" or "󰀜 关/OFF 󰀜"
-    -- 修改装备名称（根据状态切换）
-    if config.enable_tool_toggle_rename then
-      inst.components.named:SetName(status_text)
-      -- 玩家提示
-      if owner.components.talker then
-        owner.components.talker:Say("H-手杖 " .. status_text)
+      -- 修改装备名称（根据状态切换）
+      if config.enable_tool_toggle_rename then
+        inst.components.named:SetName(status_text)
+        -- 玩家提示
+        if owner.components.talker then
+          owner.components.talker:Say("H-手杖 " .. status_text)
+        end
       end
-    end
-    return false
-  end)
+      -- 通过快速卸装触发客户端 ItemTile 重建来刷新 UI（替代轮询）
+      if config.enable_tool_toggle_icon or config.enable_tool_toggle_rename or config.enable_light_fx then
+        if inst.components.equippable:IsEquipped() and owner.components.inventory then
+          inst._quick_re_equip = true
+          local eslot = inst.components.equippable.equipslot
+          local returned = owner.components.inventory:Unequip(eslot)
+          if returned then
+            owner.components.inventory:Equip(returned)
+          end
+          inst._quick_re_equip = nil
+        end
+      end
+      return false
+    end)
 
 
 
@@ -1800,6 +1812,7 @@ AddPrefabPostInit("cane", function(inst)
     end)
     -- 卸下时停止相关任务
     inst:ListenForEvent("unequipped", function(_, data)
+      if inst._quick_re_equip then return end  -- 快速切换卸装中，跳过清理
       if data and data.owner and data.owner:HasTag("player") then
         local doer = data.owner
         -- 自动工作任务清理
@@ -2026,17 +2039,12 @@ if not GLOBAL.TheNet:IsDedicated() then
       end
     end
 
-    -- 立即刷新
+    -- 立即刷新（后续由服务端快速卸装触发 ItemTile 重建来刷新）
     UpdateCaneTileHighlight()
-    -- 轮询（仅当至少一个功能开启时才需要）
-    local task = nil
-    if config.enable_light_fx or config.cane_icon_text then
-      task = self.inst:DoPeriodicTask(0.2, UpdateCaneTileHighlight)
-    end
 
     -- 清理
     self.inst:ListenForEvent("onremove", function()
-      if task then task:Cancel() end
+      StopColorCycle()
       if self._cane_label then
         self._cane_label:Kill(); self._cane_label = nil
       end
