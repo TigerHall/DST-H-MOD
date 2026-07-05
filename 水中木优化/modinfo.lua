@@ -177,9 +177,9 @@ configuration_options = {
     "耕作帽功能强化",
     "Farming Hat Utility",
     true,
-    "夜视、防风暴、完全防雨、恒温16~36°C",
+    "种地的人应该风雨无阻。夜视、防风暴、完全防雨、恒温16~36°C",
     "Night vision, storm protection, waterproof, thermal 16~36°C",
-    "开启后耕作帽获得功能强化",
+    "开启后耕作帽获得功能强化，可以风雨无阻的种地了",
     "Farming hats gain utility enhancements",
     "关闭后耕作帽无功能强化",
     "Farming hats have no utility enhancements"
@@ -191,9 +191,9 @@ configuration_options = {
     "耕作帽战斗强化",
     "Farming Hat Combat",
     true,
-    "耕作帽36/66防+36/66位面防，暗影+月亮友好，高级帽防火",
+    "种地的人应该专心致志。耕作帽36/66防+36/66位面防，暗影+月亮友好，高级帽防火",
     "plantregistryhat 36armor+36planar, nutrientsgoggleshat 66armor+66planar, faction immunity, fireproof",
-    "开启后耕作帽获得战斗强化",
+    "开启后耕作帽获得战斗强化，可以专心致志的种地了",
     "Farming hats gain combat enhancements",
     "关闭后耕作帽无战斗强化",
     "Farming hats have no combat enhancements"
