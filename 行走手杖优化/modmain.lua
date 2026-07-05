@@ -655,6 +655,7 @@ AddPrefabPostInit("cane", function(inst)
     -- 清除实体染色
     if inst.AnimState then
       inst.AnimState:SetAddColour(0, 0, 0, 0)
+      inst.AnimState:SetHaunted(false)
     end
     -- 清除玩家装备染色
     local owner_t = inst.components.inventoryitem and inst.components.inventoryitem:GetGrandOwner()
@@ -665,12 +666,16 @@ AddPrefabPostInit("cane", function(inst)
       if owner_t.AnimState then
         owner_t.AnimState:SetAddColour(0, 0, 0, 0)
       end
+      owner_t.AnimState:SetHaunted(false)
     end
   end
 
   local function StartCaneBreathTint()
     StopCaneBreathTint()
     cane_tint_time = 0
+    if inst.AnimState then
+      inst.AnimState:SetHaunted(true)
+    end
     cane_tint_task = inst:DoPeriodicTask(0.05, function() -- 每0.05秒更新一次，让呼吸平滑
       cane_tint_time = cane_tint_time + 0.05
 
@@ -708,6 +713,7 @@ AddPrefabPostInit("cane", function(inst)
         local is_equipped = owner_t2.components.inventory and
             owner_t2.components.inventory:GetEquippedItem(EQUIPSLOTS.HANDS) == inst
         if is_equipped and config.enable_player_glow then
+          owner_t2.AnimState:SetHaunted(true)
           local body_intensity = intensity * 0.46 -- 全身效果淡一些
           if cr + cg + cb > 0.01 then
             owner_t2.AnimState:SetAddColour(cr * body_intensity, cg * body_intensity,
@@ -716,6 +722,7 @@ AddPrefabPostInit("cane", function(inst)
             owner_t2.AnimState:SetAddColour(0, 0, 0, 0)
           end
         else
+          owner_t2.AnimState:SetHaunted(false)
           owner_t2.AnimState:SetAddColour(0, 0, 0, 0)
         end
       end
@@ -1269,6 +1276,15 @@ AddPrefabPostInit("cane", function(inst)
         -- 状态标记
         owner.hwatergo = true
         owner.hwatergo_active = true
+        -- 注册勋章面板状态（兼容能力勋章 1909182187）
+        local _oldGetMedalBuffInfo = owner.GetMedalBuffInfo
+        owner.GetMedalBuffInfo = function(self, buff_info)
+          if _oldGetMedalBuffInfo then _oldGetMedalBuffInfo(self, buff_info) end
+          table.insert(buff_info, {
+            buffname = "hcane_water_hunger",
+            bufftime = -1, -- 无持续时间，常亮
+          })
+        end
       end
     elseif owner.components.drownable and owner.hwatergo then
       -- owner.Physics:CollidesWith(COLLISION.LAND_OCEAN_LIMITS)
@@ -1283,6 +1299,8 @@ AddPrefabPostInit("cane", function(inst)
       -- 状态标记去除
       owner.hwatergo = nil
       owner.hwatergo_active = nil
+      -- 清除勋章面板状态
+      owner.GetMedalBuffInfo = nil
     end
     -- 麋鹿鹅结束
 
