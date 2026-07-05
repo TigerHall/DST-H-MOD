@@ -19,6 +19,8 @@ local config = {
   OceanTreeShadeRange = GetModConfigData("OceanTreeShadeRange"),
   glommer_strong = GetModConfigData("glommer_strong"),
   bullkelp_no_placement_space = GetModConfigData("bullkelp_no_placement_space"),
+  farming_utility = GetModConfigData("farming_utility"),
+  farming_combat = GetModConfigData("farming_combat"),
 }
 
 -- 设置全局调优参数
@@ -244,3 +246,190 @@ AddPrefabPostInit("bullkelp_plant", function(inst)
     inst:AddTag("NOBLOCK")
   end
 end)
+
+---------------------------------------------------------------------------------------------------------
+-- 耕作帽：功能强化（夜视+防风暴+防水+恒温）
+---------------------------------------------------------------------------------------------------------
+if config.farming_utility then
+  local HAT_NV_COLOURCUBES = {
+    day = "images/colour_cubes/identity_colourcube.tex",
+    dusk = "images/colour_cubes/identity_colourcube.tex",
+    night = "images/colour_cubes/identity_colourcube.tex",
+    full_moon = "images/colour_cubes/identity_colourcube.tex",
+  }
+
+  -- 客户端：设置夜视（由 net_bool dirty 事件触发）
+  local function SetHatNightVision(inst)
+    if not inst.components.playervision then return end
+    if inst._htree_nv and inst._htree_nv:value() then
+      inst.components.playervision:ForceGoggleVision(true)
+      inst.components.playervision:PushForcedNightVision(
+        "htree_nightvision", 1, HAT_NV_COLOURCUBES, true)
+    else
+      inst.components.playervision:ForceGoggleVision(false)
+      inst.components.playervision:PopForcedNightVision("htree_nightvision")
+    end
+  end
+
+  -- 玩家初始化：添加 net_bool 同步夜视状态
+  AddPlayerPostInit(function(inst)
+    inst._htree_nv = GLOBAL.net_bool(inst.GUID, "_htree_nv", "_htree_nvdirty")
+    inst:ListenForEvent("_htree_nvdirty", SetHatNightVision)
+  end)
+
+  -- 客户端：装备强化帽时隐藏营养物滤镜（与夜视冲突）
+  if not GLOBAL.TheNet:IsDedicated() then
+    AddClassPostConstruct("widgets/nutrientsover", function(self)
+      local oldToggle = self.ToggleNutrients
+      self.ToggleNutrients = function(self, show, ...)
+        if self.owner and self.owner._htree_nv and self.owner._htree_nv:value() then
+          show = false
+        end
+        oldToggle(self, show, ...)
+      end
+    end)
+  end
+
+  -- hook 体温上限/下限
+  AddComponentPostInit("temperature", function(self)
+    local oldSetTemp = self.SetTemperature
+    self.SetTemperature = function(self, value, ...)
+      local inv = self.inst.components.inventory
+      if inv then
+        if inv:EquipHasTag("htree_nooverheat") then
+          value = math.min(value, 36)
+        end
+        if inv:EquipHasTag("htree_nofreeze") then
+          value = math.max(value, 16)
+        end
+      end
+      oldSetTemp(self, value, ...)
+    end
+  end)
+
+  -- 装备时立即钳位体温
+  local function ClampPlayerTemp(owner)
+    if not owner or not owner.components.temperature then return end
+    local current = owner.components.temperature:GetCurrent()
+    local inv = owner.components.inventory
+    if inv then
+      if inv:EquipHasTag("htree_nooverheat") and current > 36 then
+        owner.components.temperature:SetTemperature(36)
+      end
+      if inv:EquipHasTag("htree_nofreeze") and current < 16 then
+        owner.components.temperature:SetTemperature(16)
+      end
+    end
+  end
+
+  for _, prefab in ipairs({ "plantregistryhat", "nutrientsgoggleshat" }) do
+    AddPrefabPostInit(prefab, function(inst)
+      if not TheWorld.ismastersim then return end
+
+      -- 防水
+      inst:AddComponent("waterproofer")
+      inst.components.waterproofer:SetEffectiveness(1)
+
+      -- 恒温标签
+      inst:AddTag("htree_nooverheat")
+      inst:AddTag("htree_nofreeze")
+
+      -- hook 装备/卸下
+      local _onequip = inst.components.equippable.onequipfn
+      inst.components.equippable.onequipfn = function(inst, owner)
+        if _onequip then _onequip(inst, owner) end
+        if owner and owner._htree_nv then
+          owner._htree_nv:set(true)
+        end
+        ClampPlayerTemp(owner)
+      end
+
+      local _onunequip = inst.components.equippable.onunequipfn
+      inst.components.equippable.onunequipfn = function(inst, owner)
+        if _onunequip then _onunequip(inst, owner) end
+        if owner and owner._htree_nv then
+          owner._htree_nv:set(false)
+        end
+      end
+    end)
+  end
+end
+
+---------------------------------------------------------------------------------------------------------
+-- 耕作帽：战斗强化（防御+位面防+阵营友好+防火+不可燃烧冰冻催眠）
+---------------------------------------------------------------------------------------------------------
+if config.farming_combat then
+  -- hook 冰冻免疫：检查装备上 htree_nofreeze 标签
+  AddComponentPostInit("freezable", function(self)
+    local oldAddColdness = self.AddColdness
+    self.AddColdness = function(self, amount, ...)
+      if self.inst and self.inst.components.inventory
+          and self.inst.components.inventory:EquipHasTag("htree_nofreeze") then
+        return -- 有免疫标签，拒绝冰冻
+      end
+      oldAddColdness(self, amount, ...)
+    end
+  end)
+
+  -- hook 催眠免疫：检查装备上 htree_nosleep 标签
+  AddComponentPostInit("sleeper", function(self)
+    local oldGoToSleep = self.GoToSleep
+    self.GoToSleep = function(self, sleeptime, ...)
+      if self.inst and self.inst.components.inventory
+          and self.inst.components.inventory:EquipHasTag("htree_nosleep") then
+        return -- 有免疫标签，拒绝催眠
+      end
+      oldGoToSleep(self, sleeptime, ...)
+    end
+  end)
+
+  local function SetupHatCombat(prefab, armor, planar, fireproof)
+    AddPrefabPostInit(prefab, function(inst)
+      if not TheWorld.ismastersim then return end
+
+      -- 普通防御 + 位面防御
+      inst:AddComponent("armor")
+      inst:AddTag("hide_percentage")
+      inst.components.armor:InitIndestructible(armor)
+
+      inst:AddComponent("planardefense")
+      inst.components.planardefense:SetBaseDefense(planar)
+
+      -- 阵营友好
+      inst:AddComponent("shadowdominance")
+      inst:AddTag("shadowdominance")
+      inst:AddTag("gestaltprotection")
+
+      -- 防火 + 不可燃烧/冰冻/催眠（仅高级帽）
+      if fireproof then
+        -- 不自燃
+        inst:AddTag("wildfireprotected")
+        -- 不可冰冻
+        inst:AddTag("htree_nofreeze")
+        -- 不可催眠
+        inst:AddTag("htree_nosleep")
+
+        -- 装备/卸下 hook：防火 + 混沌实体抵抗
+        local _onequip = inst.components.equippable.onequipfn
+        inst.components.equippable.onequipfn = function(inst, owner)
+          if _onequip then _onequip(inst, owner) end
+          -- 火焰伤害免疫（龙鳞甲同款）
+          if owner and owner.components.health then
+            owner.components.health.externalfiredamagemultipliers:SetModifier(inst, 0)
+          end
+        end
+
+        local _onunequip = inst.components.equippable.onunequipfn
+        inst.components.equippable.onunequipfn = function(inst, owner)
+          if _onunequip then _onunequip(inst, owner) end
+          if owner and owner.components.health then
+            owner.components.health.externalfiredamagemultipliers:RemoveModifier(inst)
+          end
+        end
+      end
+    end)
+  end
+
+  SetupHatCombat("plantregistryhat", 0.36, 36, false)
+  SetupHatCombat("nutrientsgoggleshat", 0.66, 66, true)
+end

@@ -48,12 +48,12 @@ local function addTitle(title)
 end
 
 name = L and "H-Enhanced Waterlogged Tree" or "H-水中木强化"
-version = "2.0"
+version = "2.1"
 description = L
     and
-    ("V" .. version .. "\n\nAllows transplanted Waterlogged Trees to glow, reduces the visual size of large trees, shrinks moss vines, increases the shade range of the fig Tree, and adjusts the number of figs obtained per harvest.Modify the production speed and consumption effect of Glommer's Goop, and modify the fertilizer effect of tree jam and Glommer's Goop. When fertilizing with Glommer's Goop, the transplant marker of the crop can be removed (after becoming a native plant, there is no need to fertilize again), and it should no longer wither. The ambient temperature under the tree is 16 degrees.")
+    ("V" .. version .. "\n\nAllows transplanted Waterlogged Trees to glow, reduces the visual size of large trees, shrinks moss vines, increases the shade range of the fig Tree, and adjusts the number of figs obtained per harvest.Modify the production speed and consumption effect of Glommer's Goop, and modify the fertilizer effect of tree jam and Glommer's Goop. When fertilizing with Glommer's Goop, the transplant marker of the crop can be removed (after becoming a native plant, there is no need to fertilize again), and it should no longer wither. The ambient temperature under the tree is 16 degrees. Farming hat enhancements: night vision+storm proof+waterproof+thermal / armor+planar defense+faction immunity+fireproof.")
     or
-    ("V" .. version .. "\n\n让移植过来的水中木发光（光芒能让作物晚上生长），减小大树视觉体积，自定义增大树荫范围，减小苔藓藤条体积，修改获得的无花果数量，修改格罗姆粘液的产出速度和食用效果（应该任何人都能吃），自定义格罗姆的会san光环效果，修改树果酱和格罗姆粘液的肥料效果。格罗姆粘液施肥时可移除作物的移植标记（变为原生植物以后不用再施肥了）同时应该不会再枯萎。树下环境温度16度。水中木不会挡着码头地皮铺设。格罗姆可自带回血，海带无间隔放置。")
+    ("V" .. version .. "\n\n让移植过来的水中木发光（光芒能让作物晚上生长），减小大树视觉体积，自定义增大树荫范围，减小苔藓藤条体积，修改获得的无花果数量，修改格罗姆粘液的产出速度和食用效果（应该任何人都能吃），自定义格罗姆的会san光环效果，修改树果酱和格罗姆粘液的肥料效果。格罗姆粘液施肥时可移除作物的移植标记（变为原生植物以后不用再施肥了）同时应该不会再枯萎。树下环境温度16度。水中木不会挡着码头地皮铺设。格罗姆可自带回血，海带无间隔放置。耕作帽强化：夜视+防风暴+防水+恒温 / 防御+位面防+阵营友好+防火。")
 author = "hehu"
 api_version = 10
 dst_compatible = true
@@ -171,6 +171,34 @@ configuration_options = {
     },
     default = 6
   },
+  -- 耕作帽：功能强化（夜视+防风暴+防水+恒温）
+  addConfig(
+    "farming_utility",
+    "耕作帽功能强化",
+    "Farming Hat Utility",
+    true,
+    "夜视、防风暴、完全防雨、恒温16~36°C",
+    "Night vision, storm protection, waterproof, thermal 16~36°C",
+    "开启后耕作帽获得功能强化",
+    "Farming hats gain utility enhancements",
+    "关闭后耕作帽无功能强化",
+    "Farming hats have no utility enhancements"
+  ),
+
+  -- 耕作帽：战斗强化（防御+阵营友好+防火）
+  addConfig(
+    "farming_combat",
+    "耕作帽战斗强化",
+    "Farming Hat Combat",
+    true,
+    "耕作帽36/66防+36/66位面防，暗影+月亮友好，高级帽防火",
+    "plantregistryhat 36armor+36planar, nutrientsgoggleshat 66armor+66planar, faction immunity, fireproof",
+    "开启后耕作帽获得战斗强化",
+    "Farming hats gain combat enhancements",
+    "关闭后耕作帽无战斗强化",
+    "Farming hats have no combat enhancements"
+  ),
+
   -- 种地相关优化标题
   addTitle(L and "About Farming" or "种地相关优化"),
   {
