@@ -277,12 +277,13 @@ if config.farming_utility then
     inst:ListenForEvent("_htree_nvdirty", SetHatNightVision)
   end)
 
-  -- 客户端：装备强化帽时隐藏营养物滤镜（与夜视冲突）
+  -- 客户端：装备强化帽时隐藏营养物滤镜（用 EquipHasTag 同步检查，避免 net_bool 延迟）
   if not GLOBAL.TheNet:IsDedicated() then
     AddClassPostConstruct("widgets/nutrientsover", function(self)
       local oldToggle = self.ToggleNutrients
       self.ToggleNutrients = function(self, show, ...)
-        if self.owner and self.owner._htree_nv and self.owner._htree_nv:value() then
+        if self.owner and self.owner.replica.inventory
+          and self.owner.replica.inventory:EquipHasTag("htree_suppress_nutrients") then
           show = false
         end
         oldToggle(self, show, ...)
@@ -333,6 +334,8 @@ if config.farming_utility then
       -- 恒温标签
       inst:AddTag("htree_nooverheat")
       inst:AddTag("htree_nofreeze")
+      -- 营养物滤镜覆盖标签（给客户端 EquipHasTag 同步检查用）
+      inst:AddTag("htree_suppress_nutrients")
 
       -- hook 装备/卸下
       local _onequip = inst.components.equippable.onequipfn
