@@ -3,7 +3,7 @@ GLOBAL.setmetatable(env, { __index = function(t, k) return GLOBAL.rawget(GLOBAL,
 
 
 -- 获取配置项（统一管理配置变量）
-local config = {
+local config                     = {
   -- 基础配置项
   speed_buff = GetModConfigData("speed_buff_value"),
   haunt_resurrect = GetModConfigData("haunt_resurrect_enable"),
@@ -49,17 +49,17 @@ local config = {
   enable_slot = GetModConfigData("enable_slot"),
 }
 
-TUNING.hcanelight = GetModConfigData("hcane_light")
+TUNING.hcanelight                = GetModConfigData("hcane_light")
 
 -- 实体/特效引用
-PrefabFiles = {
+PrefabFiles                      = {
   "hehu_light",
   "cane_hh_fx",
   "cane_shadow_fx",
 }
 
 -- 注册动画资源（放在 modmain.lua 开头）
-Assets = {
+Assets                           = {
   -- 加载自定义UI动画包
   -- Asset("ANIM", "anim/ui_antlionhat_1x1.zip"),
   Asset("IMAGE", "images/inventoryimages/xin.tex"),
@@ -71,17 +71,17 @@ Assets = {
 
 -- 勋章面板兼容：消耗状态名称（能力勋章 1909182187）
 STRINGS.NAMES.HCANE_WATER_HUNGER = "H-手杖踏水消耗"
-STRINGS.NAMES.HCANE_RED_GEM     = "H-手杖红宝石消耗"
-STRINGS.NAMES.HCANE_BLUE_GEM    = "H-手杖蓝宝石消耗"
-STRINGS.NAMES.HCANE_ORANGE_GEM  = "H-手杖橙宝石消耗"
-STRINGS.NAMES.HCANE_YELLOW_GEM  = "H-手杖黄宝石消耗"
-STRINGS.NAMES.HCANE_PURPLE_GEM  = "H-手杖紫宝石消耗"
-STRINGS.NAMES.HCANE_GREEN_GEM   = "H-手杖绿宝石消耗"
-STRINGS.NAMES.HCANE_OPAL_GEM    = "H-手杖彩虹宝石消耗"
-STRINGS.NAMES.HCANE_CELESTIAL   = "H-手杖天体珠宝消耗"
-STRINGS.NAMES.HCANE_BEARGER     = "H-手杖熊大消耗"
-STRINGS.NAMES.HCANE_ANTLION     = "H-手杖蚁狮坑消耗"
-STRINGS.NAMES.HCANE_GLOMMER     = "H-手杖催熟消耗"
+STRINGS.NAMES.HCANE_RED_GEM      = "H-手杖红宝石消耗"
+STRINGS.NAMES.HCANE_BLUE_GEM     = "H-手杖蓝宝石消耗"
+STRINGS.NAMES.HCANE_ORANGE_GEM   = "H-手杖橙宝石消耗"
+STRINGS.NAMES.HCANE_YELLOW_GEM   = "H-手杖黄宝石消耗"
+STRINGS.NAMES.HCANE_PURPLE_GEM   = "H-手杖紫宝石消耗"
+STRINGS.NAMES.HCANE_GREEN_GEM    = "H-手杖绿宝石消耗"
+STRINGS.NAMES.HCANE_OPAL_GEM     = "H-手杖彩虹宝石消耗"
+STRINGS.NAMES.HCANE_CELESTIAL    = "H-手杖天体珠宝消耗"
+STRINGS.NAMES.HCANE_BEARGER      = "H-手杖熊大消耗"
+STRINGS.NAMES.HCANE_ANTLION      = "H-手杖蚁狮坑消耗"
+STRINGS.NAMES.HCANE_GLOMMER      = "H-手杖催熟消耗"
 
 -- 修改步行手杖属性
 AddPrefabPostInit("cane", function(inst)
@@ -793,26 +793,26 @@ AddPrefabPostInit("cane", function(inst)
     end
     -- 任务栏小图标显示文字（待实现）
     local status_text = inst.all_active and "󰀏 开/ON 󰀏" or "󰀜 关/OFF 󰀜"
-      -- 修改装备名称（根据状态切换）
-      if config.enable_tool_toggle_rename then
-        inst.components.named:SetName(status_text)
-        -- 玩家提示
-        if owner.components.talker then
-          owner.components.talker:Say("H-手杖 " .. status_text)
-        end
+    -- 修改装备名称（根据状态切换）
+    if config.enable_tool_toggle_rename then
+      inst.components.named:SetName(status_text)
+      -- 玩家提示
+      if owner.components.talker then
+        owner.components.talker:Say("H-手杖 " .. status_text)
       end
-      -- 通过快速卸装触发客户端 ItemTile 重建来刷新 UI（替代轮询）
-      if inst.components.equippable:IsEquipped() and owner.components.inventory then
-        inst._quick_re_equip = true
-        local eslot = inst.components.equippable.equipslot
-        local returned = owner.components.inventory:Unequip(eslot)
-        if returned then
-          owner.components.inventory:Equip(returned)
-        end
-        inst._quick_re_equip = nil
+    end
+    -- 通过快速卸装触发客户端 ItemTile 重建来刷新 UI（替代轮询）
+    if inst.components.equippable:IsEquipped() and owner.components.inventory then
+      inst._quick_re_equip = true
+      local eslot = inst.components.equippable.equipslot
+      local returned = owner.components.inventory:Unequip(eslot)
+      if returned then
+        owner.components.inventory:Equip(returned)
       end
-      return false
-    end)
+      inst._quick_re_equip = nil
+    end
+    return false
+  end)
 
 
 
@@ -971,25 +971,45 @@ AddPrefabPostInit("cane", function(inst)
         local function hasAny(...)
           for _, item in ipairs(pool) do
             if item then
-              for _, p in ipairs({...}) do
+              for _, p in ipairs({ ... }) do
                 if item.prefab == p then return true end
               end
             end
           end
           return false
         end
-        if self.hwatergo_active then table.insert(buff_info, {buffname="hcane_water_hunger", bufftime=-1}) end
-        if hasAny("redgem","redmooneye","amulet") then table.insert(buff_info, {buffname="hcane_red_gem", bufftime=-1}) end
-        if hasAny("bluegem","bluemooneye","blueamulet") then table.insert(buff_info, {buffname="hcane_blue_gem", bufftime=-1}) end
-        if hasAny("orangegem","orangemooneye","orangeamulet") then table.insert(buff_info, {buffname="hcane_orange_gem", bufftime=-1}) end
-        if hasAny("yellowgem","yellowmooneye","yellowamulet") then table.insert(buff_info, {buffname="hcane_yellow_gem", bufftime=-1}) end
-        if hasAny("purplegem","purplemooneye","purpleamulet") then table.insert(buff_info, {buffname="hcane_purple_gem", bufftime=-1}) end
-        if hasAny("greengem","greenmooneye","greenamulet") then table.insert(buff_info, {buffname="hcane_green_gem", bufftime=-1}) end
-        if hasAny("opalpreciousgem") then table.insert(buff_info, {buffname="hcane_opal_gem", bufftime=-1}) end
-        if hasAny("lunar_seed") then table.insert(buff_info, {buffname="hcane_celestial", bufftime=-1}) end
-        if hasAny("furtuft","bearger_fur") then table.insert(buff_info, {buffname="hcane_bearger", bufftime=-1}) end
-        if hasAny("townportaltalisman","antlionhat") then table.insert(buff_info, {buffname="hcane_antlion", bufftime=-1}) end
-        if hasAny("glommerflower","fruitflyfruit") then table.insert(buff_info, {buffname="hcane_glommer", bufftime=-1}) end
+        if self.hwatergo_active then table.insert(buff_info, { buffname = "hcane_water_hunger", bufftime = -1 }) end
+        if hasAny("redgem", "redmooneye", "amulet") then table.insert(buff_info,
+            { buffname = "hcane_red_gem", bufftime = -1 }) end
+        if hasAny("bluegem", "bluemooneye", "blueamulet") then
+          table.insert(buff_info,
+            { buffname = "hcane_blue_gem", bufftime = -1 })
+        end
+        if hasAny("orangegem", "orangemooneye", "orangeamulet") then
+          table.insert(buff_info,
+            { buffname = "hcane_orange_gem", bufftime = -1 })
+        end
+        if hasAny("yellowgem", "yellowmooneye", "yellowamulet") then
+          table.insert(buff_info,
+            { buffname = "hcane_yellow_gem", bufftime = -1 })
+        end
+        if hasAny("purplegem", "purplemooneye", "purpleamulet") then
+          table.insert(buff_info,
+            { buffname = "hcane_purple_gem", bufftime = -1 })
+        end
+        if hasAny("greengem", "greenmooneye", "greenamulet") then
+          table.insert(buff_info,
+            { buffname = "hcane_green_gem", bufftime = -1 })
+        end
+        if hasAny("opalpreciousgem") then table.insert(buff_info, { buffname = "hcane_opal_gem", bufftime = -1 }) end
+        if hasAny("lunar_seed") then table.insert(buff_info, { buffname = "hcane_celestial", bufftime = -1 }) end
+        if hasAny("furtuft", "bearger_fur") then table.insert(buff_info, { buffname = "hcane_bearger", bufftime = -1 }) end
+        if hasAny("townportaltalisman", "antlionhat") then
+          table.insert(buff_info,
+            { buffname = "hcane_antlion", bufftime = -1 })
+        end
+        if hasAny("glommerflower", "fruitflyfruit") then table.insert(buff_info,
+            { buffname = "hcane_glommer", bufftime = -1 }) end
       end
     end
 
@@ -1881,7 +1901,7 @@ AddPrefabPostInit("cane", function(inst)
     end)
     -- 卸下时停止相关任务
     inst:ListenForEvent("unequipped", function(_, data)
-      if inst._quick_re_equip then return end  -- 快速切换卸装中，跳过清理
+      if inst._quick_re_equip then return end -- 快速切换卸装中，跳过清理
       if data and data.owner and data.owner:HasTag("player") then
         local doer = data.owner
         -- 自动工作任务清理
