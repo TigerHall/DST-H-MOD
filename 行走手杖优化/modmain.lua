@@ -69,6 +69,20 @@ Assets = {
   -- Asset("SHADER", "shaders/myshader.ksh")
 }
 
+-- 勋章面板兼容：消耗状态名称（能力勋章 1909182187）
+STRINGS.NAMES.HCANE_WATER_HUNGER = "H-手杖踏水消耗"
+STRINGS.NAMES.HCANE_RED_GEM     = "H-手杖红宝石消耗"
+STRINGS.NAMES.HCANE_BLUE_GEM    = "H-手杖蓝宝石消耗"
+STRINGS.NAMES.HCANE_ORANGE_GEM  = "H-手杖橙宝石消耗"
+STRINGS.NAMES.HCANE_YELLOW_GEM  = "H-手杖黄宝石消耗"
+STRINGS.NAMES.HCANE_PURPLE_GEM  = "H-手杖紫宝石消耗"
+STRINGS.NAMES.HCANE_GREEN_GEM   = "H-手杖绿宝石消耗"
+STRINGS.NAMES.HCANE_OPAL_GEM    = "H-手杖彩虹宝石消耗"
+STRINGS.NAMES.HCANE_CELESTIAL   = "H-手杖天体珠宝消耗"
+STRINGS.NAMES.HCANE_BEARGER     = "H-手杖熊大消耗"
+STRINGS.NAMES.HCANE_ANTLION     = "H-手杖蚁狮坑消耗"
+STRINGS.NAMES.HCANE_GLOMMER     = "H-手杖催熟消耗"
+
 -- 修改步行手杖属性
 AddPrefabPostInit("cane", function(inst)
   -- 以下只在主机端执行修改
@@ -930,6 +944,55 @@ AddPrefabPostInit("cane", function(inst)
     local owner = inst.components.inventoryitem:GetGrandOwner()
     local x, y, z = doer.Transform:GetWorldPosition()
 
+    -- 勋章面板兼容（能力勋章 1909182187）：一次性注册集中回调
+    if not owner._hcane_medal_setup then
+      owner._hcane_medal_setup = true
+
+      -- 物品变化时立即刷新面板（事件驱动，不等20秒轮询）
+      local function OnInventoryChanged()
+        owner:PushEvent("medal_buff_update")
+      end
+      owner:ListenForEvent("itemget", OnInventoryChanged)
+      owner:ListenForEvent("itemlose", OnInventoryChanged)
+
+      local _prevGetMedalBuffInfo = owner.GetMedalBuffInfo
+      owner.GetMedalBuffInfo = function(self, buff_info)
+        if _prevGetMedalBuffInfo then _prevGetMedalBuffInfo(self, buff_info) end
+        local inv = self.components.inventory
+        if not inv then return end
+        -- 收集所有相关的物品（15格 + 装备）
+        local pool = { inv:GetItemInSlot(15) }
+        if EQUIPSLOTS then
+          for _, slot in pairs(EQUIPSLOTS) do
+            local e = inv:GetEquippedItem(slot)
+            if e then table.insert(pool, e) end
+          end
+        end
+        local function hasAny(...)
+          for _, item in ipairs(pool) do
+            if item then
+              for _, p in ipairs({...}) do
+                if item.prefab == p then return true end
+              end
+            end
+          end
+          return false
+        end
+        if self.hwatergo_active then table.insert(buff_info, {buffname="hcane_water_hunger", bufftime=-1}) end
+        if hasAny("redgem","redmooneye","amulet") then table.insert(buff_info, {buffname="hcane_red_gem", bufftime=-1}) end
+        if hasAny("bluegem","bluemooneye","blueamulet") then table.insert(buff_info, {buffname="hcane_blue_gem", bufftime=-1}) end
+        if hasAny("orangegem","orangemooneye","orangeamulet") then table.insert(buff_info, {buffname="hcane_orange_gem", bufftime=-1}) end
+        if hasAny("yellowgem","yellowmooneye","yellowamulet") then table.insert(buff_info, {buffname="hcane_yellow_gem", bufftime=-1}) end
+        if hasAny("purplegem","purplemooneye","purpleamulet") then table.insert(buff_info, {buffname="hcane_purple_gem", bufftime=-1}) end
+        if hasAny("greengem","greenmooneye","greenamulet") then table.insert(buff_info, {buffname="hcane_green_gem", bufftime=-1}) end
+        if hasAny("opalpreciousgem") then table.insert(buff_info, {buffname="hcane_opal_gem", bufftime=-1}) end
+        if hasAny("lunar_seed") then table.insert(buff_info, {buffname="hcane_celestial", bufftime=-1}) end
+        if hasAny("furtuft","bearger_fur") then table.insert(buff_info, {buffname="hcane_bearger", bufftime=-1}) end
+        if hasAny("townportaltalisman","antlionhat") then table.insert(buff_info, {buffname="hcane_antlion", bufftime=-1}) end
+        if hasAny("glommerflower","fruitflyfruit") then table.insert(buff_info, {buffname="hcane_glommer", bufftime=-1}) end
+      end
+    end
+
     -- 保存原始血量上限
     if doer and doer.components.health and not doer._original_maxhealth then
       doer._original_maxhealth = doer.components.health.maxhealth
@@ -1276,15 +1339,6 @@ AddPrefabPostInit("cane", function(inst)
         -- 状态标记
         owner.hwatergo = true
         owner.hwatergo_active = true
-        -- 注册勋章面板状态（兼容能力勋章 1909182187）
-        local _oldGetMedalBuffInfo = owner.GetMedalBuffInfo
-        owner.GetMedalBuffInfo = function(self, buff_info)
-          if _oldGetMedalBuffInfo then _oldGetMedalBuffInfo(self, buff_info) end
-          table.insert(buff_info, {
-            buffname = "hcane_water_hunger",
-            bufftime = -1, -- 无持续时间，常亮
-          })
-        end
       end
     elseif owner.components.drownable and owner.hwatergo then
       -- owner.Physics:CollidesWith(COLLISION.LAND_OCEAN_LIMITS)
@@ -1299,8 +1353,6 @@ AddPrefabPostInit("cane", function(inst)
       -- 状态标记去除
       owner.hwatergo = nil
       owner.hwatergo_active = nil
-      -- 清除勋章面板状态
-      owner.GetMedalBuffInfo = nil
     end
     -- 麋鹿鹅结束
 
