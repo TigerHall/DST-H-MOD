@@ -362,7 +362,7 @@ local function SetupOneButtonPerContainer()
 
   if params.shadow_container then
     params.shadow_container.widget.buttoninfo = {
-      text = "󰀞  󰀯",
+      text = "󰀞 󰀯",
       position = Vector3(0, -190, 0),
       fn = btn_fn,
       validfn = validfn,
@@ -370,7 +370,7 @@ local function SetupOneButtonPerContainer()
   end
   if params.rabbitkinghorn_container then
     params.rabbitkinghorn_container.widget.buttoninfo = {
-      text = "󰀞  󰀨",
+      text = "󰀞 󰀨",
       position = Vector3(0, -190, 0),
       fn = btn_fn,
       validfn = validfn,
@@ -670,65 +670,58 @@ AddPrefabPostInit("moonrockcrater", function(inst)
   end
 end)
 
--- 黄色月眼传送：月台/中庭柱子
+-- 黄色月眼传送：月台/中庭柱子 + 鱼箱空间
 AddPrefabPostInit("yellowmooneye", function(inst)
   if not TheWorld.ismastersim then
     return inst
   end
-  -- 开启传送功能（可通过配置控制）
-  if config.moonrockcrater_teleport then
-    -- 劫持检查组件的GetDescription方法
-    local old_GetDescription = inst.components.inspectable.GetDescription
-    inst.components.inspectable.GetDescription = function(self, viewer)
-      if viewer and viewer:HasTag("player") and viewer:IsValid() then
+  local old_GetDescription = inst.components.inspectable.GetDescription
+  inst.components.inspectable.GetDescription = function(self, viewer)
+    if viewer and viewer:HasTag("player") and viewer:IsValid() then
+      if config.colormooneye_toggle then
+        TogglePocketDimensionChest(viewer, "yellow_fish")
+      elseif config.moonrockcrater_teleport then
         GenericMoonEyeTeleport(inst, viewer, { "moonbase", "pillar_atrium" })
       end
-      -- 执行原版检查逻辑
-      return old_GetDescription(self, viewer)
     end
+    return old_GetDescription(self, viewer)
   end
 end)
 
--- 橙色月眼传送 宠物巢穴/梦魇疯猪
+-- 橙色月眼传送 宠物巢穴/梦魇疯猪 + 鱼箱空间
 AddPrefabPostInit("orangemooneye", function(inst)
-  -- 仅在服务端执行
   if not TheWorld.ismastersim then
     return inst
   end
-
-  -- 开启传送功能
-  if config.moonrockcrater_teleport then
-    -- 劫持检查组件的GetDescription方法
-    local old_GetDescription = inst.components.inspectable.GetDescription
-    inst.components.inspectable.GetDescription = function(self, viewer)
-      if viewer and viewer:HasTag("player") and viewer:IsValid() then
+  local old_GetDescription = inst.components.inspectable.GetDescription
+  inst.components.inspectable.GetDescription = function(self, viewer)
+    if viewer and viewer:HasTag("player") and viewer:IsValid() then
+      if config.colormooneye_toggle then
+        TogglePocketDimensionChest(viewer, "orange_fish")
+      elseif config.moonrockcrater_teleport then
         GenericMoonEyeTeleport(inst, viewer, { "critterlab", "daywalker_pillar", "daywalker" })
       end
-      -- 执行原版检查逻辑
-      return old_GetDescription(self, viewer)
     end
+    return old_GetDescription(self, viewer)
   end
 end)
 
--- 紫色月眼传送 猪王/远古守护者
+-- 紫色月眼传送 猪王/远古守护者 + 鱼箱空间
 AddPrefabPostInit("purplemooneye", function(inst)
-  -- 仅在服务端执行
   if not TheWorld.ismastersim then
     return inst
   end
-
-  -- 开启传送功能
-  if config.moonrockcrater_teleport then
-    -- 劫持检查组件的GetDescription方法
-    local old_GetDescription = inst.components.inspectable.GetDescription
-    inst.components.inspectable.GetDescription = function(self, viewer)
-      if viewer and viewer:HasTag("player") and viewer:IsValid() then
+  local old_GetDescription = inst.components.inspectable.GetDescription
+  inst.components.inspectable.GetDescription = function(self, viewer)
+    if viewer and viewer:HasTag("player") and viewer:IsValid() then
+      if config.colormooneye_toggle then
+        TogglePocketDimensionChest(viewer, "purple_fish")
+      elseif config.moonrockcrater_teleport then
         GenericMoonEyeTeleport(inst, viewer,
           { "glommerflower", "statueglommer", "minotaur", "pillar_ruins", "insanityrock", "sanityrock", })
       end
-      -- 执行原版检查逻辑
-      return old_GetDescription(self, viewer)
     end
+    return old_GetDescription(self, viewer)
   end
 end)
 
@@ -820,23 +813,187 @@ AddPrefabPostInit("redmooneye", function(inst)
   end
 end)
 
--- 蓝色月眼打开自制格子（未完成）
+-- 蓝色月眼打开自制格子（古董船 4x4 空间）
 AddPrefabPostInit("bluemooneye", function(inst)
   if not TheWorld.ismastersim then
     return inst
   end
-  -- 劫持检查方法，调用通用抽象函数
-  -- local old_GetDescription = inst.components.inspectable.GetDescription
-  -- inst.components.inspectable.GetDescription = function(self, viewer)
-  --   if config.colormooneye_toggle then
-  --     TogglePocketDimensionChest(viewer, "hslot")
-  --   end
-  --   return old_GetDescription(self, viewer)
-  -- end
+  local old_GetDescription = inst.components.inspectable.GetDescription
+  inst.components.inspectable.GetDescription = function(self, viewer)
+    if config.colormooneye_toggle then
+      TogglePocketDimensionChest(viewer, "hslot")
+    end
+    return old_GetDescription(self, viewer)
+  end
 end)
 
 -- 给 rabbitkinghorn_container 和 shadow_container 添加原生 buttoninfo 按钮
 SetupOneButtonPerContainer()
+
+-- 为所有口袋空间添加：注册世界 + 无限堆叠 + 保鲜 + 整理按钮
+local POCKET_MAP = {
+  hslot_container = "hslot",
+  purple_fish_box = "purple_fish",
+  orange_fish_box = "orange_fish",
+  yellow_fish_box = "yellow_fish",
+}
+local sortonly_btn_fn = function(inst, doer)
+  if inst.components.container ~= nil then
+    ArrangeContainerItems(inst)
+  elseif inst.replica.container ~= nil and not inst.replica.container:IsBusy() then
+    SendRPCToServer(RPC.DoWidgetButtonAction, nil, inst, nil)
+  end
+end
+local sortonly_validfn = function(inst)
+  return inst.replica.container ~= nil and not inst.replica.container:IsEmpty()
+end
+
+-- 蓝色月眼空间的增强按钮：排序 + 消耗彩虹宝石 → 堆叠+16 + 复制bundle/gift
+local function hslot_btn_fn(inst, doer)
+  if inst.components.container ~= nil then
+    -- 1. 先排序
+    ArrangeContainerItems(inst)
+
+    -- 2. 遍历容器找宝石、可堆叠物品、bundle/gift
+    local container = inst.components.container
+    local gem_slot = nil
+    local stackable_items = {}
+    local first_bundle = nil
+
+    for slot = 1, container:GetNumSlots() do
+      local item = container:GetItemInSlot(slot)
+      if item then
+        if item.prefab == "opalpreciousgem" then
+          gem_slot = slot
+        elseif item.components.stackable and item.prefab ~= "opalpreciousgem" then
+          table.insert(stackable_items, item)
+        end
+        if first_bundle == nil and item:HasTag("bundle") then
+          first_bundle = item
+        end
+      end
+    end
+
+    -- 3. 有宝石时执行增强效果
+    if gem_slot then
+      local has_effect = false
+
+      -- 给所有可堆叠物品各增加 16 数量
+      if #stackable_items > 0 then
+        for _, item in ipairs(stackable_items) do
+          if item.components.stackable then
+            local old = item.components.stackable:StackSize()
+            item.components.stackable:SetStackSize(old + 16)
+          end
+        end
+        has_effect = true
+      end
+
+      -- 还有空格则深度复制第一个 bundle/gift（含内部物品）
+      if first_bundle and container:CanAcceptCount(first_bundle, 1) > 0 then
+        local copy = SpawnPrefab(first_bundle.prefab)
+        if copy and first_bundle.components.unwrappable and first_bundle.components.unwrappable.itemdata then
+          -- 深度复制 itemdata（bundle 内部的物品清单）
+          local itemdata_copy = {}
+          for i, v in ipairs(first_bundle.components.unwrappable.itemdata) do
+            itemdata_copy[i] = deepcopy(v)
+          end
+          copy.components.unwrappable.itemdata = itemdata_copy
+          copy.components.unwrappable.origin = first_bundle.components.unwrappable.origin
+          -- 更新 bundle 外观（大小/图标匹配物品数量）
+          if copy.components.unwrappable.onwrappedfn then
+            copy.components.unwrappable.onwrappedfn(copy, #itemdata_copy)
+          end
+        end
+        if copy then
+          container:GiveItem(copy)
+          has_effect = true
+        end
+      end
+
+      -- 至少有一个效果生效时才消耗宝石
+      if has_effect then
+        local gem = container:RemoveItemBySlot(gem_slot)
+        if gem then
+          if gem.components.stackable and gem.components.stackable:StackSize() > 1 then
+            -- 有多颗宝石堆叠，只取一颗，剩下的放回
+            gem.components.stackable:SetStackSize(gem.components.stackable:StackSize() - 1)
+            container:GiveItem(gem)
+          else
+            gem:Remove()
+          end
+        end
+      end
+    end
+  elseif inst.replica.container ~= nil and not inst.replica.container:IsBusy() then
+    SendRPCToServer(RPC.DoWidgetButtonAction, nil, inst, nil)
+  end
+end
+for prefab_name, world_key in pairs(POCKET_MAP) do
+  AddPrefabPostInit(prefab_name, function(inst)
+    if not TheWorld.ismastersim then return end
+    -- 注册到世界（首次创建 + 存档加载时重新注册）
+    if TheWorld:GetPocketDimensionContainer(world_key) == nil then
+      TheWorld:SetPocketDimensionContainer(world_key, inst)
+    end
+    -- 给服务端的 container widget 补上按钮回调（text+position 已在 params 中定义）
+    if inst.components.container ~= nil and inst.components.container.widget ~= nil then
+      inst.components.container.widget.buttoninfo = inst.components.container.widget.buttoninfo or {}
+      if prefab_name == "hslot_container" then
+        inst.components.container.widget.buttoninfo.fn = hslot_btn_fn
+      else
+        inst.components.container.widget.buttoninfo.fn = sortonly_btn_fn
+      end
+      inst.components.container.widget.buttoninfo.validfn = sortonly_validfn
+    end
+    -- 无限堆叠
+    if config.infinite_stack and inst.components.container then
+      inst.components.container:EnableInfiniteStackSize(true)
+    end
+    -- 保鲜
+    if config.preserve_settings then
+      if inst.components.preserver == nil then
+        inst:AddComponent("preserver")
+      end
+      inst.components.preserver:SetPerishRateMultiplier(0)
+    end
+  end)
+end
+
+-- 在 container_replica 构造时补上按钮回调（客户端用）
+-- params 已有 buttoninfo 结构（含 text/position），但 fn/validfn 需在此补上
+AddClassPostConstruct("components/container_replica", function(self)
+  if not POCKET_MAP[self.inst.prefab] then return end
+  if self.widget and self.widget.buttoninfo and self.widget.buttoninfo.fn == nil then
+    self.widget.buttoninfo.fn = sortonly_btn_fn
+    self.widget.buttoninfo.validfn = sortonly_validfn
+  end
+end)
+
+-- 在世界初始化后创建各色口袋空间
+AddPrefabPostInit("world", function(inst)
+  if not TheWorld.ismastersim then return end
+  -- 等 3 帧确保存档实体已恢复，只创建尚不存在的
+  local spawn_task
+  local frame_count = 0
+  spawn_task = inst:DoPeriodicTask(0, function()
+    frame_count = frame_count + 1
+    if frame_count < 4 then return end -- 前 3 帧不做事，等存档恢复
+
+    local TO_SPAWN = {
+      hslot = "hslot_container",
+      purple_fish = "purple_fish_box",
+      orange_fish = "orange_fish_box",
+      yellow_fish = "yellow_fish_box",
+    }
+    for key, prefab in pairs(TO_SPAWN) do
+      if TheWorld:GetPocketDimensionContainer(key) == nil then
+        SpawnPrefab(prefab)
+      end
+    end
+    spawn_task:Cancel()
+  end)
+end)
 
 -- 客户端：调大这两个容器按钮的字体
 if not GLOBAL.TheNet:IsDedicated() then

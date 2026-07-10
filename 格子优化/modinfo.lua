@@ -47,7 +47,7 @@ end
 
 --  基础信息
 name = en_zh("H-SLOT", "H-无限格子")
-version = "2.0"
+version = "2.3"
 description = en_zh("V" .. version .. [[
 
 Items in Chester's and Hutch's grids do not spoil. Items in Shadow Chester's grid spoil at an accelerated rate, while items in Ice Chester's grid are preserved (remain fresh).
@@ -55,6 +55,8 @@ Items in Chester's and Hutch's grids can be stacked infinitely.
 The red moon eye can open the shadow space, and the green moon eye can open the poaching rabbit space. Eyebone and Fishbowl can also open the rabbit space by inspecting.
 The shadow space and the poaching rabbit space can be set with infinite stacking, corruption acceleration, and anti-fresh acceleration.
 Trading feature added -- try trading various items with eyebone/fishbowl to discover hidden recipes!
+Blue moon eye opens an pocket space (4x4 slots)!
+Purple, orange, yellow moon eyes each open a pocket space (5x4 slots)!
 ]], "V" .. version .. [[
 
 切斯特、哈奇格子内物品不腐败，暗影切斯特格子腐败加速，冰雪切斯特反鲜。
@@ -63,6 +65,8 @@ Trading feature added -- try trading various items with eyebone/fishbowl to disc
 红色月眼可打开暗影空间，绿色月眼可打开挖角兔空间。眼骨和星空右键检查也可打开挖角兔空间。
 暗影空间和挖角兔空间可设置无限堆叠，腐败加速和反鲜加速。
 新增交易功能——尝试向眼骨或星空提交各种物品，发现隐藏配方彩蛋吧！
+蓝色月眼可打开格子空间（4x4 格子）！
+紫色、橙色、黄色月眼可各打开一个格子空间（5x4 格子）！
 ]])
 author = "hehu"
 api_version = 10
