@@ -47,7 +47,7 @@ end
 
 --  基础信息
 name = en_zh("H-SLOT", "H-无限格子")
-version = "2.5.5"
+version = "3.0"
 description = en_zh("V" .. version .. [[
 
 Items in Chester's and Hutch's grids do not spoil. Items in Shadow Chester's grid spoil at an accelerated rate, while items in Ice Chester's grid are preserved (remain fresh).
@@ -57,12 +57,15 @@ The shadow space and the poaching rabbit space can be set with infinite stacking
 Trading feature added -- try trading various items with eyebone/fishbowl to discover hidden recipes!
 Blue moon eye opens an pocket space (4x4 slots)!
 Purple, orange, yellow moon eyes each open a pocket space (5x4 slots)!
-Yellow/Orange/Purple moon eyes can also reveal set piece locations on the map!
+Yellow/Orange/Purple moon eyes can reveal set piece locations on the map!
+Open map and right-click moon eyes/sentry/moondial/townportal to teleport there!
+Open map and right-click moon eyes/sentry/moondial/townportal to teleport (requires moonrockcrater config on)!
 ]], "V" .. version .. [[
 
 切斯特、哈奇格子内物品不腐败，暗影切斯特格子腐败加速，冰雪切斯特反鲜。
 切斯特、哈奇格子可无限堆叠。
-带孔月岩可传送到眼骨或星空处。黄色、橙色、紫色月眼可在地图揭示布景位置。
+带孔月岩可传送到眼骨或星空处；打开地图右键月眼及其产物可传送至对应位置。
+黄色、橙色、紫色月眼可在地图揭示重要布景位置。
 红色月眼可打开暗影空间，绿色月眼可打开挖角兔空间。眼骨和星空右键检查也可打开挖角兔空间。
 暗影空间和挖角兔空间可设置无限堆叠，腐败加速和反鲜加速。
 新增交易功能——尝试向眼骨或星空提交各种物品，发现隐藏配方彩蛋吧！
@@ -87,12 +90,12 @@ configuration_options = {
     "切斯特与哈奇保鲜/腐败",
     "Chester & Hutch Preservation",
     true,
-    "统一控制切斯特和哈奇的保鲜/腐败行为",
-    "Unified control of preservation/decay behavior for Chester and Hutch",
-    "普通切斯特和哈奇停止腐败，冰雪切斯特反鲜，暗影切斯特加速腐败",
-    "Chester and Hutch stop decaying, Ice Chester prevents freshness loss, and Shadow Chester accelerates decaying.",
-    "不改变切斯特和哈奇的保鲜/腐败特性",
-    "No change to preservation/decay characteristics of Chester and Hutch"
+    "统一控制切斯特、哈奇以及各月眼空间的保鲜/腐败行为",
+    "Unified control of preservation/decay behavior for Chester, Hutch, and moon eye pocket spaces",
+    "普通切斯特/哈奇及月眼空间停止腐败，冰雪切斯特反鲜，暗影切斯特加速腐败",
+    "Chester, Hutch, and moon eye pocket spaces stop decaying; Ice Chester preserves freshness; Shadow Chester accelerates decay",
+    "不改变切斯特/哈奇及月眼空间的保鲜/腐败特性",
+    "No change to preservation/decay for Chester, Hutch, or moon eye pocket spaces"
   ),
   -- 合并的无限堆叠设置
   addTitle("Infinite Stack", "无限堆叠设置"),
@@ -101,12 +104,12 @@ configuration_options = {
     "切斯特与哈奇无限堆叠",
     "Chester & Hutch Infinite Stack",
     true,
-    "统一控制切斯特和哈奇的物品堆叠数量",
-    "Unified control of item stack quantity for Chester and Hutch",
-    "切斯特和哈奇所有格子物品堆叠数量无上限",
-    "All grid item stack quantities have no upper limit for Chester and Hutch",
-    "不改变切斯特和哈奇的物品堆叠数量限制",
-    "No change to item stack quantity limits for Chester and Hutch"
+    "统一控制切斯特、哈奇以及各月眼空间的物品堆叠数量",
+    "Unified control of item stack quantity for Chester, Hutch, and moon eye pocket spaces",
+    "切斯特、哈奇及月眼空间所有格子物品堆叠数量无上限",
+    "All grid item stack quantities have no upper limit for Chester, Hutch, and moon eye pocket spaces",
+    "不改变切斯特、哈奇及月眼空间的物品堆叠数量限制",
+    "No change to item stack quantity limits for Chester, Hutch, or moon eye pocket spaces"
   ),
   -- 新增：宠物强化设置
   addTitle("Pet Enhancement", "宠物强化设置"),
@@ -129,12 +132,12 @@ configuration_options = {
     "带孔月岩传送功能",
     "Moonrockcrater Teleport Function",
     true,
-    "带孔月岩点击检查触发传送功能",
-    "Moonrockcrater click inspect to trigger teleport function",
-    "点击带孔月岩可传送到眼骨/星空位置",
-    "Check moonrockcrater to teleport to the eyebone/hutch location",
-    "不改变带孔月岩",
-    "No change to moonrockcrater"
+    "带孔月岩点击检查触发传送 + 地图右键传送至各色月眼/哨塔/月晷/传送门",
+    "Moonrockcrater click teleport + map right-click teleport to moon eyes/sentry/moondial/townportal",
+    "点击带孔月岩传送到眼骨/星空；打开地图右键月眼及其产物可直接传送至对应位置",
+    "Click moonrockcrater to teleport to eyebone/hutch; open map and right-click moon eyes or their products to teleport",
+    "不改变带孔月岩，禁用地图传送",
+    "No change to moonrockcrater, disable map teleport"
   ),
   -- 各色月眼开关宠物格子功能配置
   addConfig(
@@ -144,8 +147,8 @@ configuration_options = {
     true,
     "通过各色月眼来开关各种格子",
     "Whether to allow toggling container by inspecting color moon eye",
-    "点击各色月眼时会开关各种格子",
-    "Clicking color moon eye will toggle pet container",
+    "右键各色月眼时会开关各种格子",
+    "Right-click color moon eye will toggle pet container",
     "禁用各色月眼的格子开关功能",
     "Disable color moon eye's pet container toggle function"
   ),
@@ -154,12 +157,12 @@ configuration_options = {
     "月眼地图揭示布景位置",
     "Moon Eye Map Reveal Set Piece",
     true,
-    "黄/橙/紫色月眼在地图上揭示布景位置（可与开箱子同步触发，每个玩家仅首次生效）。布景搜索方式：猪王/月亮石/格罗姆→用拓扑找房间中心；宠物巢穴/中庭→用实体tag搜索",
-    "Yellow/Orange/Purple moon eyes reveal set piece locations on the map (works with container toggle, one-time per player). Search method: set pieces via topology room center; entities via tags",
-    "右键月眼时按「拓扑房间→实体tag」优先级搜索未发现的布景，在地图标记位置并移除迷雾（与开箱子互不冲突）",
-    "Right-click searches unrevealed set pieces via room topology→entity tags, marks on map and reveals area (works alongside container toggle)",
-    "月眼保持原传送功能",
-    "Moon eye keeps original teleport function"
+    "黄/橙/紫色月眼可在地图揭示一些重要位置（各玩家仅首次生效）",
+    "Yellow/Orange/Purple moon eyes reveal important locations on the map (one-time per player)",
+    "右键月眼时标示重要位置并移除迷雾（与开箱子互不冲突）",
+    "Right-click reveals important locations on map and removes fog of war (works alongside container toggle)",
+    "月眼保持原功能",
+    "Moon eye keeps original function"
   ),
   addTitle("Trade Settings", "物品交易设置"),
   addConfig(

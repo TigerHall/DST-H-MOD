@@ -99,101 +99,149 @@ Assets = {
 }
 
 
--- 物品交换映射表（按交易链分组，方便查看连续交易）
--- 格式：["输入物品"] = "输出物品",
+-- 物品交换映射表
+-- 格式1：["输入"] = "输出"                   -- 1个换1个
+-- 格式2：["输入"] = { "甲", "乙" }            -- 1个换各1个（甲×1 + 乙×1）
+-- 注意：给一堆（如5个石头）= 每份各5个（甲×5 + 乙×5），不支持不等份
 local TRADE_MAPPING = {
-  -- 绝望石 → 彩虹宝石 → 启迪碎片
-  ["dreadstone"]          = "opalpreciousgem",
-  ["opalpreciousgem"]     = "alterguardianhatshard",
+  -- 绝望石 → 彩虹宝石 → 启迪碎片 → 七色宝石
+  ["dreadstone"]               = "opalpreciousgem",
+  ["opalpreciousgem"]          = "alterguardianhatshard",
+  ["alterguardianhatshard"]    = { "yellowgem", "orangegem", "greengem", "purplegem", "redgem", "bluegem" },
   -- 骨片 → 犬牙 → 一角鲸角
-  ["boneshard"]           = "houndstooth",
-  ["houndstooth"]         = "gnarwail_horn",
+  ["boneshard"]                = "houndstooth",
+  ["houndstooth"]              = "gnarwail_horn",
   -- 海象牙 → 克劳斯钥匙
-  ["walrus_tusk"]         = "klaussackkey",
+  ["walrus_tusk"]              = "klaussackkey",
   -- 龙鳞 → 古树种子
-  ["dragon_scales"]       = "ancienttree_seed",
+  ["dragon_scales"]            = "ancienttree_seed",
   -- 树汁酱 → 猴王冠
-  ["treegrowthsolution"]  = "monkey_mediumhat",
+  ["treegrowthsolution"]       = "monkey_mediumhat",
   -- 花瓣 → 暗红花瓣
-  ["petals"]              = "petals_evil",
+  ["petals"]                   = "petals_evil",
   -- 海带 → 公牛海带茎
-  ["kelp"]                = "bullkelp_root",
+  ["kelp"]                     = "bullkelp_root",
 
   -- 蝴蝶 → 黄油
-  ["butterfly"]           = "butter",
+  ["butterfly"]                = "butter",
 
   -- 石果 →岩石 → 燧石 → 硝石 → 大理石 → 月岩 → 盐晶
-  ["rock_avocado_fruit"]  = "rocks",
-  ["rocks"]               = "flint",
-  ["flint"]               = "nitre",
-  ["nitre"]               = "marble",
-  ["marble"]              = "moonrocknugget",
-  ["moonrocknugget"]      = "saltrock",
+  ["rock_avocado_fruit"]       = "rocks",
+  ["rocks"]                    = "flint",
+  ["flint"]                    = "nitre",
+  ["nitre"]                    = "marble",
+  ["marble"]                   = "moonrocknugget",
+  ["moonrocknugget"]           = "saltrock",
 
   -- 干海带 → 黄金 → 齿轮
-  ["kelp_dried"]          = "goldnugget",
-  ["goldnugget"]          = "gears",
+  ["kelp_dried"]               = "goldnugget",
+  ["goldnugget"]               = "gears",
 
   -- 灰烬 → 月亮碎片 → 空瓶子 → 瓶中信
-  ["ash"]                 = "moonglass",
-  ["moonglass"]           = "messagebottleempty",
-  ["messagebottleempty"]  = "messagebottle",
+  ["ash"]                      = "moonglass",
+  ["moonglass"]                = "messagebottleempty",
+  ["messagebottleempty"]       = "messagebottle",
 
   -- 腐烂物 → 粪肥 → 鸟粪 → 腐烂鸟蛋
-  ["spoiled_food"]        = "poop",
-  ["poop"]                = "guano",
-  ["guano"]               = "rottenegg",
+  ["spoiled_food"]             = "poop",
+  ["poop"]                     = "guano",
+  ["guano"]                    = "rottenegg",
 
   -- 无花果 → 格罗姆粘液 → 嗡嗡肥料 → 受潮营养砖
-  ["fig"]                 = "glommerfuel",
-  ["glommerfuel"]         = "mosquitofertilizer",
-  ["mosquitofertilizer"]  = "wx78_foodbrick",
+  ["fig"]                      = "glommerfuel",
+  ["glommerfuel"]              = "mosquitofertilizer",
+  ["mosquitofertilizer"]       = "wx78_foodbrick",
 
   -- 怪物肉 → 肉 → 猪皮 → 兔绒 → 兔子
-  ["monstermeat"]         = "meat",
-  ["meat"]                = "pigskin",
-  ["pigskin"]             = "manrabbit_tail",
-  ["manrabbit_tail"]      = "rabbit",
+  ["monstermeat"]              = "meat",
+  ["meat"]                     = "pigskin",
+  ["pigskin"]                  = "manrabbit_tail",
+  ["manrabbit_tail"]           = "rabbit",
 
   -- 棕榈松果树鳞片 → 棕榈松果树芽
-  ["palmcone_scale"]      = "palmcone_seed",
+  ["palmcone_scale"]           = "palmcone_seed",
   -- 香蕉 → 香蕉丛
-  ["cave_banana"]         = "dug_bananabush",
+  ["cave_banana"]              = "dug_bananabush",
   -- 荧光果 → 球状光虫
-  ["lightbulb"]           = "lightflier",
+  ["lightbulb"]                = "lightflier",
 
   -- 种子 → 外壳碎片 → 发光蟹
-  ["seeds"]               = "slurtle_shellpieces",
-  ["slurtle_shellpieces"] = "lightcrab",
+  ["seeds"]                    = "slurtle_shellpieces",
+  ["slurtle_shellpieces"]      = "lightcrab",
+
+  -- 勋章少肝点
+  -- 格罗姆精华 → 时空碎片 → 时空灵石 → 时空宝石 → 暗影魔法石 → 本源精华
+  ["medal_glommer_essence"]    = "medal_time_slider",
+  ["medal_time_slider"]        = "medal_spacetime_lingshi",
+  ["medal_spacetime_lingshi"]  = "medal_space_gem",
+  ["medal_space_gem"]          = "medal_shadow_magic_stone",
+  ["medal_shadow_magic_stone"] = "medal_origin_essence",
+
+  -- 曼德拉果 → 杂草/曼德拉/不朽/包果种子
+  ["mandrakeberry"]            = { "mandrake_seeds", "medal_weed_seeds", "immortal_fruit_seed", "medal_gift_fruit_seed" },
+
+  -- 血汗钱 → 弯曲的叉子
+  ["toil_money"]               = "trinket_17",
+
+  -- 遗失的藏宝图 → 全部 trinket（1-31）
+  ["medal_loss_treasure_map"]  = { "trinket_1", "trinket_2", "trinket_3", "trinket_4", "trinket_5",
+    "trinket_6", "trinket_7", "trinket_8", "trinket_9", "trinket_10",
+    "trinket_11", "trinket_12", "trinket_13", "trinket_14", "trinket_15",
+    "trinket_16", "trinket_17", "trinket_18", "trinket_19", "trinket_20",
+    "trinket_21", "trinket_22", "trinket_23", "trinket_24", "trinket_25",
+    "trinket_26", "trinket_27", "trinket_28", "trinket_29", "trinket_30",
+    "trinket_31" },
+
+  -- 食人花手杖 → 吞噬法杖 → 流星法杖
+  ["lureplant_rod"]            = "devour_staff",
+  ["devour_staff"]             = "meteor_staff",
+  -- 淘气铃铛 → 瓶装灵魂 → 瓶装月光
+  ["medal_naughtybell"]        = "bottled_soul",
+  ["bottled_soul"]             = "bottled_moonlight",
+  -- 血糖 → 黑暗血糖
+  ["spice_blood_sugar"]        = "spice_rage_blood_sugar",
 }
 
--- 简化版交易成功回调：核心逻辑保留，精简冗余判断和注释
+-- 交易成功回调（支持 1:1 和 1:多不同物品）
 local function OnGivenItem(inst, giver, item, count)
-  -- 基础空值保护
   if not giver or not giver.components.inventory then return end
 
-  -- 获取兑换目标物品
-  local output_prefab = TRADE_MAPPING[item.prefab]
-  if not output_prefab then return end
+  local mapping = TRADE_MAPPING[item.prefab]
+  if not mapping then return end
 
-  -- 计算交易数量（简化写法）
   local trade_count = count or (item.components.stackable and item.components.stackable.stacksize or 1)
 
-  -- 生成并发放兑换物品
+  -- 解析输出列表：支持单字符串或数组
+  local output_list = {}
+  if type(mapping) == "string" then
+    output_list = { mapping }
+  elseif type(mapping) == "table" then
+    output_list = mapping
+  else
+    return
+  end
+
+  -- 按堆叠数量生成每个输出
   for i = 1, trade_count do
-    local reward = SpawnPrefab(output_prefab)
-    if reward then
-      giver.components.inventory:GiveItem(reward, nil, giver:GetPosition())
+    for _, prefab in ipairs(output_list) do
+      local reward = SpawnPrefab(prefab)
+      if reward then
+        giver.components.inventory:GiveItem(reward, nil, giver:GetPosition())
+      end
     end
   end
 
-  -- 简化的交易提示（保留核心提示逻辑）
+  -- 交易提示
   if giver.components.talker then
-    local reward = SpawnPrefab(output_prefab)
-    giver.components.talker:Say(string.format("󰀧 %d %s 󰀩 %d %s！󰀒",
-      trade_count, item:GetDisplayName(),
-      trade_count, reward:GetDisplayName()))
-    reward:Remove()
+    local names = {}
+    for _, prefab in ipairs(output_list) do
+      local r = SpawnPrefab(prefab)
+      if r then
+        table.insert(names, r:GetDisplayName())
+        r:Remove()
+      end
+    end
+    giver.components.talker:Say("󰀧 " .. item:GetDisplayName() .. " 󰀩 " .. table.concat(names, "+"))
   end
 end
 
@@ -825,16 +873,17 @@ end
 -- 参考MOD 3540476559 的坐标转换 + 双击检测 + RPC 模式
 -- ═══════════════════════════════════════════════════════
 
--- 给月眼加 tag
+-- 给六色月眼 + 月眼建筑加 "mooneye" tag（可搜到的传送目标）
 local MOONEYE_PREFABS = { "purplemooneye", "bluemooneye", "redmooneye",
-  "orangemooneye", "yellowmooneye", "greenmooneye" }
+  "orangemooneye", "yellowmooneye", "greenmooneye",
+  "sentryward", "moondial", "townportal" }
 for _, prefab in ipairs(MOONEYE_PREFABS) do
   AddPrefabPostInit(prefab, function(inst)
     inst:AddTag("mooneye")
   end)
 end
 
--- 服务端 RPC
+-- 服务端 RPC：搜月眼 tag，传送到目标位置
 AddModRPCHandler("hslot_mooneye", "teleport_to_eye", function(player, x, z)
   if not TheWorld.ismastersim then return end
   local ents = GLOBAL.TheSim:FindEntities(x, 0, z, 30, { "mooneye" })
@@ -842,7 +891,6 @@ AddModRPCHandler("hslot_mooneye", "teleport_to_eye", function(player, x, z)
   if ents[1].components.inventoryitem and ents[1].components.inventoryitem:IsHeld() then return end
   local tx, _, tz = ents[1].Transform:GetWorldPosition()
   if player.Physics then player.Physics:Teleport(tx, 0, tz) end
-  -- 传送后提示
   if player.components.talker then
     player.components.talker:Say("󰀏 󰀯")
   end
@@ -1118,7 +1166,8 @@ local function hslot_btn_fn(inst, doer)
 
     -- 2. 遍历容器找宝石、可堆叠物品、bundle/gift
     local container = inst.components.container
-    local gem_slot = nil
+    local gem_total = 0          -- 彩虹宝石总数
+    local gem_consume_slot = nil -- 要从哪个槽消耗
     local stackable_items = {}
     local first_bundle = nil
 
@@ -1126,7 +1175,10 @@ local function hslot_btn_fn(inst, doer)
       local item = container:GetItemInSlot(slot)
       if item then
         if item.prefab == "opalpreciousgem" then
-          gem_slot = slot
+          local stack = item.components.stackable and item.components.stackable:StackSize() or 1
+          gem_total = gem_total + stack
+          -- 记下第一个有宝石的槽，后续消耗用
+          if gem_consume_slot == nil then gem_consume_slot = slot end
         elseif item.components.stackable and item.prefab ~= "opalpreciousgem" then
           table.insert(stackable_items, item)
         end
@@ -1136,8 +1188,8 @@ local function hslot_btn_fn(inst, doer)
       end
     end
 
-    -- 3. 有宝石时执行增强效果
-    if gem_slot then
+    -- 3. 宝石数 > 10 才消耗 1 个执行增强效果
+    if gem_total > 10 then
       local has_effect = false
 
       -- 给所有可堆叠物品各增加 16 数量
@@ -1173,9 +1225,9 @@ local function hslot_btn_fn(inst, doer)
         end
       end
 
-      -- 至少有一个效果生效时才消耗宝石
+      -- 至少有一个效果生效时才消耗 1 颗宝石
       if has_effect then
-        local gem = container:RemoveItemBySlot(gem_slot)
+        local gem = container:RemoveItemBySlot(gem_consume_slot)
         if gem then
           if gem.components.stackable and gem.components.stackable:StackSize() > 1 then
             -- 有多颗宝石堆叠，只取一颗，剩下的放回
