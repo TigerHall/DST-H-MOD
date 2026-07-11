@@ -47,7 +47,7 @@ end
 
 --  基础信息
 name = en_zh("H-SLOT", "H-无限格子")
-version = "2.3"
+version = "2.5"
 description = en_zh("V" .. version .. [[
 
 Items in Chester's and Hutch's grids do not spoil. Items in Shadow Chester's grid spoil at an accelerated rate, while items in Ice Chester's grid are preserved (remain fresh).
@@ -57,11 +57,12 @@ The shadow space and the poaching rabbit space can be set with infinite stacking
 Trading feature added -- try trading various items with eyebone/fishbowl to discover hidden recipes!
 Blue moon eye opens an pocket space (4x4 slots)!
 Purple, orange, yellow moon eyes each open a pocket space (5x4 slots)!
+Yellow/Orange/Purple moon eyes can also reveal set piece locations on the map!
 ]], "V" .. version .. [[
 
 切斯特、哈奇格子内物品不腐败，暗影切斯特格子腐败加速，冰雪切斯特反鲜。
 切斯特、哈奇格子可无限堆叠。
-带孔月岩可传送到眼骨或星空处。黄色、橙色、紫色月眼可传送至某些特定位置。
+带孔月岩可传送到眼骨或星空处。黄色、橙色、紫色月眼可在地图揭示布景位置。
 红色月眼可打开暗影空间，绿色月眼可打开挖角兔空间。眼骨和星空右键检查也可打开挖角兔空间。
 暗影空间和挖角兔空间可设置无限堆叠，腐败加速和反鲜加速。
 新增交易功能——尝试向眼骨或星空提交各种物品，发现隐藏配方彩蛋吧！
@@ -147,6 +148,18 @@ configuration_options = {
     "Clicking color moon eye will toggle pet container",
     "禁用各色月眼的格子开关功能",
     "Disable color moon eye's pet container toggle function"
+  ),
+  addConfig(
+    "mooneye_map_reveal",
+    "月眼地图揭示布景位置",
+    "Moon Eye Map Reveal Set Piece",
+    true,
+    "黄/橙/紫色月眼在地图上揭示布景位置（可与开箱子同步触发，每个玩家仅首次生效）。布景搜索方式：猪王/月亮石/格罗姆→用拓扑找房间中心；宠物巢穴/中庭→用实体tag搜索",
+    "Yellow/Orange/Purple moon eyes reveal set piece locations on the map (works with container toggle, one-time per player). Search method: set pieces via topology room center; entities via tags",
+    "右键月眼时按「拓扑房间→实体tag」优先级搜索未发现的布景，在地图标记位置并移除迷雾（与开箱子互不冲突）",
+    "Right-click searches unrevealed set pieces via room topology→entity tags, marks on map and reveals area (works alongside container toggle)",
+    "月眼保持原传送功能",
+    "Moon eye keeps original teleport function"
   ),
   addTitle("Trade Settings", "物品交易设置"),
   addConfig(

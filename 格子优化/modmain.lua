@@ -13,6 +13,7 @@ local config = {
   -- 月眼配置
   moonrockcrater_teleport = GetModConfigData("moonrockcrater_teleport"),
   colormooneye_toggle = GetModConfigData("colormooneye_toggle"),
+  mooneye_map_reveal = GetModConfigData("mooneye_map_reveal"),
   -- 眼骨/星空配置
   item_trade_function = GetModConfigData("item_trade_function"),
   auto_get_range = GetModConfigData("auto_get_range"),
@@ -21,6 +22,67 @@ local config = {
   -- 定时整理配置
   auto_sort_repair = GetModConfigData("auto_sort_repair"),
 }
+
+-- ═══════════════════════════════════════════════════════
+-- 持久化数据：地图揭示记录（防止重上游戏重复触发）
+-- 纯 Lua 字符串序列化，不依赖 json/DataDumper/RunInSandbox
+-- ═══════════════════════════════════════════════════════
+local REVEALED_DATA = {}  -- [userid][key] = true
+local REVEALED_SAVE_KEY = "hslot_mooneye_revealed"
+
+-- 序列化格式："uid1=k1,k2|uid2=k1,k2"（纯 Lua 操作，无外部依赖）
+local function SerializeRevealed(t)
+  local parts = {}
+  for uid, keys in pairs(t) do
+    local kp = {}
+    for k in pairs(keys) do
+      table.insert(kp, k)
+    end
+    table.insert(parts, uid .. "=" .. table.concat(kp, ","))
+  end
+  return table.concat(parts, "|")
+end
+
+local function DeserializeRevealed(str)
+  local t = {}
+  for entry in str:gmatch("([^|]+)") do
+    local uid, keys_str = entry:match("([^=]+)=(.+)")
+    if uid and keys_str then
+      t[uid] = {}
+      for k in keys_str:gmatch("([^,]+)") do
+        t[uid][k] = true
+      end
+    end
+  end
+  return t
+end
+
+local function SaveRevealedData()
+  if not TheWorld then return end
+  local str = SerializeRevealed(REVEALED_DATA)
+  TheSim:SetPersistentString(REVEALED_SAVE_KEY, str, true)
+end
+
+local function LoadRevealedData()
+  TheSim:GetPersistentString(REVEALED_SAVE_KEY, function(success, str)
+    if success and str and #str > 0 then
+      local loaded = DeserializeRevealed(str)
+      -- 合并到当前内存（避免异步覆盖同时写入）
+      for uid, keys in pairs(loaded) do
+        REVEALED_DATA[uid] = REVEALED_DATA[uid] or {}
+        for k in pairs(keys) do
+          REVEALED_DATA[uid][k] = true
+        end
+      end
+    end
+  end)
+end
+
+-- 世界初始化后加载存档
+AddPrefabPostInit("world", function(inst)
+  if not TheWorld.ismastersim then return end
+  inst:DoTaskInTime(0, LoadRevealedData)
+end)
 
 -- 实体/特效引用
 PrefabFiles = {
@@ -558,6 +620,110 @@ AddPrefabPostInit("hutch", function(inst)
   end
 end)
 
+-- ═══════════════════════════════════════════════════════
+-- 地图揭示布景位置（模仿 messagebottle 一次性揭示机制）
+-- 核心思路：setpiece 布景用 TheWorld.topology 搜房间中心
+--           有明确 tag 的实体用 TheSim:FindEntities 兜底
+--   每个玩家首次触发时标记，后续不再重复
+-- ═══════════════════════════════════════════════════════
+
+-- 通过房间名关键词搜索布景中心（官方调试指令 c_findroom 的方式）
+local function FindRoomByKeyword(keyword)
+  if not TheWorld or not TheWorld.topology or not TheWorld.topology.nodes then
+    return nil
+  end
+  local lower_kw = string.lower(keyword)
+  for i, node in ipairs(TheWorld.topology.nodes) do
+    if string.lower(TheWorld.topology.ids[i]):find(lower_kw) then
+      return node.cent[1], 0, node.cent[2], TheWorld.topology.ids[i]
+    end
+  end
+  return nil
+end
+
+-- 搜索配置格式：{ type="room", keyword="Moonbase", label="月亮石" }
+--               { type="entity", prefab="critterlab", label="宠物巢穴" }
+local function RevealSetPieceLocation(viewer, search_list)
+  -- 1. 基础有效性校验
+  if not viewer or not viewer:IsValid() or not viewer:HasTag("player") then
+    return false
+  end
+  if not search_list or type(search_list) ~= "table" or #search_list == 0 then
+    return false
+  end
+
+  -- 2. 一次性检查：查找第一个未揭示的搜索项
+  --     使用持久化数据（类似 messagebottlemanager 的 hermit_has_been_found_by）
+  local uid = viewer.userid
+  if not uid then
+    return false
+  end
+  REVEALED_DATA[uid] = REVEALED_DATA[uid] or {}
+  local player_data = REVEALED_DATA[uid]
+  local found_x, found_z, found_label, found_key = nil, nil, nil, nil
+
+  for _, item in ipairs(search_list) do
+    local key = item.keyword or item.prefab  -- 房间名或 prefab 名作为唯一 key
+    if not player_data[key] then
+      local x, z, name
+      if item.type == "room" then
+        -- 按房间名关键词搜拓扑（布景专用）
+        x, _, z, name = FindRoomByKeyword(item.keyword)
+      elseif item.type == "entity" then
+        -- 按实体 tag 搜（critterlab 等有显式 AddTag 的实体）
+        local entities = TheSim:FindEntities(0, 0, 0, 9999, { item.prefab })
+        if #entities > 0 and entities[1]:IsValid() then
+          x, _, z = entities[1].Transform:GetWorldPosition()
+          name = item.prefab
+        end
+      end
+      if x then
+        found_x, found_z = x, z
+        found_label = item.label or name or key
+        found_key = key
+        break
+      end
+    end
+  end
+
+  -- 3. 未找到或已全部揭示
+  if not found_x then
+    if viewer.components.talker then
+      viewer.components.talker:Say("󰀯 已探索所有区域")
+    end
+    return false
+  end
+
+  -- 4. 标记已揭示（先标记防并发）
+  player_data[found_key] = true
+  -- 立即写盘（不依赖不可靠的 save 事件）
+  SaveRevealedData()
+
+  -- 5. 防护：玩家必须有 player_classified
+  if not viewer.player_classified then
+    return true
+  end
+
+  -- 6. 设置地图标记坐标 → 同步到客户端（打开地图并显示标记）
+  viewer.player_classified.revealmapspot_worldx:set(found_x)
+  viewer.player_classified.revealmapspot_worldz:set(found_z)
+  viewer.player_classified.revealmapspotevent:push()
+
+  -- 7. 4 帧后揭示该区域（移除战争迷雾）
+  viewer:DoTaskInTime(4 * FRAMES, function()
+    if viewer:IsValid() and viewer.player_classified and viewer.player_classified.MapExplorer then
+      viewer.player_classified.MapExplorer:RevealArea(found_x, 0, found_z)
+    end
+  end)
+
+  -- 8. 玩家说话提示
+  if viewer.components.talker then
+    viewer.components.talker:Say("󰀏 发现" .. (found_label or "布景"))
+  end
+
+  return true
+end
+
 -- 通用月眼传送函数（支持传入多个目标，仅传送到第一个有效目标）
 local function GenericMoonEyeTeleport(inst, viewer, target_prefabs)
   -- 1. 基础有效性验证
@@ -670,7 +836,8 @@ AddPrefabPostInit("moonrockcrater", function(inst)
   end
 end)
 
--- 黄色月眼传送：月台/中庭柱子 + 鱼箱空间
+-- 黄色月眼：地图揭示月台/中庭柱子 + 开箱子（可同步触发）
+-- 地面 → room:MoonbaseOne（月亮石布景） | 洞穴 → entity:pillar_atrium（中庭柱子）
 AddPrefabPostInit("yellowmooneye", function(inst)
   if not TheWorld.ismastersim then
     return inst
@@ -678,17 +845,22 @@ AddPrefabPostInit("yellowmooneye", function(inst)
   local old_GetDescription = inst.components.inspectable.GetDescription
   inst.components.inspectable.GetDescription = function(self, viewer)
     if viewer and viewer:HasTag("player") and viewer:IsValid() then
+      if config.mooneye_map_reveal then
+        RevealSetPieceLocation(viewer, {
+          { type = "room",    keyword = "Moonbase", label = "月亮石[地面]" },
+          { type = "room",    keyword = "Altar",    label = "圣地祭坛[洞穴]" },  -- AltarRoom 布景
+        })
+      end
       if config.colormooneye_toggle then
         TogglePocketDimensionChest(viewer, "yellow_fish")
-      elseif config.moonrockcrater_teleport then
-        GenericMoonEyeTeleport(inst, viewer, { "moonbase", "pillar_atrium" })
       end
     end
     return old_GetDescription(self, viewer)
   end
 end)
 
--- 橙色月眼传送 宠物巢穴/梦魇疯猪 + 鱼箱空间
+-- 橙色月眼：地图揭示宠物巢穴/梦魇疯猪 + 开箱子（可同步触发）
+-- entity:critterlab（宠物巢穴）有显式 tag 可靠 | entity:daywalker 梦魇疯猪
 AddPrefabPostInit("orangemooneye", function(inst)
   if not TheWorld.ismastersim then
     return inst
@@ -696,17 +868,24 @@ AddPrefabPostInit("orangemooneye", function(inst)
   local old_GetDescription = inst.components.inspectable.GetDescription
   inst.components.inspectable.GetDescription = function(self, viewer)
     if viewer and viewer:HasTag("player") and viewer:IsValid() then
+      if config.mooneye_map_reveal then
+        RevealSetPieceLocation(viewer, {
+          { type = "entity",  prefab  = "critterlab",       label = "宠物巢穴[地面]" },
+          { type = "entity",  prefab  = "daywalker_pillar", label = "梦魇疯猪[洞穴]" },
+          { type = "entity",  prefab  = "daywalker",        label = "梦魇疯猪[洞穴]" },
+        })
+      end
       if config.colormooneye_toggle then
         TogglePocketDimensionChest(viewer, "orange_fish")
-      elseif config.moonrockcrater_teleport then
-        GenericMoonEyeTeleport(inst, viewer, { "critterlab", "daywalker_pillar", "daywalker" })
       end
     end
     return old_GetDescription(self, viewer)
   end
 end)
 
--- 紫色月眼传送 猪王/远古守护者 + 鱼箱空间
+-- 紫色月眼：地图揭示格罗姆雕像/猪王/迷宫废墟 + 开箱子（可同步触发）
+-- 地面 → room:PigKingdom（猪王布景）→ room:Deciduous（格罗姆池塘）
+-- 洞穴 → room:Walled（迷宫废墟）→ room:RuinedCity（远古遗迹）
 AddPrefabPostInit("purplemooneye", function(inst)
   if not TheWorld.ismastersim then
     return inst
@@ -714,11 +893,16 @@ AddPrefabPostInit("purplemooneye", function(inst)
   local old_GetDescription = inst.components.inspectable.GetDescription
   inst.components.inspectable.GetDescription = function(self, viewer)
     if viewer and viewer:HasTag("player") and viewer:IsValid() then
+      if config.mooneye_map_reveal then
+        RevealSetPieceLocation(viewer, {
+          { type = "room",    keyword = "PigKing",       label = "猪王花园[地面]" },
+          { type = "room",    keyword = "Deciduous",     label = "格罗姆池塘[地面]" },
+          { type = "room",    keyword = "Guarden",       label = "围墙花园[洞穴]" },  -- 匹配 RuinedGuarden / LabyrinthGuarden（内含WalledGarden布景）
+          { type = "room",    keyword = "ToadstoolArena", label = "毒菌蟾蜍竞技场[洞穴]" },  -- 匹配 ToadstoolArenaMud / ToadstoolArenaCave
+        })
+      end
       if config.colormooneye_toggle then
         TogglePocketDimensionChest(viewer, "purple_fish")
-      elseif config.moonrockcrater_teleport then
-        GenericMoonEyeTeleport(inst, viewer,
-          { "glommerflower", "statueglommer", "minotaur", "pillar_ruins", "insanityrock", "sanityrock", })
       end
     end
     return old_GetDescription(self, viewer)
@@ -1005,6 +1189,28 @@ if not GLOBAL.TheNet:IsDedicated() then
       if (prefab == "rabbitkinghorn_container" or prefab == "shadow_container") and self.button then
         self.button:SetTextSize(36)
       end
+    end
+  end)
+end
+
+-- 客户端：修复 ShowMap 在地图已打开时不居中的问题
+-- 官方 Controls:ShowMap 检查 not IsMapScreenOpen()，如果地图已打开直接跳过居中
+-- 这里劫持 ShowMap，当有 world_position 参数时（地图揭示），强制关闭再打开以确保居中
+if not GLOBAL.TheNet:IsDedicated() then
+  AddClassPostConstruct("widgets/controls", function(self)
+    local _ShowMap = self.ShowMap
+    function self:ShowMap(world_position)
+      -- 仅当传入了位置参数时（地图揭示场景），强制关闭地图再重开
+      if world_position ~= nil then
+        if self.owner ~= nil and self.owner.HUD ~= nil and self.owner.HUD:IsMapScreenOpen() then
+          TheFrontEnd:PopScreen()  -- 关掉已打开的地图
+        end
+        -- 调用原版（会重新打开并调用 FocusMapOnWorldPosition 居中）
+        _ShowMap(self, world_position)
+        return
+      end
+      -- 无位置参数（常规 ShowMap 调用），走原版逻辑
+      _ShowMap(self, world_position)
     end
   end)
 end
