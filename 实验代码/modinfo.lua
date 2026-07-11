@@ -47,7 +47,7 @@ end
 
 --  基础信息
 name = en_zh("H-test", "H-测试")
-version = "0.35"
+version = "0.36.5"
 description = en_zh("V" .. version .. [[
 
 only for test 󰀫
@@ -85,12 +85,14 @@ server_filter_tags = { "test", "测试" }
 configuration_options = {
   -- 基础配置项
   addTitle("Basic Function Configurations", "基本功能󰀏"),
-  -- addConfig(
-  --   "halloween_candy_switch",
-  --   "Halloween Candy Attribute Boost Switch", "万圣节糖果属性增强开关",
-  --   true,
-  --   "Control whether to enable the Halloween candy attribute boost function", "控制是否开启万圣节糖果属性增强功能",
-  --   "Enabled: Halloween candy attributes will be boosted by the set multiplier", "已开启：万圣节糖果属性将按倍率增强",
-  --   "已禁用：万圣节糖果属性保持默认", "Disabled: Halloween candy attributes remain default"
-  -- ),
+
+  -- 背包探查器：可装备物品，右键探查NPC/动物的物品栏和装备栏
+  addConfig(
+    "backpack_viewer_enable",
+    "Backpack Viewer Switch", "背包探查器开关",
+    true,
+    "Enable the backpack viewer tool to inspect NPC inventories and equipment", "启用背包探查器工具，查看NPC/动物的物品栏和装备栏。",
+    "Enabled: Backpack Viewer is craftable and functional", "已开启：，让我看看！你到底有啥东西",
+    "Disabled: Backpack Viewer is disabled", "已禁用：背包探查器不可用"
+  ),
 }
