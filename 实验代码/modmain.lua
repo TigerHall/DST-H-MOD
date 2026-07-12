@@ -6,9 +6,10 @@ local config = { hsee_enable = GetModConfigData("hsee_enable") }
 PrefabFiles = { "hsee" }
 
 Assets = {
-  Asset("ANIM", "anim/medal_skin_staff.zip"),
-  Asset("IMAGE", "images/inventoryimages/medal_skin_staff.tex"),
-  Asset("ATLAS", "images/inventoryimages/medal_skin_staff.xml"),
+  --Asset("ANIM", "anim/medal_skin_staff.zip"), -- 旧勋章素材，保留以备用
+  Asset("ANIM", "anim/cutless.zip"),
+  Asset("IMAGE", "images/inventoryimages/heh.tex"),
+  Asset("ATLAS", "images/inventoryimages/heh.xml"),
   Asset("ANIM", "anim/ui_fish_box_5x4.zip"),
 }
 
@@ -38,39 +39,22 @@ do
       animbuild = "ui_fish_box_5x4",
       pos = Vector3(0, 220, 0),
       side_align_tip = 160,
-      -- 前三格：装备栏图标作为格子背景（官方 hud.xml）
+      -- 第一行五格各有独立背景底图（官方 hud.xml）
+      -- 第 1-3 格：装备图标（头/身/手），第 4-5 格：装备变体
       slotbg = {
         { atlas = "images/hud.xml", image = "equip_slot_head.tex" },
         { atlas = "images/hud.xml", image = "equip_slot_body.tex" },
         { atlas = "images/hud.xml", image = "equip_slot.tex" },
+        { atlas = "images/hud.xml", image = "equip_slot_hud.tex" },
+        { atlas = "images/hud.xml", image = "equip_slot_body_hud.tex" },
       },
-      -- 底部关闭按钮（text+position 在 params 中定义，fn+validfn 在下面全局设置）
+      -- ▼ 底部关闭按钮（文字和位置在此修改）
       buttoninfo = {
-        text = "■ Close",
-        position = Vector3(0, -190, 0),
+        text = "󰀯", -- ← 改这里
+        position = Vector3(0, -200, 0), -- ← 改这里（Y 越小越往下）
       },
     },
     type = "chest",
-    -- 物品过滤：前三格只允许对应装备类型的物品
-    itemtestfn = function(container, item, slot)
-      -- slot 是 1-based（对应 slotpos 数组下标）
-      if slot > 3 then return true end
-
-      local equip = item.components.equippable
-      if not equip then return false end
-
-      -- 获取装备槽位（服务端：.equipslot，客户端：:EquipSlot()）
-      local eslot = equip.equipslot
-      if eslot == nil and equip.EquipSlot then
-        eslot = equip:EquipSlot()
-      end
-      if eslot == nil then return false end
-
-      if slot == 1 then return eslot == "head" end
-      if slot == 2 then return eslot == "body" end
-      if slot == 3 then return eslot == "hands" end
-      return true
-    end,
   }
 
   -- 关闭按钮的回调（全局设置，服务器端和客户端共用）
@@ -89,21 +73,24 @@ do
 end
 
 if config.hsee_enable then
+  -- 施法距离改为 26（默认 20）
+  GLOBAL.ACTIONS.CASTSPELL.distance = 26
+
   -- ========== 配方 ==========
   AddRecipe2("hsee",
     { Ingredient("goldnugget", 1), Ingredient("cutgrass", 1) },
     TECH.NONE,
-    { atlas = "images/inventoryimages/medal_skin_staff.xml", image = "medal_skin_staff.tex", numtogive = 1 },
+    { atlas = "images/inventoryimages/heh.xml", image = "heh.tex", numtogive = 1 },
     { "TOOLS" }
   )
 
-  STRINGS.NAMES.HSEE = "HSee"
+  STRINGS.NAMES.HSEE = "󰀅HSee󰀞"
   STRINGS.RECIPE_DESC.HSEE = "A portable viewer for inspecting and swapping items."
   STRINGS.CHARACTERS.GENERIC.DESCRIBE.HSEE = "Let me see what's in here!"
   local lang = GLOBAL.LanguageTranslator and GLOBAL.LanguageTranslator.defaultlang or "en"
   if lang == "zh" or lang == "zhr" or lang == "zht" then
-    STRINGS.NAMES.HSEE = "HSee"
-    STRINGS.RECIPE_DESC.HSEE = "便携式物品查看器，可查看和交换物品。"
+    STRINGS.NAMES.HSEE = "󰀅让我看看󰀞"
+    STRINGS.RECIPE_DESC.HSEE = "便携式物品查看器，可查看和交换NPC的物品。"
     STRINGS.CHARACTERS.GENERIC.DESCRIBE.HSEE = "让我看看这里面有什么！"
   end
 end

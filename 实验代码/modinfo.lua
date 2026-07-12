@@ -47,7 +47,7 @@ end
 
 --  基础信息
 name = en_zh("H-test", "H-测试")
-version = "0.7.3"
+version = "0.7.6"
 
 -- 动态版本号展示
 local ver_line = "V" .. version .. "\n"
@@ -92,8 +92,8 @@ configuration_options = {
     "hsee_enable",
     "HSee Item Enable Switch", "󰀯HSee物品启用开关",
     true,
-    "Control whether to enable the HSee viewing item", "控制是否启用HSee查看器物品",
-    "Enabled: HSee can be crafted with Science Machine", "已开启：HSee可在科学二本中制作",
-    "Disabled: HSee recipe is hidden", "已禁用：HSee配方隐藏"
+    "Control whether to enable the HSee viewing item", "󰀭控制是否启用HSee查看器物品",
+    "Enabled: HSee can be crafted with Science Machine", "☀已开启：HSee可在科学二本中制作",
+    "Disabled: HSee recipe is hidden", "☁已禁用：HSee配方隐藏"
   ),
 }

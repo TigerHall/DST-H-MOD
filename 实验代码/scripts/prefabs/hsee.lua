@@ -6,9 +6,10 @@ HSee —— 自带容器的查看器物品（复用官方鱼箱 ui_fish_box_5x4 
 ]]
 
 local assets = {
-    Asset("ANIM", "anim/medal_skin_staff.zip"),
-    Asset("ATLAS", "images/inventoryimages/medal_skin_staff.xml"),
-    Asset("ATLAS_BUILD", "images/inventoryimages/medal_skin_staff.xml", 256),
+    --Asset("ANIM", "anim/medal_skin_staff.zip"), -- 旧勋章素材，保留以备用
+    Asset("ANIM", "anim/cutless.zip"),
+    Asset("ATLAS", "images/inventoryimages/heh.xml"),
+    --Asset("ATLAS_BUILD", "images/inventoryimages/medal_skin_staff.xml", 256),
 }
 
 --------------------------------------------------------------------------
@@ -24,17 +25,28 @@ local function hsee_fn()
 
     MakeInventoryPhysics(inst)
 
-    inst.AnimState:SetBank("medal_skin_staff")
-    inst.AnimState:SetBuild("medal_skin_staff")
-    inst.AnimState:PlayAnimation("medal_skin_staff")
+    -- 外观：复用官方木头短剑 cutless
+    --inst.AnimState:SetBank("medal_skin_staff")
+    --inst.AnimState:SetBuild("medal_skin_staff")
+    --inst.AnimState:PlayAnimation("medal_skin_staff")
+    inst.AnimState:SetBank("cutless")
+    inst.AnimState:SetBuild("cutless")
+    inst.AnimState:PlayAnimation("idle")
 
     inst:AddTag("nopunch")
 
-    MakeInventoryFloatable(inst, "med", 0.1, {0.9, 0.4, 0.9}, true, -13, {
-        sym_build = "medal_skin_staff",
-        sym_name = "swap_medal_skin_staff",
-        bank = "medal_skin_staff",
-        anim = "medal_skin_staff"
+    -- 浮空效果
+    --MakeInventoryFloatable(inst, "med", 0.1, {0.9, 0.4, 0.9}, true, -13, {
+    --    sym_build = "medal_skin_staff",
+    --    sym_name = "swap_medal_skin_staff",
+    --    bank = "medal_skin_staff",
+    --    anim = "medal_skin_staff"
+    --})
+    MakeInventoryFloatable(inst, "med", 0.05, {1.1, 0.5, 1.1}, true, -18, {
+        sym_name = "swap_cutless",
+        sym_build = "cutless",
+        bank = "cutless",
+        anim = "idle",
     })
 
     -- 官方模式：SetPristine 之后再添加容器组件
@@ -49,12 +61,15 @@ local function hsee_fn()
     inst:AddComponent("inspectable")
 
     inst:AddComponent("inventoryitem")
-    inst.components.inventoryitem.imagename = "medal_skin_staff"
-    inst.components.inventoryitem.atlasname = "images/inventoryimages/medal_skin_staff.xml"
+    --inst.components.inventoryitem.imagename = "medal_skin_staff"
+    --inst.components.inventoryitem.atlasname = "images/inventoryimages/medal_skin_staff.xml"
+    inst.components.inventoryitem.imagename = "heh"
+    inst.components.inventoryitem.atlasname = "images/inventoryimages/heh.xml"
 
     inst:AddComponent("equippable")
     inst.components.equippable:SetOnEquip(function(inst, owner)
-        owner.AnimState:OverrideSymbol("swap_object", "medal_skin_staff", "swap_medal_skin_staff")
+        --owner.AnimState:OverrideSymbol("swap_object", "medal_skin_staff", "swap_medal_skin_staff")
+        owner.AnimState:OverrideSymbol("swap_object", "cutless", "swap_cutless")
         owner.AnimState:Show("ARM_carry")
         owner.AnimState:Hide("ARM_normal")
     end)
