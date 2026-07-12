@@ -20,13 +20,14 @@ do
   local containers = require("containers")
   local params = containers.params
 
-  -- 拷贝鱼箱的 5×5 网格布局（原 5×4 扩展一行）
+  -- 格子间距 60（原 75），让 5 行适配鱼箱原本的 4 行背景高度
+  local SLOT_GAP = 66
   local hsee_slotpos = {}
-  for y = 3.5, -0.5, -1 do
-    for x = -1, 3 do
+  for y = 2, -2, -1 do -- 5 行：上到下
+    for x = -2, 2 do   -- 5 列：左到右
       table.insert(hsee_slotpos, Vector3(
-        75 * x - 75 * 2 + 75,
-        75 * y - 75 * 2 + 75,
+        x * SLOT_GAP * 1.15,
+        y * SLOT_GAP,
         0
       ))
     end
@@ -42,16 +43,17 @@ do
       -- 第一行五格各有独立背景底图（官方 hud.xml）
       -- 第 1-3 格：装备图标（手/身/头），第 4-5 格：装备变体
       slotbg = {
-        { atlas = "images/hud.xml", image = "equip_slot.tex" },          -- slot 1: 手
-        { atlas = "images/hud.xml", image = "equip_slot_body.tex" },     -- slot 2: 身
-        { atlas = "images/hud.xml", image = "equip_slot_head.tex" },     -- slot 3: 头
+        { atlas = "images/hud.xml", image = "equip_slot.tex" },      -- slot 1: 手
+        { atlas = "images/hud.xml", image = "equip_slot_body.tex" }, -- slot 2: 身
+        { atlas = "images/hud.xml", image = "equip_slot_head.tex" }, -- slot 3: 头
         { atlas = "images/hud.xml", image = "equip_slot_hud.tex" },
-        { atlas = "images/hud.xml", image = "equip_slot_body_hud.tex" },
+        { atlas = "images/hud.xml", image = "equip_slot_hud.tex" },
+        -- { atlas = "images/hud.xml", image = "equip_slot_body_hud.tex" },
       },
-      -- ▼ 底部关闭按钮（文字和位置在此修改）
+      -- ▼ 底部关闭按钮
       buttoninfo = {
         text = "󰀯",
-        position = Vector3(0, -300, 0),  -- 5行容器，按钮下移
+        position = Vector3(0, -200, 0),
       },
     },
     type = "chest",
@@ -75,15 +77,17 @@ do
   end
 end
 
--- ========== 容器背景拉伸（适配 5 行格子） ==========
+-- ========== 强制按钮显示（防止被其他 MOD 或手柄模式隐藏） ==========
 if not GLOBAL.TheNet:IsDedicated() then
   AddClassPostConstruct("widgets/containerwidget", function(self)
     local _Open = self.Open
     self.Open = function(self, container, doer)
       _Open(self, container, doer)
-      -- HSee 从 5×4 扩展到 5×5，背景纵向拉伸 25%
+      if container and container.prefab == "hsee" and self.button then
+        self.button:Show()
+      end
       if container and container.prefab == "hsee" and self.bganim then
-        self.bganim:SetScale(1, 1.25, 1)
+        self.bganim:SetScale(1, 1.25, 1) -- ← 加拉高背景图
       end
     end
   end)
