@@ -111,7 +111,7 @@ configuration_options = {
     "Allow resurrection by haunting the staff",
     "和重生护符一样效果的复活，说不定你需要做大骨头汤呢",
     "Resurrect like a life amulet, useful for big bone soup",
-    "相信你在永恒大陆不怕死亡，毕竟也可以回档大法",
+    "相信你在永恒大陆不怕死亡，毕竟也可以回档",
     "You're not afraid of death in the Constant, after all, you can reload"
   ),
   -- 发光范围设置
