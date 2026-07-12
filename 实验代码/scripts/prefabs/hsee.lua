@@ -40,7 +40,8 @@ local function SnapshotTargetItems(container, target)
                     copy.components.stackable:SetStackSize(item.components.stackable:StackSize())
                 end
                 local ok = container:GiveItem(copy, slot_num, nil, false)
-                print("[HSee] Copy equip", item.prefab, "→ slot", slot_num, "stack=", item.components.stackable and item.components.stackable:StackSize() or 1, ok and "OK" or "FAILED")
+                print("[HSee] Copy equip", item.prefab, "→ slot", slot_num, "stack=",
+                    item.components.stackable and item.components.stackable:StackSize() or 1, ok and "OK" or "FAILED")
                 if not ok then
                     copy:Remove()
                 end
@@ -107,7 +108,7 @@ local function hsee_fn()
     inst:AddTag("nopunch")
 
     -- 浮空效果
-    MakeInventoryFloatable(inst, "med", 0.05, {1.1, 0.5, 1.1}, true, -18, {
+    MakeInventoryFloatable(inst, "med", 0.05, { 1.1, 0.5, 1.1 }, true, -18, {
         sym_name = "swap_cutless",
         sym_build = "cutless",
         bank = "cutless",
@@ -160,17 +161,19 @@ local function hsee_fn()
     -- 右键施法 → 打开自身容器（仅对有物品栏+装备栏的实体）
     inst:AddComponent("spellcaster")
     inst.components.spellcaster:SetCanCastFn(function(sinst, target, pos, doer)
-        print("[HSee] CanCast check: sinst=", sinst.prefab, " target=", target and target.prefab or "nil", " doer=", doer and doer.prefab or "nil")
+        print("[HSee] CanCast check: sinst=", sinst.prefab, " target=", target and target.prefab or "nil", " doer=",
+            doer and doer.prefab or "nil")
         return true
     end)
     inst.components.spellcaster:SetSpellFn(function(sinst, target, pos, doer)
-        print("[HSee] SpellCast: sinst=", sinst.prefab, " target=", target and target.prefab or "nil", " pos=", pos and tostring(pos) or "nil", " doer=", doer and doer.prefab or "nil")
+        print("[HSee] SpellCast: sinst=", sinst.prefab, " target=", target and target.prefab or "nil", " pos=",
+            pos and tostring(pos) or "nil", " doer=", doer and doer.prefab or "nil")
 
         -- 过滤：必须是有物品栏（inventory）或有装备栏（equippable）的实体
         if target == nil then
             print("[HSee] Reject: no target")
             if doer and doer.components.talker then
-                doer.components.talker:Say("I cannot do that!")
+                doer.components.talker:Say("󰀯这是啥!")
             end
             return
         end
@@ -181,7 +184,7 @@ local function hsee_fn()
         if not has_inv and not has_equip then
             print("[HSee] Reject: target has no inventory or equipment:", target.prefab)
             if doer and doer.components.talker then
-                doer.components.talker:Say("I cannot do that!")
+                doer.components.talker:Say("󰀯啥也不是!")
             end
             return
         end
@@ -247,7 +250,7 @@ local function hsee_fn()
 
             -- 2. 玩家手持染色（swap_object 符号）
             local owner_t = inst.components.inventoryitem and
-                           inst.components.inventoryitem:GetGrandOwner()
+                inst.components.inventoryitem:GetGrandOwner()
             if owner_t and owner_t:HasTag("player") and owner_t.AnimState then
                 -- MultColour：按当前色相偏转，产生彩色偏色效果
                 local mr = 1 - (1 - cr) * intensity * 0.25

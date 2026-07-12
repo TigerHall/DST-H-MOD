@@ -21,12 +21,12 @@ do
   local params = containers.params
 
   -- 格子间距 60（原 75），让 5 行适配鱼箱原本的 4 行背景高度
-  local SLOT_GAP = 66
+  local SLOT_GAP = 76
   local hsee_slotpos = {}
   for y = 2, -2, -1 do -- 5 行：上到下
     for x = -2, 2 do   -- 5 列：左到右
       table.insert(hsee_slotpos, Vector3(
-        x * SLOT_GAP * 1.15,
+        x * SLOT_GAP,
         y * SLOT_GAP,
         0
       ))
@@ -53,7 +53,7 @@ do
       -- ▼ 底部关闭按钮
       buttoninfo = {
         text = "󰀯",
-        position = Vector3(0, -200, 0),
+        position = Vector3(0, -246, 0),
       },
     },
     type = "chest",
