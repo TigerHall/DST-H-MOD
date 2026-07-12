@@ -47,7 +47,7 @@ end
 
 --  基础信息
 name = en_zh("H-test", "H-测试")
-version = "0.42"
+version = "0.7.3"
 
 -- 动态版本号展示
 local ver_line = "V" .. version .. "\n"
@@ -87,10 +87,10 @@ server_filter_tags = { "test", "测试" }
 
 configuration_options = {
   -- 基础配置项
-  addTitle("Basic Function Configurations", "基本功能"),
+  addTitle("󰀯Basic Function Configurations", "󰀯基本功能"),
   addConfig(
     "hsee_enable",
-    "HSee Item Enable Switch", "HSee物品启用开关",
+    "HSee Item Enable Switch", "󰀯HSee物品启用开关",
     true,
     "Control whether to enable the HSee viewing item", "控制是否启用HSee查看器物品",
     "Enabled: HSee can be crafted with Science Machine", "已开启：HSee可在科学二本中制作",
