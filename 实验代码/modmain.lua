@@ -40,11 +40,11 @@ do
       pos = Vector3(0, 220, 0),
       side_align_tip = 160,
       -- 第一行五格各有独立背景底图（官方 hud.xml）
-      -- 第 1-3 格：装备图标（头/身/手），第 4-5 格：装备变体
+      -- 第 1-3 格：装备图标（手/身/头），第 4-5 格：装备变体
       slotbg = {
-        { atlas = "images/hud.xml", image = "equip_slot_head.tex" },
-        { atlas = "images/hud.xml", image = "equip_slot_body.tex" },
-        { atlas = "images/hud.xml", image = "equip_slot.tex" },
+        { atlas = "images/hud.xml", image = "equip_slot.tex" },          -- slot 1: 手
+        { atlas = "images/hud.xml", image = "equip_slot_body.tex" },     -- slot 2: 身
+        { atlas = "images/hud.xml", image = "equip_slot_head.tex" },     -- slot 3: 头
         { atlas = "images/hud.xml", image = "equip_slot_hud.tex" },
         { atlas = "images/hud.xml", image = "equip_slot_body_hud.tex" },
       },
@@ -73,7 +73,11 @@ do
 end
 
 if config.hsee_enable then
-  -- 施法距离改为 26（默认 20）
+  -- ⚠️ 施法距离改为 26（默认 20）
+  -- 全局改了 ACTIONS.CASTSPELL，所有用 spellcaster 的物品都受影响。
+  -- 如果只想改 HSee 一个，需要：AddAction 定义专属动作 →
+  -- AddComponentAction("SCENE", "spellcaster", fn) 检测 inst.prefab=="hsee" →
+  -- 返回新动作。暂时测试用就全局了，后续可优化。
   GLOBAL.ACTIONS.CASTSPELL.distance = 26
 
   -- ========== 配方 ==========
