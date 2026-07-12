@@ -20,9 +20,9 @@ do
   local containers = require("containers")
   local params = containers.params
 
-  -- 拷贝鱼箱的 5×4 网格布局
+  -- 拷贝鱼箱的 5×5 网格布局（原 5×4 扩展一行）
   local hsee_slotpos = {}
-  for y = 2.5, -0.5, -1 do
+  for y = 3.5, -0.5, -1 do
     for x = -1, 3 do
       table.insert(hsee_slotpos, Vector3(
         75 * x - 75 * 2 + 75,
@@ -50,12 +50,15 @@ do
       },
       -- ▼ 底部关闭按钮（文字和位置在此修改）
       buttoninfo = {
-        text = "󰀯", -- ← 改这里
-        position = Vector3(0, -200, 0), -- ← 改这里（Y 越小越往下）
+        text = "󰀯",
+        position = Vector3(0, -300, 0),  -- 5行容器，按钮下移
       },
     },
     type = "chest",
   }
+
+  -- 更新最大槽位数，让 container_classified 的格子池足够大（25格）
+  containers.MAXITEMSLOTS = math.max(containers.MAXITEMSLOTS, #hsee_slotpos)
 
   -- 关闭按钮的回调（全局设置，服务器端和客户端共用）
   params.hsee.widget.buttoninfo.fn = function(inst, doer)
@@ -70,6 +73,47 @@ do
   params.hsee.widget.buttoninfo.validfn = function(inst)
     return inst.replica.container ~= nil
   end
+end
+
+-- ========== 容器背景拉伸（适配 5 行格子） ==========
+if not GLOBAL.TheNet:IsDedicated() then
+  AddClassPostConstruct("widgets/containerwidget", function(self)
+    local _Open = self.Open
+    self.Open = function(self, container, doer)
+      _Open(self, container, doer)
+      -- HSee 从 5×4 扩展到 5×5，背景纵向拉伸 25%
+      if container and container.prefab == "hsee" and self.bganim then
+        self.bganim:SetScale(1, 1.25, 1)
+      end
+    end
+  end)
+end
+
+-- ========== UI 图标呼吸跑马灯效果 ==========
+-- 给 HSee 的物品栏图标添加呼吸彩色跑马灯效果，常开无开关
+if not GLOBAL.TheNet:IsDedicated() then
+  AddClassPostConstruct("widgets/itemtile", function(self)
+    if self.item and self.item.prefab == "hsee" then
+      self._hsee_effect = true
+      self._hsee_time = 0
+      self:StartUpdating()
+    end
+
+    local _OnUpdate = self.OnUpdate
+    self.OnUpdate = function(self, dt)
+      if self._hsee_effect and self.image then
+        self._hsee_time = (self._hsee_time or 0) + dt
+        local hue = self._hsee_time * 2 * math.pi / 1.6
+        local cr = (math.sin(hue) + 1) / 2 * 0.7 + 0.3
+        local cg = (math.sin(hue + 2.094) + 1) / 2 * 0.7 + 0.3
+        local cb = (math.sin(hue + 4.189) + 1) / 2 * 0.7 + 0.3
+        self.image:SetTint(cr, cg, cb, 1)
+      end
+      if _OnUpdate then
+        _OnUpdate(self, dt)
+      end
+    end
+  end)
 end
 
 if config.hsee_enable then
