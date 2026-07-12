@@ -47,13 +47,15 @@ end
 
 --  基础信息
 name = en_zh("H-test", "H-测试")
-description = en_zh([[
-V0.1
-ntest 󰀫
-]], [[
-V0.3
-测试用󰀫。
-请勿订阅！
+version = "0.42"
+
+-- 动态版本号展示
+local ver_line = "V" .. version .. "\n"
+local en_desc = ver_line .. [[
+for test 󰀫
+]]
+local zh_desc = ver_line .. [[
+测试用󰀫。请勿订阅！
 
 阿比盖尔 󰀜 炼金引擎 󰀝 红色骷髅头 󰀀 背包 󰀞
 战斗 󰀘 皮弗娄牛 󰀁 蜂箱 󰀟 浆果丛 󰀠 胡萝卜 󰀡
@@ -70,9 +72,10 @@ V0.3
 ⬅⬆⬇➡⇐⇒←↑→↓↖↗↘↙⇦⇧⇨⇩☜☝☞☟♲♺♻ 箭头
 ☀☁☂☃★☆✿❀☖☗☯♀♂⚠♨ 混合
 ♠♡♢♣♤♥♦♧♩♪♫♬░▒▓ 混合
-]])
+]]
+description = en_zh(en_desc, zh_desc)
 author = "hehu"
-version = "0.3"
+
 api_version = 10
 dst_compatible = true
 all_clients_require_mod = true
@@ -85,12 +88,12 @@ server_filter_tags = { "test", "测试" }
 configuration_options = {
   -- 基础配置项
   addTitle("Basic Function Configurations", "基本功能"),
-  -- addConfig(
-  --   "halloween_candy_switch",
-  --   "Halloween Candy Attribute Boost Switch", "万圣节糖果属性增强开关",
-  --   true,
-  --   "Control whether to enable the Halloween candy attribute boost function", "控制是否开启万圣节糖果属性增强功能",
-  --   "Enabled: Halloween candy attributes will be boosted by the set multiplier", "已开启：万圣节糖果属性将按倍率增强",
-  --   "已禁用：万圣节糖果属性保持默认", "Disabled: Halloween candy attributes remain default"
-  -- ),
+  addConfig(
+    "hsee_enable",
+    "HSee Item Enable Switch", "HSee物品启用开关",
+    true,
+    "Control whether to enable the HSee viewing item", "控制是否启用HSee查看器物品",
+    "Enabled: HSee can be crafted with Science Machine", "已开启：HSee可在科学二本中制作",
+    "Disabled: HSee recipe is hidden", "已禁用：HSee配方隐藏"
+  ),
 }
