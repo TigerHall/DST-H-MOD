@@ -106,3 +106,56 @@ client: OnRevealMapSpotEvent → HUD.controls:ShowMap(pos)
 - 让无地图图标的实体可点击：`inst:AddComponent("maprevealable"); inst.components.maprevealable:SetIconPrefab("globalmapicon")`
 - 自定义标签可能不同步到客户端代理，需 `TheSim:FindEntities` 验证
 - 相关源码：playercontroller.lua、actions.lua、wortox.lua、globalmapicon.lua、maprevealable.lua、mooneye.lua
+
+---
+
+## 背包探查器 HH（2026-07-11 新增）
+
+### 方案 A：容器模式（当前使用）
+
+**打开时**：`Unequip` NPC 装备 → `GiveItem` 移入容器 → `skipautoclose=true` → 玩家自由操作  
+**关闭时**：遍历容器 slots → `Equip` 回装备位 / `GiveItem` 回物品栏 → `RemoveComponent("container")`  
+**移动检测**：`DoPeriodicTask(0.1)` 检测玩家位置变化 > 3 单位 → `Close()`
+
+### 方案 B：自定义 UI + RPC（已删除，代码保存至技能库）
+
+**代码位置**：`~/.workbuddy/skills/dst-mod-dev/references/custom_ui_panel_ref.lua`  
+**RPC 模式**：`AddModRPCHandler`（客户端→服务端）+ `SendModRPCToServer`  
+**Widget 模式**：继承 `Widget` → `StartUpdating()` + `OnUpdate(dt)` → `Image` 组件渲染格子 → `TheInput:AddMouseButtonHandler` 处理点击  
+**坐标坑**：`self.root` 以屏幕左下角为原点，`self.overlayroot` 以屏幕中心为原点  
+**交互坑**：`TheInput` 鼠标坐标与 Widget 的 `GetWorldPosition()` 坐标系不一致，点击检测不准
+
+### 简易存储的滚动列表参考（保留）
+- 服务端创建 Lua 表模拟 `replica.container`/`replica.inventoryitem` 结构
+- JSON 序列化 + `TheSim:EncodeAndZipString()` 压缩 → 发给客户端
+- 客户端 `TheSim:DecodeAndUnzipString()` + `json.decode()` 还原
+- 好处：不需要实体在客户端同步，可用作远程/跨世界物品显示
+
+### 简易存储的滚动列表（未来 hslot 月眼空间用）
+
+文件：`简易存储 3383078008/scripts/widgets/terminalscrolllist.lua`
+
+**TrueScrollList 核心结构**：
+```
+Widget
+├── bg (Image)          — 防焦丢失的填充图
+├── scissored_root       — 裁剪区域（Widget）
+│   └── list_root        — 滚动内容（Widget，y偏移实现滚动）
+└── scrollbar            — 滚动条（自动构建）
+```
+
+**构造参数**：
+```lua
+TrueScrollList(context, create_widgets_fn, update_fn,
+    scissor_x, scissor_y, scissor_width, scissor_height,
+    scrollbar_offset, scrollbar_height_offset, scroll_per_click)
+```
+
+- `create_widgets_fn(context, list_root, self)` — 创建格子Widget并返回 `{widgets数组, 每行个数, 行高, 可见行数, 末尾偏移}`
+- `update_fn(context, widgets, data, index)` — 更新单个格子内容
+- `SetItemsData(data_arr)` — 设置数据源，自动计算 `end_pos`
+- 滚动用 `CONTROL_SCROLLBACK` / `CONTROL_SCROLLFWD` 按键
+- 全部格子都可见时自动隐藏滚动条
+
+**适用场景**：格子数量远超屏幕显示范围时，比如月眼空间无限存储的格子列表。
+
