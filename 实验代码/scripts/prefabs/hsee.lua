@@ -148,6 +148,30 @@ local function SyncContainerToTarget(inst, target, data)
         end
     end
 
+    -- 强制堆叠 + GiveItem 兜底（跳过新鲜度检查）
+    local function GiveForceStack(item_to_give)
+        if not item_to_give or not item_to_give:IsValid() then return end
+        for i = 1, target_inv:GetNumSlots() do
+            local inv_item = target_inv:GetItemInSlot(i)
+            if inv_item and inv_item.prefab == item_to_give.prefab
+                and inv_item.components.stackable
+                and not inv_item.components.stackable:IsFull() then
+                local leftover = inv_item.components.stackable:Put(item_to_give)
+                if leftover then
+                    if not target_inv:GiveItem(leftover) then
+                        DropAtTargetFeet(leftover)
+                    end
+                end
+                return true
+            end
+        end
+        if not target_inv:GiveItem(item_to_give) then
+            DropAtTargetFeet(item_to_give)
+            return false
+        end
+        return true
+    end
+
     local equip_keys = inst._hsee_equip_keys or {}
     local equip_count = inst._hsee_equip_count or 5
 
@@ -162,8 +186,7 @@ local function SyncContainerToTarget(inst, target, data)
             cc:RemoveItemBySlot(slot)
             if item_in_slot.components.equippable then
                 if not target_inv:Equip(item_in_slot) then
-                    if not target_inv:GiveItem(item_in_slot) then
-                        DropAtTargetFeet(item_in_slot)
+                    if not GiveForceStack(item_in_slot) then
                         Say(doer, "装不上也放不下，丢目标脚下了！")
                     else
                         Say(doer, "放物品栏了！")
@@ -172,15 +195,12 @@ local function SyncContainerToTarget(inst, target, data)
                     Say(doer, "装备自动穿戴到正确位置了！")
                 end
             else
-                if not target_inv:GiveItem(item_in_slot) then
-                    DropAtTargetFeet(item_in_slot)
-                    Say(doer, "放不下了，掉目标脚下了！")
-                end
+                GiveForceStack(item_in_slot)
             end
 
         elseif not item_in_slot and item_on_target then
-            -- 拿装备 → Unequip 销毁原件 / 失败销毁玩家副本
-            local removed = target_inv:Unequip(eslot)
+            -- 拿装备 → Unequip(slip=true) 触发目标动画 → 销毁原件
+            local removed = target_inv:Unequip(eslot, true)
             if not removed then
                 if data and data.item and data.item:IsValid() then
                     DestroyFromPlayer(data.item, doer)
@@ -199,17 +219,14 @@ local function SyncContainerToTarget(inst, target, data)
             cc:RemoveItemBySlot(slot)
             if item_in_slot.components.equippable then
                 if not target_inv:Equip(item_in_slot) then
-                    if not target_inv:GiveItem(item_in_slot) then
-                        DropAtTargetFeet(item_in_slot)
+                    if not GiveForceStack(item_in_slot) then
                         Say(doer, "替换失败，丢地上了！")
                     end
                 else
                     Say(doer, "替换装备成功！")
                 end
             else
-                if not target_inv:GiveItem(item_in_slot) then
-                    DropAtTargetFeet(item_in_slot)
-                end
+                GiveForceStack(item_in_slot)
             end
         end
     end
@@ -224,32 +241,7 @@ local function SyncContainerToTarget(inst, target, data)
             local item = cc:GetItemInSlot(data.slot)
             if item then
                 cc:RemoveItemBySlot(data.slot)
-                -- 强制堆叠：先找同名已有堆叠，直接 Put 合并（跳过新鲜度检查）
-                local stacked = false
-                if item:IsValid() then
-                    for i = 1, target_inv:GetNumSlots() do
-                        local inv_item = target_inv:GetItemInSlot(i)
-                        if inv_item and inv_item.prefab == item.prefab
-                            and inv_item.components.stackable
-                            and not inv_item.components.stackable:IsFull() then
-                            local leftover = inv_item.components.stackable:Put(item)
-                            if leftover then
-                                if not target_inv:GiveItem(leftover) then
-                                    DropAtTargetFeet(leftover)
-                                end
-                            end
-                            stacked = true
-                            break
-                        end
-                    end
-                end
-                -- 没有同名堆叠 → 正常 GiveItem
-                if not stacked then
-                    if not target_inv:GiveItem(item) then
-                        if item:IsValid() then DropAtTargetFeet(item) end
-                        Say(doer, "它拿不下，扔目标脚下了！")
-                    end
-                end
+                GiveForceStack(item)
             end
         else
             -- ★ 取走了物品 → 在目标身上按 prefab 减堆叠
