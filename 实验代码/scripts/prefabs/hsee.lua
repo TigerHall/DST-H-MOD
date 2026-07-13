@@ -31,41 +31,24 @@ local function SnapshotTargetItems(container, target)
         if item then item:Remove() end
     end
 
-    -- 装备栏：扫描 EQUIPSLOTS 获得完整装备栏列表（含 MOD 扩展）
-    -- 按 EQUIPSLOTS 的顺序固定排序，有装备放副本，无则留空
+    -- 装备栏：固定前三格（手/身/头），有装备放副本，无则空
+    local EQUIP_MAP = { [1] = "hands", [2] = "body", [3] = "head" }
+    local equip_count = 5  -- 第一行 5 格都是装备区，优先尝试装备
     local equip_keys = {}
-    if EQUIPSLOTS then
-        -- EQUIPSLOTS 是哈希表，但值就是装备栏名，按遍历顺序排
-        for _, name in pairs(EQUIPSLOTS) do
-            table.insert(equip_keys, name)
-        end
-    end
-    -- 补充目标身上有但 EQUIPSLOTS 里没有的（极少见）
-    for name, _ in pairs(target_inv.equipslots or {}) do
-        local found = false
-        for _, ek in ipairs(equip_keys) do
-            if ek == name then found = true; break end
-        end
-        if not found then
-            table.insert(equip_keys, name)
-        end
-    end
-    local equip_count = #equip_keys
-
-    -- 按位置放置：slot 1→第一类装备...有则放副本，无则空
-    for slot_idx, eslot in ipairs(equip_keys) do
+    for slot_idx = 1, equip_count do
+        local eslot = EQUIP_MAP[slot_idx]
         local item = target_inv.equipslots[eslot]
         if item then
-            local copy = SpawnPrefab(item.prefab)
-            if copy then
-                if item.components.stackable and copy.components.stackable then
-                    copy.components.stackable:SetStackSize(item.components.stackable:StackSize())
+            local record = item:GetSaveRecord()
+            if record then
+                local copy = SpawnSaveRecord(record)
+                if copy then
+                    local ok = container:GiveItem(copy, slot_idx, nil, false)
+                    if not ok then copy:Remove() end
                 end
-                local ok = container:GiveItem(copy, slot_idx, nil, false)
-                if not ok then copy:Remove() end
             end
+            equip_keys[slot_idx] = eslot
         end
-        -- 无物品时 slot_idx 保持空
     end
     if inst then
         inst._hsee_equip_keys = equip_keys
@@ -80,16 +63,16 @@ local function SnapshotTargetItems(container, target)
     table.sort(slot_items, function(a, b) return a.idx < b.idx end)
 
     for _, entry in ipairs(slot_items) do
-        if container_slot <= equip_count then break end  -- 跳过装备区
+        if container_slot <= equip_count then break end  -- 跳过第一行装备区
         local item = entry.item
-        local copy = SpawnPrefab(item.prefab)
-        if copy then
-            if item.components.stackable and copy.components.stackable then
-                copy.components.stackable:SetStackSize(item.components.stackable:StackSize())
+        local record = item:GetSaveRecord()
+        if record then
+            local copy = SpawnSaveRecord(record)
+            if copy then
+                local ok = container:GiveItem(copy, container_slot, nil, false)
+                if ok then container_slot = container_slot - 1
+                else copy:Remove() end
             end
-            local ok = container:GiveItem(copy, container_slot, nil, false)
-            if ok then container_slot = container_slot - 1
-            else copy:Remove() end
         end
     end
 
@@ -149,40 +132,54 @@ local function SyncContainerToTarget(inst, target, data)
         for opener, _ in pairs(cc.openlist or {}) do return opener end
         return nil
     end
-
-    local equip_keys = inst._hsee_equip_keys or {}
-    local equip_count = inst._hsee_equip_count or 4
     local doer = GetDoer()
 
-    -- ======== 装备栏（slot 1 ~ equip_count）========
+    -- 丢物品到目标脚下（玩家在容器 UI 上看不到自己脚下）
+    local function DropAtTargetFeet(item_inst)
+        if not item_inst or not item_inst:IsValid() then return end
+        if target and target:IsValid() then
+            local x,y,z = target.Transform:GetWorldPosition()
+            item_inst.Transform:SetPosition(x + 1, y, z + 1)
+        elseif doer then
+            local x,y,z = doer.Transform:GetWorldPosition()
+            item_inst.Transform:SetPosition(x + 1, y, z + 1)
+        else
+            item_inst:Remove()
+        end
+    end
+
+    local equip_keys = inst._hsee_equip_keys or {}
+    local equip_count = inst._hsee_equip_count or 5
+
+    -- ======== 装备栏（slot 1 ~ equip_count）：全量对比 ========
     for slot = 1, equip_count do
         local eslot = equip_keys[slot]
         local item_in_slot = cc:GetItemInSlot(slot)
         local item_on_target = target_inv.equipslots[eslot]
 
         if item_in_slot and not item_on_target then
-            -- 放进去 → 尝试装备，失败走 GiveItem 放物品栏，再失败丢地
+            -- 放装备 → Equip → GiveItem → 丢地
             cc:RemoveItemBySlot(slot)
             if item_in_slot.components.equippable then
                 if not target_inv:Equip(item_in_slot) then
                     if not target_inv:GiveItem(item_in_slot) then
-                        DropAtGround(item_in_slot, inst)
-                        Say(doer, "装不上也放不下，丢地上了！")
+                        DropAtTargetFeet(item_in_slot)
+                        Say(doer, "装不上也放不下，丢目标脚下了！")
                     else
                         Say(doer, "放物品栏了！")
                     end
                 else
-                    Say(doer, "装备上了！")
+                    Say(doer, "装备自动穿戴到正确位置了！")
                 end
             else
                 if not target_inv:GiveItem(item_in_slot) then
-                    DropAtGround(item_in_slot, inst)
-                    Say(doer, "放不下了，掉地上了！")
+                    DropAtTargetFeet(item_in_slot)
+                    Say(doer, "放不下了，掉目标脚下了！")
                 end
             end
 
         elseif not item_in_slot and item_on_target then
-            -- 拿出来 → 尝试脱下
+            -- 拿装备 → Unequip 销毁原件 / 失败销毁玩家副本
             local removed = target_inv:Unequip(eslot)
             if not removed then
                 if data and data.item and data.item:IsValid() then
@@ -192,6 +189,27 @@ local function SyncContainerToTarget(inst, target, data)
             else
                 if removed:IsValid() then removed:Remove() end
                 Say(doer, "装备到手了！")
+            end
+
+        elseif item_in_slot and item_on_target
+            and item_in_slot.prefab ~= item_on_target.prefab then
+            -- 替换装备：双方都有但 prefab 不同 → 卸旧装新
+            local old = target_inv:Unequip(eslot)
+            if old and old:IsValid() then old:Remove() end
+            cc:RemoveItemBySlot(slot)
+            if item_in_slot.components.equippable then
+                if not target_inv:Equip(item_in_slot) then
+                    if not target_inv:GiveItem(item_in_slot) then
+                        DropAtTargetFeet(item_in_slot)
+                        Say(doer, "替换失败，丢地上了！")
+                    end
+                else
+                    Say(doer, "替换装备成功！")
+                end
+            else
+                if not target_inv:GiveItem(item_in_slot) then
+                    DropAtTargetFeet(item_in_slot)
+                end
             end
         end
     end
@@ -206,9 +224,31 @@ local function SyncContainerToTarget(inst, target, data)
             local item = cc:GetItemInSlot(data.slot)
             if item then
                 cc:RemoveItemBySlot(data.slot)
-                if not target_inv:GiveItem(item) then
-                    DropAtGround(item, inst)
-                    Say(doer, "它拿不下，扔地上了！")
+                -- 强制堆叠：先找同名已有堆叠，直接 Put 合并（跳过新鲜度检查）
+                local stacked = false
+                if item:IsValid() then
+                    for i = 1, target_inv:GetNumSlots() do
+                        local inv_item = target_inv:GetItemInSlot(i)
+                        if inv_item and inv_item.prefab == item.prefab
+                            and inv_item.components.stackable
+                            and not inv_item.components.stackable:IsFull() then
+                            local leftover = inv_item.components.stackable:Put(item)
+                            if leftover then
+                                if not target_inv:GiveItem(leftover) then
+                                    DropAtTargetFeet(leftover)
+                                end
+                            end
+                            stacked = true
+                            break
+                        end
+                    end
+                end
+                -- 没有同名堆叠 → 正常 GiveItem
+                if not stacked then
+                    if not target_inv:GiveItem(item) then
+                        if item:IsValid() then DropAtTargetFeet(item) end
+                        Say(doer, "它拿不下，扔目标脚下了！")
+                    end
                 end
             end
         else
@@ -231,17 +271,20 @@ local function SyncContainerToTarget(inst, target, data)
                             break
                         else
                             taken_stack = taken_stack - cur
-                            target_inv:RemoveItemBySlot(slot)
+                            local removed_stack = target_inv:RemoveItemBySlot(slot)
+                            if removed_stack and removed_stack:IsValid() then
+                                removed_stack:Remove()
+                            end
                             if taken_stack <= 0 then
                                 removed_any = true
                                 break
                             end
                         end
                     else
-                        -- 非堆叠：直接移除
+                        -- 非堆叠：直接移除并销毁原件
                         local removed = target_inv:RemoveItemBySlot(slot)
-                        if removed then
-                            DropAtGround(removed, inst)
+                        if removed and removed:IsValid() then
+                            removed:Remove()
                         end
                         removed_any = true
                         break
@@ -263,12 +306,16 @@ local function SyncContainerToTarget(inst, target, data)
 
     inst._hsee_syncing = false
 
-    -- 延迟刷新快照
+    -- 关闭 + 重开容器，强制客户端重建 widget，清除残留
+    local l_doer = doer
     inst:DoTaskInTime(0, function()
-        if not inst:IsValid() or not target:IsValid() then return end
-        if not inst._hsee_syncing then
-            SnapshotTargetItems(inst.components.container, target)
-        end
+        if not inst:IsValid() or not target:IsValid() or not l_doer then return end
+        local con = inst.components.container
+        if not con then return end
+        con:Close(l_doer)                -- 关闭（onclosefn 清物品、清监听、清 _hsee_target）
+        inst._hsee_target = target       -- 恢复 target 引用
+        con:Open(l_doer)                 -- 重开（onopenfn 重建监听）
+        SnapshotTargetItems(con, target) -- 重新填充
     end)
 end
 
@@ -305,6 +352,7 @@ local function SetupListeners(inst, target, doer)
     inst._hsee_t_lose = function()
         local t = inst._hsee_target
         if t and t:IsValid() and t == target and not inst._hsee_syncing then
+            print("[HSee] target itemlose, refreshing")
             SnapshotTargetItems(inst.components.container, t)
         end
     end
