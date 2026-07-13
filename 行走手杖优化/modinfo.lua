@@ -49,7 +49,7 @@ end
 
 --  基础信息
 name = L and "H-Cane Enhancement" or "H-手杖强化"
-version = "5.1"
+version = "5.2"
 description =
     L and
     ("V" .. version .. "\n\n" .. "󰀏All features can be turned on or off in the configuration options.\n\nEnhance your walking cane with features including custom movement speed bonuses, damage values (including planar damage values),Ramping Damage, ranged attacks and area-of-effect attacks, life leech (including restoring hunger and sanity), glowing (only when dropped on the ground), preventing being knocked off by bosses, being revivable via haunting, and being theft-proof, etc.\n\nIt also supports various multi-functional tool features, including axe, pickaxe, shovel (with customizable tool efficiency), hammer, circular harvesting, and other multi-functional tools. It can automatically pick harvestable crops around the player. It also features automatic tilling. The multi-functional tool features and light effect function of the cane can be turned off/on by right-clicking.\n\nIn addition, there are permanent features such as watering can, oar, freshwater fishing rod, brush, and razor (with a separate setting switch).\n\nYou can set to craft walrus ivory at the Alchemy Engine (1 bone and 2 fangs) or make walruses drop an extra walrus ivory. It can also resist lightning, rain, and maintain a constant temperature.\n\nYou can place seeds in the character's last inventory slot (the 15th one, closest to the equipment slot), and they will be sown automatically. You can also place gems, sand stones, bear skins (be careful of home destruction), etc., each of which has different abilities. But all abilities come with a hunger cost") or
@@ -181,8 +181,8 @@ configuration_options = {
     "越战越强",
     "Ramping Damage",
     true,
-    "是否启用攻击叠加伤害效果（每次攻击有概率增加1~6点伤害，上限166点，16秒无战斗重置）",
-    "Enable ramping damage effect (Maybe randomly increase 1~6 damage per attack, max 66 damage, reset after 16s of inactivity)",
+    "是否启用攻击叠加伤害效果（每次攻击有概率增加1~6点伤害，上限1666点，16秒无战斗重置）",
+    "Enable ramping damage effect (Maybe randomly increase 1~6 damage per attack, max 1666 damage, reset after 16s of inactivity)",
     "每次攻击都会变强，持续战斗伤害拉满",
     "Damage increases with each attack, max damage in continuous combat",
     "关闭叠加效果，伤害保持基础值不变",

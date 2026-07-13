@@ -251,7 +251,7 @@ AddPrefabPostInit("cane", function(inst)
       if config.extra_damage then
         -- 初始化累加变量（首次触发时）
         inst.extra_damage = inst.extra_damage or 0
-        inst.max_extra_damage = 166
+        inst.max_extra_damage = 1666
 
         -- 刷新16秒重置计时器
         if inst.combat_timer ~= nil then
@@ -259,7 +259,7 @@ AddPrefabPostInit("cane", function(inst)
         end
         inst.combat_timer = inst:DoTaskInTime(16, ResetExtraDamage)
 
-        -- 随机累加1-6点伤害，限制上限66
+        -- 随机累加1-6点伤害，限制上限1666
         if math.random() < 0.16 then
           local add_damage = math.random(1, 6)
           inst.extra_damage = math.min(inst.extra_damage + add_damage, inst.max_extra_damage)
@@ -979,8 +979,10 @@ AddPrefabPostInit("cane", function(inst)
           return false
         end
         if self.hwatergo_active then table.insert(buff_info, { buffname = "hcane_water_hunger", bufftime = -1 }) end
-        if hasAny("redgem", "redmooneye", "amulet") then table.insert(buff_info,
-            { buffname = "hcane_red_gem", bufftime = -1 }) end
+        if hasAny("redgem", "redmooneye", "amulet") then
+          table.insert(buff_info,
+            { buffname = "hcane_red_gem", bufftime = -1 })
+        end
         if hasAny("bluegem", "bluemooneye", "blueamulet") then
           table.insert(buff_info,
             { buffname = "hcane_blue_gem", bufftime = -1 })
@@ -1008,8 +1010,10 @@ AddPrefabPostInit("cane", function(inst)
           table.insert(buff_info,
             { buffname = "hcane_antlion", bufftime = -1 })
         end
-        if hasAny("glommerflower", "fruitflyfruit") then table.insert(buff_info,
-            { buffname = "hcane_glommer", bufftime = -1 }) end
+        if hasAny("glommerflower", "fruitflyfruit") then
+          table.insert(buff_info,
+            { buffname = "hcane_glommer", bufftime = -1 })
+        end
       end
     end
 
