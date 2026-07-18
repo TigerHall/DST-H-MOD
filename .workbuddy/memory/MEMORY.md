@@ -12,6 +12,7 @@
 ### 模块映射
 - `hcane` = 行走手杖优化 | `hslot` = 格子优化 | `hfood` = 零食优化
 - `htree` = 水中木优化 | `htable` = 茶几优化 | `hpack` = 背包优化 | `hh` = 实验代码
+- `hreturn` = 离线物品回收（离线玩家物品托管 + 到期生成归还箱）
 
 ### 功能触发方式
 - `hcane`：右键使用手杖（`useableitem.SetOnUseFn`）
