@@ -112,14 +112,13 @@ client: OnRevealMapSpotEvent → HUD.controls:ShowMap(pos)
 
 ## HSLOT 月眼地图传送改进（2026-07-18 新增）
 
-### 传送过场动画（pocketwatch_warpback）
-- **参考**：能力勋章 `medal_spacetime_runes` → `scripts/components/medal_delivery.lua` 第 276 行
-- **核心调用**：`player.sg:GoToState("pocketwatch_warpback", {warpback={dest_x=tx, dest_y=0, dest_z=tz}})`
-- **原理**：Wanda 怀表回溯动画（SGwilson.lua 第 20305 行），自动处理渐隐→传送→渐显
-  - 距离 > 30 时触发 `ScreenFade(false, 0.5)` → `SnapCamera()` → `ScreenFade(true, 0.5)`
-  - 传送在 `pocketwatch_warpback_pst.onenter` 中执行 `Physics:Teleport`
-  - 客户端自动同步：`SGwilson_client.lua` 的 `pocketwatch_warpback_pre` 有 `server_states` 包含 `pocketwatch_warpback`
-- **优势**：比直接 `Physics:Teleport` 更优雅，远距离传送不会地图飞行
+### 传送过场动画（纯净 ScreenFade 黑屏过场，❌ 弃用 pocketwatch_warpback）
+- **⚠️ 不要用 `pocketwatch_warpback` 状态图做过场**：该状态图（SGwilson.lua 第 20305 行）硬编码了 wanda 怀表特效（`pocketwatch_warpback_fx` / `pocketwatch_warpbackout_fx`）和声音（`wanda2/characters/wanda/watch/recall`，pst 状态 timeline），且渐隐仅在距离>30 触发 —— 做不到"只渐隐"。能力勋章 `medal_spacetime_runes`（medal_delivery.lua:276）其实也用它，所以勋章时空符文**本身也有** wanda 特效+声音（用户感知"干净"是因它是消耗品/近距离用完即毁）
+- **现方案（客户端驱动纯净黑屏过场）**：
+  - 客户端双击触发时本地 `ThePlayer:ScreenFade(false, 0.4)` 黑屏（屏幕效果本地，专用服务器也有效）+ `DoTaskInTime(0.6)` 兜底渐显
+  - 服务端 RPC 直接 `player.Physics:Teleport`，再 `SendModRPCToClient(MOD_RPC["hslot_mooneye"]["teleport_done"], player)` 通知客户端
+  - 客户端 `AddClientModRPCHandler("hslot_mooneye","teleport_done", fn)` 收到后 `ThePlayer:ScreenFade(true, 0.4)` 渐显
+  - 移除原 `talker:Say("󰀏 󰀯")` 多余冒字
 
 ### 地图点击传送（RPC 模式）
 - **触发方式**：左键双击（`button == 1000`），间隔 < 0.4 秒，位置差 < 20 像素

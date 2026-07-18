@@ -869,8 +869,10 @@ local function GenericMoonEyeTeleport(inst, viewer, target_prefabs)
 end
 
 -- ═══════════════════════════════════════════════════════
--- 地图点击月眼/玩家传送（左键双击触发 + 过场动画）
--- 1. 使用 pocketwatch_warpback 状态图实现渐隐→传送→渐显（参考能力勋章 medal_spacetime_runes）
+-- 地图点击月眼/玩家传送（左键双击触发 + 纯净黑屏过场）
+-- 1. 过场用【服务端】驱动的 ScreenFade（黑屏→传送→渐显），不套用 pocketwatch_warpback
+--    （该状态图硬编码了 wanda 怀表特效与声音，不符合“只渐隐”的需求）
+--    注意：ScreenFade 只在服务端有该方法，客户端 ThePlayer 无此方法，必须由服务端驱动
 -- 2. 左键双击触发（避免误触，不影响右键拖拽地图）
 -- 3. 除了月眼，玩家也可以作为传送目标
 -- ═══════════════════════════════════════════════════════
@@ -885,7 +887,7 @@ for _, prefab in ipairs(MOONEYE_PREFABS) do
   end)
 end
 
--- 服务端 RPC：搜月眼或玩家，用 pocketwatch_warpback 状态图传送（有过场动画）
+-- 服务端 RPC：搜月眼或玩家，直接传送并通知客户端渐显（纯净黑屏过场）
 AddModRPCHandler("hslot_mooneye", "teleport_to_eye", function(player, x, z)
   if not TheWorld.ismastersim then return end
   if not player or not player:IsValid() then return end
@@ -929,25 +931,28 @@ AddModRPCHandler("hslot_mooneye", "teleport_to_eye", function(player, x, z)
 
   local tx, _, tz = target.Transform:GetWorldPosition()
 
-  -- 使用 pocketwatch_warpback 状态图传送（有过场动画：渐隐→传送→渐显）
-  -- 比直接 Physics:Teleport 更优雅，远距离传送时会有 ScreenFade 过渡，不会地图飞行
-  -- 参考：能力勋章 medal_delivery.lua 第 276 行
-  -- ⚠️ 注意：SG 组件的方法名是 GoToState（大写 G），不能用小写 goToState 判断，
-  -- 否则该字段恒为 nil，if 判断永远 false，直接走下面 fallback 的 Teleport —— 完全没有过场动画
-  if player.sg and player.sg.GoToState then
-    player.sg:GoToState("pocketwatch_warpback", { warpback = { dest_x = tx, dest_y = 0, dest_z = tz } })
-  elseif player.Physics then
-    -- fallback：极少数情况 sg 不可用时直接传送
-    player.Physics:Teleport(tx, 0, tz)
-  end
-
-  if player.components.talker then
-    player.components.talker:Say("󰀏 󰀯")
-  end
+  -- 纯净黑屏过场（关键）：ScreenFade 是 player_common 在【服务端】绑定到玩家实体的方法，
+  -- 客户端玩家实体（ThePlayer）根本没有这个方法（之前在客户端调 ThePlayer:ScreenFade 直接崩）。
+  -- 服务端调用会 set player_classified.fadetime net var，客户端 replica 监听到后自动执行
+  -- 全屏黑屏/渐显，不套用 pocketwatch_warpback 状态图，因此无 wanda 怀表特效与声音。
+  -- 先发黑屏信号 → 等客户端黑屏得差不多了再传送+SnapCamera → 渐显，形成顺滑过场。
+  player:ScreenFade(false, 0.4)
+  player:DoTaskInTime(0.45, function()
+    if not player:IsValid() then return end
+    if player.Physics then
+      player.Physics:Teleport(tx, 0, tz)
+    end
+    player:SnapCamera()
+    player:ScreenFade(true, 0.4)
+  end)
 end)
 
 -- 客户端：左键双击触发传送（防拖拽误触）
 if not GLOBAL.TheNet:IsDedicated() then
+  -- 注：黑屏/渐显过场已由服务端在 teleport_to_eye handler 里通过 player:ScreenFade 驱动
+  -- （set player_classified.fadetime net var，客户端自动接收）。客户端玩家实体没有 ScreenFade 方法，
+  -- 切勿在客户端调用 ThePlayer:ScreenFade（会报 nil 错误）。
+
   local _mouse_down_pos = nil
   local _last_click_time = 0   -- 上次左键抬起的时间
   local _last_click_pos = nil  -- 上次左键抬起的位置
@@ -987,6 +992,8 @@ if not GLOBAL.TheNet:IsDedicated() then
       if time_diff < 0.5 and (ddx * ddx + ddy * ddy) < 1600 then
         -- 双击触发传送
         local targetX, targetZ = ScreenPosToWorldPos()
+        -- 黑屏过场由服务端收到 RPC 后通过 player:ScreenFade 驱动，客户端无需也不应调用 ScreenFade
+        -- （ThePlayer 在客户端无 ScreenFade 方法）。这里只发 RPC + 关地图。
         GLOBAL.SendModRPCToServer(GLOBAL.MOD_RPC["hslot_mooneye"]["teleport_to_eye"], targetX, targetZ)
         -- 立即关闭地图，让玩家看到过场动画
         local active_screen = GLOBAL.TheFrontEnd:GetActiveScreen()
