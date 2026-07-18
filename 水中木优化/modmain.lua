@@ -21,6 +21,7 @@ local config = {
   bullkelp_no_placement_space = GetModConfigData("bullkelp_no_placement_space"),
   farming_utility = GetModConfigData("farming_utility"),
   farming_combat = GetModConfigData("farming_combat"),
+  farming_mount = GetModConfigData("farming_mount"),
 }
 
 -- 设置全局调优参数
@@ -435,4 +436,112 @@ if config.farming_combat then
 
   SetupHatCombat("plantregistryhat", 0.36, 36, false)
   SetupHatCombat("nutrientsgoggleshat", 0.66, 66, true)
+end
+
+---------------------------------------------------------------------------------------------------------
+-- 耕作帽：骑乘增益（仿棱镜 hat_cowboy）
+--   ▷ 尝试骑乘时忽略坐骑服从度与战斗仇恨
+--   ▷ 骑行时免疫击退；任何坐骑（无论是否驯化）都不会被主动甩下来
+--   ▷ 不被发情的“皮弗娄牛”主动攻击
+--   ▷ 免疫电击
+-- 注：棱镜用私有标签 cowboy_l / firmbody_l 实现，此处改用官方机制：
+--     insulated（防电）、hardarmor（击退免疫，同 armormarble）、beefalo 标签（免被发情牛攻击）、
+--     hook Rider:Mount + rideable:TestObedience（无视服从度）、hook rideable:Buck（戴帽即不甩下，不限驯化）、hook hunger:DoDelta（饥饿下限）
+---------------------------------------------------------------------------------------------------------
+if config.farming_mount then
+  local COWBOY_HATS = { "plantregistryhat", "nutrientsgoggleshat" }
+
+  -- 给两顶帽子打标记 + 防电 + 击退免疫（hardarmor，同大理石甲 armormarble）
+  for _, prefab in ipairs(COWBOY_HATS) do
+    AddPrefabPostInit(prefab, function(inst)
+      if not TheWorld.ismastersim then return end
+      inst:AddTag("htree_cowboy")                  -- 戴此帽即视为 cowboy，供下方全局 hook 识别
+      inst.components.equippable.insulated = true  -- 防电（官方 insulated 机制，同雨衣）
+      inst:AddTag("hardarmor")                     -- 击退免疫（倒树等；同 armormarble）
+      inst:AddTag("heavyarmor")                    -- 被击退时落地不飞行 + 多数 Boss 降低击退强度（同 armormarble）
+    end)
+  end
+
+  -- 装备/卸下：加/去 "beefalo" 标签 → 免被发情皮弗娄牛主动攻击
+  for _, prefab in ipairs(COWBOY_HATS) do
+    AddPrefabPostInit(prefab, function(inst)
+      if not TheWorld.ismastersim then return end
+      local _onequip = inst.components.equippable.onequipfn
+      inst.components.equippable.onequipfn = function(inst, owner)
+        if _onequip then _onequip(inst, owner) end
+        if owner ~= nil and owner:IsValid() then
+          owner:AddTag("beefalo")   -- 加牛牛标签，发情牛不会主动攻击（官方 RETARGET_CANT_TAGS 含 beefalo）
+        end
+      end
+      local _onunequip = inst.components.equippable.onunequipfn
+      inst.components.equippable.onunequipfn = function(inst, owner)
+        if _onunequip then _onunequip(inst, owner) end
+        if owner ~= nil and owner:IsValid() then
+          owner:RemoveTag("beefalo")
+        end
+      end
+    end)
+  end
+
+  -- 全局 hook：包裹 Rider:Mount，戴帽时忽略坐骑服从度/仇恨直接骑乘
+  AddComponentPostInit("rider", function(self)
+    local oldMount = self.Mount
+    self.Mount = function(self, target, instant)
+      if self.inst ~= nil
+          and self.inst.components.inventory ~= nil
+          and self.inst.components.inventory:EquipHasTag("htree_cowboy")
+          and target ~= nil
+          and target.components.rideable ~= nil
+          and not target.components.rideable:IsBeingRidden() then
+        target._htree_force_mount = true   -- 临时放行 rideable:TestObedience
+        oldMount(self, target, instant)
+        target._htree_force_mount = false
+        return
+      end
+      oldMount(self, target, instant)
+    end
+  end)
+
+  -- 全局 hook：TestObedience 读取放行标记（与上面 Mount 配合；官方 rideable.lua:102）
+  AddComponentPostInit("rideable", function(self)
+    local oldTest = self.TestObedience
+    self.TestObedience = function(self, ...)
+      if self.inst ~= nil and self.inst._htree_force_mount then
+        return true
+      end
+      return oldTest(self, ...)
+    end
+  end)
+
+  -- 全局 hook：骑行时不被主动甩下（戴帽即可，无论坐骑是否驯化；官方 rideable.lua:201 仅推送 bucked 事件）
+  AddComponentPostInit("rideable", function(self)
+    local oldBuck = self.Buck
+    self.Buck = function(self, gentle)
+      local rider = self.rider
+      if rider ~= nil
+          and rider:HasTag("htree_cowboy") then
+        return  -- 戴帽：任何坐骑都不甩人（随之消除被甩时的击退）
+      end
+      oldBuck(self, gentle)
+    end
+  end)
+
+  -- 全局 hook：戴帽时饥饿值（原始值）不低于下限 0.6（濒死但没死，非比例）
+  -- 自然衰减经 DoDec → DoDelta，本 hook 在其后抬升到下限，故不会饿死；脱帽后恢复自然衰减
+  -- 官方 hunger.lua:128 DoDelta、:146 DoDec（current<=0 才触发饿伤，见 :160）
+  local HUNGER_MIN_VALUE = 0.6   -- 原始饥饿值下限（濒死但没死）
+  AddComponentPostInit("hunger", function(self)
+    local oldDoDelta = self.DoDelta
+    self.DoDelta = function(self, delta, overtime, ignore_invincible)
+      oldDoDelta(self, delta, overtime, ignore_invincible)
+      if self.inst ~= nil
+          and self.inst.components.inventory ~= nil
+          and self.inst.components.inventory:EquipHasTag("htree_cowboy") then
+        local floor = HUNGER_MIN_VALUE
+        if self.current < floor then
+          self:SetCurrent(floor)   -- 仅抬升到下限，不触发额外衰减或致死分支
+        end
+      end
+    end
+  end)
 end
