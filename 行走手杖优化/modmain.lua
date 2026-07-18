@@ -1703,8 +1703,18 @@ AddPrefabPostInit("cane", function(inst)
     end
     -- 高级耕作先驱帽结束
 
-    -- 格罗姆之花/友好果蝇果开始（催熟周围作物和植物）
-    if HasTargetItem(items, { "glommerflower", "fruitflyfruit" }) then
+    -- 格罗姆之花/友好果蝇果/植物图鉴开始（催熟周围作物和植物）
+    if HasTargetItem(items, { "glommerflower", "fruitflyfruit", "medal_plant_book" }) then
+      -- 巨大化模式：14格 与 15格 都必须为催化剂（格罗姆之花 / 友好果蝇果 / 植物图鉴）
+      --（两格可同为其中一种，也可各一种；即需要两个催化剂）
+      local _s14 = doer.components.inventory:GetItemInSlot(14)
+      local _s15 = doer.components.inventory:GetItemInSlot(15)
+      local function _isRipenCatalyst(it)
+        return it ~= nil and it:IsValid()
+          and (it.prefab == "glommerflower" or it.prefab == "fruitflyfruit" or it.prefab == "medal_plant_book")
+      end
+      local giant_ripen_mode = _isRipenCatalyst(_s14) and _isRipenCatalyst(_s15)
+
       -- 催熟频率：每调用10次自动工作执行一次催熟（≈3.6秒）
       _ripening_counter = _ripening_counter + 1
       if _ripening_counter >= 10 then
@@ -1742,6 +1752,10 @@ AddPrefabPostInit("cane", function(inst)
               -- 农场作物（domagicgrowthfn）：额外检查是否已到最终腐烂阶段
               if ent.components.growable.stage >= #ent.components.growable.stages then
                 return
+              end
+              -- 巨大化模式：强制 oversized 后再催熟（仿勋章植物图鉴 force_oversized）
+              if giant_ripen_mode then
+                ent.force_oversized = true
               end
               ent.components.growable:DoMagicGrowth()
               return
@@ -1794,11 +1808,15 @@ AddPrefabPostInit("cane", function(inst)
           end
         end
 
-        -- 播放催熟传送特效（vault_portal_fx）
-        local fx = SpawnPrefab("vault_portal_fx")
+        -- 播放催熟特效（仿勋章植物图鉴的 book_fx 书页粒子，替换原 vault_portal_fx）
+        local fx = SpawnPrefab("book_fx")
         if fx then
           local px, py, pz = owner.Transform:GetWorldPosition()
           fx.Transform:SetPosition(px, py, pz)
+        end
+        -- 读书声效（仿勋章植物图鉴读时的 don_tstarve/common/book_spell）
+        if owner.SoundEmitter ~= nil then
+          owner.SoundEmitter:PlaySound("dontstarve/common/book_spell")
         end
 
         ApplyHungerCost(owner, -16, 0.36, inst.prefab)
