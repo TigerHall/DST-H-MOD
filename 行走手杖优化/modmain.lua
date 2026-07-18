@@ -1616,7 +1616,7 @@ AddPrefabPostInit("cane", function(inst)
     end
 
     -- 范围训牛开始（H-装备）
-    if HasTargetItem(items, { "beefalohat", "horn" }) then
+    if HasTargetItem(items, { "beefalohat", "horn", "hat_cowboy" }) then
       -- 查找范围内的牛
       local beefalos = TheSim:FindEntities(x, y, z, WORK_RADIUS,
         { "beefalo" },                 -- 只找牛
@@ -1711,7 +1711,7 @@ AddPrefabPostInit("cane", function(inst)
       local _s15 = doer.components.inventory:GetItemInSlot(15)
       local function _isRipenCatalyst(it)
         return it ~= nil and it:IsValid()
-          and (it.prefab == "glommerflower" or it.prefab == "fruitflyfruit" or it.prefab == "medal_plant_book")
+            and (it.prefab == "glommerflower" or it.prefab == "fruitflyfruit" or it.prefab == "medal_plant_book")
       end
       local giant_ripen_mode = _isRipenCatalyst(_s14) and _isRipenCatalyst(_s15)
 
