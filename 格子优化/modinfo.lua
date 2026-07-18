@@ -47,7 +47,7 @@ end
 
 --  基础信息
 name = en_zh("H-SLOT", "H-无限格子")
-version = "3.0"
+version = "3.1"
 description = en_zh("V" .. version .. [[
 
 Items in Chester's and Hutch's grids do not spoil. Items in Shadow Chester's grid spoil at an accelerated rate, while items in Ice Chester's grid are preserved (remain fresh).
@@ -58,13 +58,12 @@ Trading feature added -- try trading various items with eyebone/fishbowl to disc
 Blue moon eye opens an pocket space (4x4 slots)!
 Purple, orange, yellow moon eyes each open a pocket space (5x4 slots)!
 Yellow/Orange/Purple moon eyes can reveal set piece locations on the map!
-Open map and right-click moon eyes/sentry/moondial/townportal to teleport there!
-Open map and right-click moon eyes/sentry/moondial/townportal to teleport (requires moonrockcrater config on)!
+Open map and double-left-click moon eyes/sentry/moondial/townportal/players to teleport with fade transition!
 ]], "V" .. version .. [[
 
 切斯特、哈奇格子内物品不腐败，暗影切斯特格子腐败加速，冰雪切斯特反鲜。
 切斯特、哈奇格子可无限堆叠。
-带孔月岩可传送到眼骨或星空处；打开地图右键月眼及其产物可传送至对应位置。
+带孔月岩可传送到眼骨或星空处；打开地图左键双击月眼/哨塔/月晷/传送门/玩家可传送（有过场动画）。
 黄色、橙色、紫色月眼可在地图揭示重要布景位置。
 红色月眼可打开暗影空间，绿色月眼可打开挖角兔空间。眼骨和星空右键检查也可打开挖角兔空间。
 暗影空间和挖角兔空间可设置无限堆叠，腐败加速和反鲜加速。
@@ -132,10 +131,10 @@ configuration_options = {
     "带孔月岩传送功能",
     "Moonrockcrater Teleport Function",
     true,
-    "带孔月岩点击检查触发传送 + 地图右键传送至各色月眼/哨塔/月晷/传送门",
-    "Moonrockcrater click teleport + map right-click teleport to moon eyes/sentry/moondial/townportal",
-    "点击带孔月岩传送到眼骨/星空；打开地图右键月眼及其产物可直接传送至对应位置",
-    "Click moonrockcrater to teleport to eyebone/hutch; open map and right-click moon eyes or their products to teleport",
+    "带孔月岩点击检查触发传送 + 地图左键双击月眼/玩家传送（有过场动画）",
+    "Moonrockcrater click teleport + map double-left-click teleport to moon eyes/players (with fade transition)",
+    "点击带孔月岩传送到眼骨/星空；打开地图左键双击月眼/哨塔/月晷/传送门/玩家可直接传送",
+    "Click moonrockcrater to teleport to eyebone/hutch; open map and double-left-click moon eyes or players to teleport",
     "不改变带孔月岩，禁用地图传送",
     "No change to moonrockcrater, disable map teleport"
   ),

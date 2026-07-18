@@ -110,6 +110,27 @@ client: OnRevealMapSpotEvent → HUD.controls:ShowMap(pos)
 
 ---
 
+## HSLOT 月眼地图传送改进（2026-07-18 新增）
+
+### 传送过场动画（pocketwatch_warpback）
+- **参考**：能力勋章 `medal_spacetime_runes` → `scripts/components/medal_delivery.lua` 第 276 行
+- **核心调用**：`player.sg:GoToState("pocketwatch_warpback", {warpback={dest_x=tx, dest_y=0, dest_z=tz}})`
+- **原理**：Wanda 怀表回溯动画（SGwilson.lua 第 20305 行），自动处理渐隐→传送→渐显
+  - 距离 > 30 时触发 `ScreenFade(false, 0.5)` → `SnapCamera()` → `ScreenFade(true, 0.5)`
+  - 传送在 `pocketwatch_warpback_pst.onenter` 中执行 `Physics:Teleport`
+  - 客户端自动同步：`SGwilson_client.lua` 的 `pocketwatch_warpback_pre` 有 `server_states` 包含 `pocketwatch_warpback`
+- **优势**：比直接 `Physics:Teleport` 更优雅，远距离传送不会地图飞行
+
+### 地图点击传送（RPC 模式）
+- **触发方式**：左键双击（`button == 1000`），间隔 < 0.4 秒，位置差 < 20 像素
+- **鼠标常量**：左键=1000，右键=1001
+- **传送目标**：月眼 tag + 玩家 tag（排除自己 + 鬼魂），搜索范围 50
+- **RPC**：`AddModRPCHandler("hslot_mooneye", "teleport_to_eye", fn)` + `SendModRPCToServer`
+- **坐标转换**：`TheWorld.minimap.MiniMap:MapPosToWorldPos(screen_x, screen_y, 0)`
+- **左键单击副作用**：会在地图放置标记（ping），双击放两个，但标记几秒后消失
+
+---
+
 ## 背包探查器 HH（2026-07-11 新增）
 
 ### 方案 A：容器模式（当前使用）

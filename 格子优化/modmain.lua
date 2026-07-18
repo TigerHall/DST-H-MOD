@@ -869,8 +869,10 @@ local function GenericMoonEyeTeleport(inst, viewer, target_prefabs)
 end
 
 -- ═══════════════════════════════════════════════════════
--- 地图点击月眼传送（完全复现参考MOD2 代码）
--- 参考MOD 3540476559 的坐标转换 + 双击检测 + RPC 模式
+-- 地图点击月眼/玩家传送（左键双击触发 + 过场动画）
+-- 1. 使用 pocketwatch_warpback 状态图实现渐隐→传送→渐显（参考能力勋章 medal_spacetime_runes）
+-- 2. 左键双击触发（避免误触，不影响右键拖拽地图）
+-- 3. 除了月眼，玩家也可以作为传送目标
 -- ═══════════════════════════════════════════════════════
 
 -- 给六色月眼 + 月眼建筑加 "mooneye" tag（可搜到的传送目标）
@@ -883,22 +885,72 @@ for _, prefab in ipairs(MOONEYE_PREFABS) do
   end)
 end
 
--- 服务端 RPC：搜月眼 tag，传送到目标位置
+-- 服务端 RPC：搜月眼或玩家，用 pocketwatch_warpback 状态图传送（有过场动画）
 AddModRPCHandler("hslot_mooneye", "teleport_to_eye", function(player, x, z)
   if not TheWorld.ismastersim then return end
-  local ents = GLOBAL.TheSim:FindEntities(x, 0, z, 30, { "mooneye" })
-  if #ents == 0 or not ents[1]:IsValid() then return end
-  if ents[1].components.inventoryitem and ents[1].components.inventoryitem:IsHeld() then return end
-  local tx, _, tz = ents[1].Transform:GetWorldPosition()
-  if player.Physics then player.Physics:Teleport(tx, 0, tz) end
+  if not player or not player:IsValid() then return end
+
+  -- 搜索范围（从 30 扩大到 50，更容易点到目标）
+  local search_range = 50
+
+  -- 1. 搜月眼 tag（排除被持有的物品）
+  local mooneye_ents = GLOBAL.TheSim:FindEntities(x, 0, z, search_range, { "mooneye" })
+  -- 2. 搜玩家 tag（排除鬼魂）
+  local player_ents = GLOBAL.TheSim:FindEntities(x, 0, z, search_range, { "player" }, { "playerghost" })
+
+  -- 合并候选目标，找距离点击点最近的
+  local target = nil
+  local min_dist_sq = math.huge
+
+  for _, ent in ipairs(mooneye_ents) do
+    if ent:IsValid() and not (ent.components.inventoryitem and ent.components.inventoryitem:IsHeld()) then
+      local ex, _, ez = ent.Transform:GetWorldPosition()
+      local dist_sq = (ex - x) * (ex - x) + (ez - z) * (ez - z)
+      if dist_sq < min_dist_sq then
+        min_dist_sq = dist_sq
+        target = ent
+      end
+    end
+  end
+
+  for _, ent in ipairs(player_ents) do
+    -- 排除自己 + 排除鬼魂
+    if ent:IsValid() and ent ~= player and not ent:HasTag("playerghost") then
+      local ex, _, ez = ent.Transform:GetWorldPosition()
+      local dist_sq = (ex - x) * (ex - x) + (ez - z) * (ez - z)
+      if dist_sq < min_dist_sq then
+        min_dist_sq = dist_sq
+        target = ent
+      end
+    end
+  end
+
+  if not target then return end
+
+  local tx, _, tz = target.Transform:GetWorldPosition()
+
+  -- 使用 pocketwatch_warpback 状态图传送（有过场动画：渐隐→传送→渐显）
+  -- 比直接 Physics:Teleport 更优雅，远距离传送时会有 ScreenFade 过渡，不会地图飞行
+  -- 参考：能力勋章 medal_delivery.lua 第 276 行
+  -- ⚠️ 注意：SG 组件的方法名是 GoToState（大写 G），不能用小写 goToState 判断，
+  -- 否则该字段恒为 nil，if 判断永远 false，直接走下面 fallback 的 Teleport —— 完全没有过场动画
+  if player.sg and player.sg.GoToState then
+    player.sg:GoToState("pocketwatch_warpback", { warpback = { dest_x = tx, dest_y = 0, dest_z = tz } })
+  elseif player.Physics then
+    -- fallback：极少数情况 sg 不可用时直接传送
+    player.Physics:Teleport(tx, 0, tz)
+  end
+
   if player.components.talker then
     player.components.talker:Say("󰀏 󰀯")
   end
 end)
 
--- 客户端：参考 MOD2 的坐标转换 + 单击右键（防拖拽误触）
+-- 客户端：左键双击触发传送（防拖拽误触）
 if not GLOBAL.TheNet:IsDedicated() then
   local _mouse_down_pos = nil
+  local _last_click_time = 0   -- 上次左键抬起的时间
+  local _last_click_pos = nil  -- 上次左键抬起的位置
   local HalfResolution = { x = GLOBAL.RESOLUTION_X / 2, y = GLOBAL.RESOLUTION_Y / 2 }
   local screen_width, screen_height = GLOBAL.TheSim:GetScreenSize()
 
@@ -910,11 +962,10 @@ if not GLOBAL.TheNet:IsDedicated() then
   end
 
   local function MouseCallBack(button, down, x, y)
-    if button ~= 1001 then return end -- 只处理右键
+    if button ~= 1000 then return end -- 只处理左键
     if not config.moonrockcrater_teleport then return end
 
     if down then
-      -- 记下鼠标按下位置，用于判断是否拖拽
       _mouse_down_pos = { x = x, y = y }
       return
     end
@@ -922,24 +973,41 @@ if not GLOBAL.TheNet:IsDedicated() then
     -- 鼠标抬起：检查地图是否打开
     if not GLOBAL.ThePlayer or not GLOBAL.ThePlayer.HUD or not GLOBAL.ThePlayer.HUD:IsMapScreenOpen() then return end
 
-    -- 防止拖拽地图时误触发：如果鼠标移动超过 10 像素，视为拖拽而非点击
+    -- 防止拖拽地图时误触发：鼠标移动超过 20 像素(400)视为拖拽
     if _mouse_down_pos then
       local dx, dy = x - _mouse_down_pos.x, y - _mouse_down_pos.y
-      if dx * dx + dy * dy > 100 then return end -- 拖拽地图，不触发传送
+      if dx * dx + dy * dy > 400 then return end
     end
 
-    -- 单次右键触发传送
-    local targetX, targetZ = ScreenPosToWorldPos()
-    GLOBAL.SendModRPCToServer(GLOBAL.MOD_RPC["hslot_mooneye"]["teleport_to_eye"], targetX, targetZ)
-    -- 立即关闭地图，避免传送后地图跟着角色飞
-    local active_screen = GLOBAL.TheFrontEnd:GetActiveScreen()
-    if active_screen and active_screen.name == "MapScreen" then
-      GLOBAL.TheFrontEnd:PopScreen()
+    -- 双击检测：两次点击间隔 < 0.5 秒且位置接近（< 40 像素）
+    local current_time = GLOBAL.GetTime()
+    if _last_click_pos then
+      local ddx, ddy = x - _last_click_pos.x, y - _last_click_pos.y
+      local time_diff = current_time - _last_click_time
+      if time_diff < 0.5 and (ddx * ddx + ddy * ddy) < 1600 then
+        -- 双击触发传送
+        local targetX, targetZ = ScreenPosToWorldPos()
+        GLOBAL.SendModRPCToServer(GLOBAL.MOD_RPC["hslot_mooneye"]["teleport_to_eye"], targetX, targetZ)
+        -- 立即关闭地图，让玩家看到过场动画
+        local active_screen = GLOBAL.TheFrontEnd:GetActiveScreen()
+        if active_screen and active_screen.name == "MapScreen" then
+          GLOBAL.TheFrontEnd:PopScreen()
+        end
+        _last_click_time = 0
+        _last_click_pos = nil
+        return
+      end
     end
+
+    -- 记录本次点击，作为下次双击检测的基准
+    _last_click_time = current_time
+    _last_click_pos = { x = x, y = y }
   end
 
+  -- ⚠️ 不能加 `if TheWorld.ismastersim then return end`!
+  -- 非专用服务器(玩家自己开房)时 ismastersim 为 true，会跳过注册导致地图点击完全失效。
+  -- 外层 `if not IsDedicated()` 已保证“有客户端才进”，专用服务器不会到这里，无需再判断。
   AddPlayerPostInit(function(inst)
-    if TheWorld.ismastersim then return end
     inst:DoTaskInTime(0.1, function()
       GLOBAL.TheInput:AddMouseButtonHandler(MouseCallBack)
     end)
