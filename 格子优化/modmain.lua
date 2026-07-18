@@ -655,7 +655,7 @@ AddPrefabPostInit("hutch", function(inst)
   -- 如果开启防腐功能，添加preserver组件并设置速率为0（不腐败）
   if config.preserve_settings then
     inst:AddComponent("preserver")
-    inst.components.preserver:SetPerishRateMultiplier(0)
+    inst.components.preserver:SetPerishRateMultiplier(-16)
   end
   if config.pet_strong then
     -- 回血和伤害吸收百分比
@@ -954,8 +954,8 @@ if not GLOBAL.TheNet:IsDedicated() then
   -- 切勿在客户端调用 ThePlayer:ScreenFade（会报 nil 错误）。
 
   local _mouse_down_pos = nil
-  local _last_click_time = 0   -- 上次左键抬起的时间
-  local _last_click_pos = nil  -- 上次左键抬起的位置
+  local _last_click_time = 0  -- 上次左键抬起的时间
+  local _last_click_pos = nil -- 上次左键抬起的位置
   local HalfResolution = { x = GLOBAL.RESOLUTION_X / 2, y = GLOBAL.RESOLUTION_Y / 2 }
   local screen_width, screen_height = GLOBAL.TheSim:GetScreenSize()
 
@@ -1343,6 +1343,9 @@ for prefab_name, world_key in pairs(POCKET_MAP) do
     if config.preserve_settings then
       if inst.components.preserver == nil then
         inst:AddComponent("preserver")
+      end
+      if prefab_name == "hslot_container" then
+        inst:AddTag("fridge")
       end
       inst.components.preserver:SetPerishRateMultiplier(0)
     end
