@@ -47,7 +47,7 @@ end
 
 --  基础信息
 name = en_zh("H-test", "H-测试")
-version = "0.9.0"
+version = "0.9.1"
 
 -- 动态版本号展示
 local ver_line = "V" .. version .. "\n"
