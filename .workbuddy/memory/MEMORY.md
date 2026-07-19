@@ -13,7 +13,7 @@
 - `hcane` = 行走手杖优化 | `hslot` = 格子优化 | `hfood` = 零食优化
 - `htree` = 水中木优化 | `htable` = 茶几优化 | `hpack` = 背包优化 | `hh` = 实验代码
 - `hreturn` = 离线物品回收（离线玩家物品托管 + 到期生成归还箱）
-- `hpaper` = 制图桌回收（擦除记忆+重制，全服共享，仿陶轮 craftingstation 机制）
+- `hpaper` = 制图桌回收（擦除解锁+重制，全服共享，含 world 组件 `hmod_carto_erased`）
 
 ### 功能触发方式
 - `hcane`：右键使用手杖（`useableitem.SetOnUseFn`）
