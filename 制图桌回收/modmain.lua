@@ -87,22 +87,29 @@ AddPrefabPostInit("world", function(inst)
     inst:AddComponent("hmod_carto_erased")
 end)
 
--- ===== 玩家加入：同步世界组件中已解锁的配方 =====
--- 先清理旧的已知记录（消除测试累积），再从世界组件重新同步
+-- ===== 教师组件钩子：阅读蓝图 → 仅读者本人解锁重制配方 =====
+-- 不同步世界组件，也不共享给其他玩家
+AddComponentPostInit("teacher", function(self)
+    local _Teach = self.Teach
+    self.Teach = function(self, target)
+        local recipe = self.recipe
+        local result = _Teach(self, target)
+        if recipe and target and target.components.builder then
+            local rname = "reissue_blueprint_" .. recipe
+            if not target.components.builder:KnowsRecipe(rname) then
+                target.components.builder:UnlockRecipe(rname)
+            end
+        end
+        return result
+    end
+end)
+
+-- ===== 玩家加入：从世界组件同步已解锁的配方 =====
 AddPlayerPostInit(function(inst)
     if not TheWorld.ismastersim then return end
     inst:DoTaskInTime(1, function()
         local builder = inst.components.builder
         if not builder then return end
-        -- 清理旧的 reissue 配方记录（避免测试数据残留）
-        if builder.known_recipes then
-            for name in pairs(builder.known_recipes) do
-                if name:find("^reissue_") then
-                    builder.known_recipes[name] = nil
-                end
-            end
-        end
-        -- 从世界组件重新同步（只同步擦除过的）
         local comp = TheWorld.components.hmod_carto_erased
         if comp then
             for rname in pairs(comp:GetAllUnlocked()) do
