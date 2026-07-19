@@ -130,6 +130,13 @@ AddComponentPostInit("erasablepaper", function(self)
         local rname = nil
 
         rname = PAPER_TO_RECIPE[prefab]
+        -- 草图/渔具广告：SetPrefabName 覆盖了真实 prefab 名，用 GetSpecificSketchPrefab 兜底
+        if not rname and paper.GetSpecificSketchPrefab then
+            local specific = paper:GetSpecificSketchPrefab()
+            if specific then
+                rname = PAPER_TO_RECIPE[specific]
+            end
+        end
         if not rname and paper.components.inventoryitem then
             local img = paper.components.inventoryitem.imagename
             if img and img ~= prefab and img ~= "blueprint" and img ~= "sketch"
