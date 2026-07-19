@@ -1,9 +1,11 @@
--- 制图桌回收（nounlock=true + canbuild 灰显控制）
+-- 制图桌回收（nounlock=false + actionstr + UnlockRecipe）
 -- 机制：
---   - 全部配方预注册 nounlock=true → 显示在制图桌正确标签页
---   - canbuild 检查世界组件 hmod_carto_erased 是否已擦除
---   - 未擦除的配方灰显，擦除后可用（全服共享）
---   - 随机配方额外预注册，直接可用
+--   - 全部配方预注册 nounlock=false（默认隐藏，需 UnlockRecipe 解锁）
+--   - 解锁后在制图桌标签页显示（actionstr = "CARTOGRAPHY"）
+--   - 擦除 → 写世界组件 + UnlockRecipe 全服同步
+--   - 玩家加入 → 遍历世界组件逐个 UnlockRecipe
+--   - 随机配方 nounlock=true，直接可见
+--   - 蓝图阅读（Teacher）仅解锁玩家本人，不同步全服
 -- 依赖：scripts/components/hmod_carto_erased.lua
 
 GLOBAL.setmetatable(env, { __index = function(t, k) return GLOBAL.rawget(GLOBAL, k) end })
@@ -23,12 +25,12 @@ local cur_locale = (GLOBAL.LanguageTranslator and GLOBAL.LanguageTranslator.defa
 local iszh = (cur_locale == "zh" or cur_locale == "zhr" or cur_locale == "zht")
 local function enzh(e, z) return iszh and z or e end
 
-local HPAPER = {}            -- 已注册配方名（去重）
-local reissue_cooking = {}   -- [rname] = {recipe_name, cooker_name}
-local PAPER_TO_RECIPE = {}   -- [product_prefab] = rname
+local HPAPER = {}
+local reissue_cooking = {}
+local PAPER_TO_RECIPE = {}
 
 -- ===== 注册一个重制配方 =====
--- nounlock=true → 始终在制图桌标签页显示（灰显/可用由 canbuild 控制）
+-- nounlock=false → 默认隐藏，需 UnlockRecipe 放行
 local function RegisterReissue(rname, product, image, name_str)
     if HPAPER[rname] then return end
     if GLOBAL.Prefabs[product] == nil then return end
@@ -37,37 +39,45 @@ local function RegisterReissue(rname, product, image, name_str)
     STRINGS.NAMES[string.upper(rname)] = name_str
     AddRecipe2(rname,
         { Ingredient("papyrus", TUNING.HMOD_CARTO.papyrus_cost) },
-        TECH.CARTOGRAPHY_TWO,
+        TECH.LOST,
         {
-            nounlock = true,
+            nounlock = false,
             actionstr = "CARTOGRAPHY",
             product = product,
             image = image,
-            canbuild = function()
-                return TheWorld and TheWorld.components.hmod_carto_erased
-                    and TheWorld.components.hmod_carto_erased:HasEntry(rname)
-            end,
             no_deconstruction = true,
-        })
+        },
+        {"PROTOTYPERS", "CHARACTER"})
 end
 
 -- ===== 全量蓝图随机选择 =====
 local function PickAllBlueprint(player)
     local candidates = {}
     for name in pairs(AllRecipes) do
-        if GLOBAL.Prefabs[name.."_blueprint"]
+        if GLOBAL.Prefabs[name .. "_blueprint"]
             and not player.components.builder:KnowsRecipe(name) then
             table.insert(candidates, name)
         end
     end
     if #candidates == 0 then
         for name in pairs(AllRecipes) do
-            if GLOBAL.Prefabs[name.."_blueprint"] then
+            if GLOBAL.Prefabs[name .. "_blueprint"] then
                 table.insert(candidates, name)
             end
         end
     end
     return #candidates > 0 and candidates[math.random(#candidates)] or nil
+end
+
+-- ===== 解锁一个配方给所有在线玩家 =====
+local function UnlockForAllPlayers(rname)
+    if not AllPlayers then return end
+    for i, player in ipairs(AllPlayers) do
+        if player and player.components.builder
+            and not player.components.builder:KnowsRecipe(rname) then
+            player.components.builder:UnlockRecipe(rname)
+        end
+    end
 end
 
 -- ===== 世界级擦除解锁组件 =====
@@ -77,8 +87,34 @@ AddPrefabPostInit("world", function(inst)
     inst:AddComponent("hmod_carto_erased")
 end)
 
+-- ===== 玩家加入：同步世界组件中已解锁的配方 =====
+-- 先清理旧的已知记录（消除测试累积），再从世界组件重新同步
+AddPlayerPostInit(function(inst)
+    if not TheWorld.ismastersim then return end
+    inst:DoTaskInTime(1, function()
+        local builder = inst.components.builder
+        if not builder then return end
+        -- 清理旧的 reissue 配方记录（避免测试数据残留）
+        if builder.known_recipes then
+            for name in pairs(builder.known_recipes) do
+                if name:find("^reissue_") then
+                    builder.known_recipes[name] = nil
+                end
+            end
+        end
+        -- 从世界组件重新同步（只同步擦除过的）
+        local comp = TheWorld.components.hmod_carto_erased
+        if comp then
+            for rname in pairs(comp:GetAllUnlocked()) do
+                if not builder:KnowsRecipe(rname) then
+                    builder:UnlockRecipe(rname)
+                end
+            end
+        end
+    end)
+end)
+
 -- ===== 擦除动作钩子 =====
--- 只写入世界组件，canbuild 自动放行
 AddComponentPostInit("erasablepaper", function(self)
     local _DoErase = self.DoErase
     self.DoErase = function(self, eraser, doer)
@@ -86,10 +122,7 @@ AddComponentPostInit("erasablepaper", function(self)
         local prefab = paper.prefab
         local rname = nil
 
-        -- 1. 从逆向查找表通过 prefab 名匹配
         rname = PAPER_TO_RECIPE[prefab]
-
-        -- 2. imagename 兜底
         if not rname and paper.components.inventoryitem then
             local img = paper.components.inventoryitem.imagename
             if img and img ~= prefab and img ~= "blueprint" and img ~= "sketch"
@@ -97,20 +130,20 @@ AddComponentPostInit("erasablepaper", function(self)
                 rname = PAPER_TO_RECIPE[img]
             end
         end
-
-        -- 3. cookingrecipecard
         if not rname and prefab == "cookingrecipecard" and paper.recipe_name then
             rname = "reissue_cooking_" .. paper.recipe_name
         end
-
-        -- 4. 蓝图 teacher+recipetouse
         if not rname and paper.components.teacher and paper.recipetouse
             and type(paper.recipetouse) == "string" and paper.recipetouse ~= "unknown" then
             rname = "reissue_blueprint_" .. paper.recipetouse
         end
 
         if rname and TheWorld and TheWorld.components.hmod_carto_erased then
-            TheWorld.components.hmod_carto_erased:Unlock(rname)
+            local comp = TheWorld.components.hmod_carto_erased
+            if not comp:HasEntry(rname) then
+                comp:Unlock(rname)
+            end
+            UnlockForAllPlayers(rname)
         end
 
         return _DoErase(self, eraser, doer)
@@ -125,7 +158,7 @@ AddGamePostInit(function()
         if GLOBAL.Prefabs[bp] then
             local rname = "reissue_blueprint_" .. recipe.name
             local name_str = (STRINGS.NAMES[string.upper(recipe.name)] or recipe.name)
-                             .. " " .. (STRINGS.NAMES.BLUEPRINT or "蓝图")
+                .. " " .. (STRINGS.NAMES.BLUEPRINT or "蓝图")
             RegisterReissue(rname, bp, "blueprint.tex", name_str)
         end
     end
@@ -183,13 +216,13 @@ AddGamePostInit(function()
             if v.test ~= nil and v.prefab_name and GLOBAL.Prefabs[v.prefab_name] then
                 local rname = "reissue_costume_" .. v.prefab_name
                 local name_str = STRINGS.NAMES[string.upper(v.prefab_name)]
-                            or enzh("Costume Pattern", "礼服款式")
+                    or enzh("Costume Pattern", "礼服款式")
                 RegisterReissue(rname, v.prefab_name, "blueprint_sewing_machine_yotb.tex", name_str)
             end
         end
     end
 
-    -- 7. 随机配方（nounlock=true，无 canbuild → 始终可用）
+    -- 7. 随机配方
     if config.enable_random then
         local rbp_name = "hmod_rand_blueprint"
         STRINGS.NAMES[string.upper(rbp_name)] = enzh("Random Blueprint", "随机蓝图")
@@ -217,6 +250,20 @@ AddGamePostInit(function()
                 no_deconstruction = true,
             })
     end
+
+    -- 8. 绘制已知蓝图
+    local dkb_name = "hmod_draw_known_bp"
+    STRINGS.NAMES[string.upper(dkb_name)] = enzh("Draw Known Blueprint", "绘制已知蓝图")
+    AddRecipe2(dkb_name,
+        { Ingredient("papyrus", 1) },
+        TECH.CARTOGRAPHY_TWO,
+        {
+            nounlock = true,
+            actionstr = "CARTOGRAPHY",
+            product = "blueprint",
+            image = "blueprint.tex",
+            no_deconstruction = true,
+        })
 end)
 
 -- ===== 食谱卡 builditem 补配 =====
@@ -248,6 +295,44 @@ AddPlayerPostInit(function(inst)
 
         if data.recipe.name == "hmod_rand_blueprint" and config.randombp_all then
             local chosen = PickAllBlueprint(player)
+            if chosen then
+                local item = data.item
+                item.recipetouse = chosen
+                item.components.teacher:SetRecipe(chosen)
+                item.components.named:SetName(
+                    (STRINGS.NAMES[string.upper(chosen)] or chosen)
+                    .. " " .. (STRINGS.NAMES.BLUEPRINT or "蓝图"))
+            end
+        end
+
+        -- 绘制已知蓝图：从玩家已知配方中选取
+        -- 过滤规则：排除制造站/角色专属，优先已擦除，兜底随机
+        if data.recipe.name == "hmod_draw_known_bp" then
+            local builder = player.components.builder
+            if not builder or not builder.known_recipes then return end
+            local candidates = {}
+            local erased_candidates = {}
+            local comp = TheWorld and TheWorld.components.hmod_carto_erased
+            for name in pairs(builder.known_recipes) do
+                local recipe = AllRecipes[name]
+                -- 排除制造站配方（nounlock）和角色专属（builder_tag）
+                if recipe and not recipe.nounlock and not recipe.builder_tag
+                    and GLOBAL.Prefabs[name .. "_blueprint"] then
+                    table.insert(candidates, name)
+                    -- 检查是否已擦除解锁过
+                    local rname = "reissue_blueprint_" .. name
+                    if comp and comp:HasEntry(rname) then
+                        table.insert(erased_candidates, name)
+                    end
+                end
+            end
+            -- 优先从已擦除的抽，兜底随机
+            local chosen = nil
+            if #erased_candidates > 0 then
+                chosen = erased_candidates[math.random(#erased_candidates)]
+            elseif #candidates > 0 then
+                chosen = candidates[math.random(#candidates)]
+            end
             if chosen then
                 local item = data.item
                 item.recipetouse = chosen

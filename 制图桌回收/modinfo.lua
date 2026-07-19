@@ -48,7 +48,7 @@ end
 -- 基础信息
 name = en_zh("H-Cartography Desk Enhancement", "H-制图桌强化")
 author = "hehu"
-version = "1.9"
+version = "2.0"
 
 -- 动态版本号展示
 local ver_line = "V" .. version .. "\n"
@@ -113,7 +113,8 @@ configuration_options = {
         "randombp_all",
         "Include ALL blueprints (station/character/etc.)", "随机蓝图包含全部类型（制造站/角色专属等）",
         false,
-        "When enabled, random blueprint can generate ANY recipe that has a _blueprint prefab, ignoring official restrictions (station recipes, character-specific, etc.).", "开启后随机蓝图可以从所有有 _blueprint prefab 的配方中随机生成，不限制制造站/角色专属等官方限制。",
+        "When enabled, random blueprint can generate ANY recipe that has a _blueprint prefab, ignoring official restrictions (station recipes, character-specific, etc.).",
+        "开启后随机蓝图可以从所有有 _blueprint prefab 的配方中随机生成，不限制制造站/角色专属等官方限制。",
         "All blueprints available.", "全部蓝图可用。",
         "Only official subset.", "仅官方子集。"
     ),
