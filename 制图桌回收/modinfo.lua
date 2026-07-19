@@ -48,15 +48,21 @@ end
 -- 基础信息
 name = en_zh("H-Cartography Desk Enhancement", "H-制图桌强化")
 author = "hehu"
-version = "2.0"
+version = "2.1"
 
 -- 动态版本号展示
 local ver_line = "V" .. version .. "\n"
 local en_desc = ver_line .. [[
-Cartography Desk enhancement: all 6 supported paper types (blueprint / recipe card / sketch / pirate map / fish tackle advert / costume pattern) are re-craftable from papyrus at any cartography desk. Recipes are locked by default; erase the corresponding paper to unlock (world-persistent, shared across all desks). Optional random blueprint / random recipe card recipes (configurable). Uniform icons per type.
+Erasable paper recycling & random blueprint crafting at the cartography desk.
+- Erase any paper (blueprint/recipe card/sketch/pirate map/fishing advert/costume pattern) to unlock its reissue recipe — world-persistent, shared across all desks.
+- Read a blueprint to personally unlock its reissue recipe.
+- Optional random blueprint / random recipe card / draw-known-blueprint recipes (configurable).
 ]]
 local zh_desc = ver_line .. [[
-制图桌强化：6 种指定纸（蓝图/食谱卡/草图/海盗地图/渔具广告/礼服款式）均可在制图桌上消耗 papyrus 重新制作。配方默认锁定，需擦除对应纸张解锁（世界级持久化，所有制图桌共享）。可选的随机蓝图/随机食谱卡配方（配置项控制）。每种类型统一图标。
+制图桌擦拭回收 & 随机蓝图制作。
+- 擦除 6 种纸（蓝图/食谱卡/草图/海盗地图/渔具广告/礼服款式）→ 解锁对应的重制配方（世界持久化，全服共享）。
+- 阅读蓝图 → 个人解锁该蓝图的重制配方。
+- 可选的随机蓝图/随机食谱卡/绘制已知蓝图配方（配置项控制）。
 ]]
 description = en_zh(en_desc, zh_desc)
 
@@ -69,53 +75,53 @@ icon_atlas = "modicon.xml"
 icon = "modicon.tex"
 
 configuration_options = {
-    addTitle("Basic Settings", "基础设置"),
+    addTitle("Erase & Blueprint Reading → Reissue Recipes", "擦除/阅读蓝图 → 重制配方"),
     addConfig(
         "enabled",
-        "Enable cartography desk recycling", "启用制图桌回收",
+        "Enable paper recycling", "启用纸张回收",
         true,
-        "Toggle the whole mod on/off.", "开启或关闭整个 MOD。",
-        "Mod active.", "MOD 已启用。",
-        "Mod disabled.", "MOD 已禁用。"
+        "Toggle erasing/reading to unlock reissue recipes.", "开启/关闭擦除/阅读解锁重制配方功能。",
+        "Recycling enabled.", "回收已启用。",
+        "Recycling disabled.", "回收已禁用。"
     ),
     {
         name = "papyrus_cost",
-        label = en_zh("Papyrus cost for re-craft", "重制所需 papyrus 数量"),
+        label = en_zh("Papyrus cost for re-craft", "重制所需莎草纸"),
         options = {
-            { description = en_zh("1 sheet", "1 张"), data = 1, result = "1" },
-            { description = en_zh("2 sheets", "2 张"), data = 2, result = "2" },
-            { description = en_zh("3 sheets", "3 张"), data = 3, result = "3" },
+            { description = en_zh("1", "1 张"), data = 1, result = "1" },
+            { description = en_zh("2", "2 张"), data = 2, result = "2" },
+            { description = en_zh("3", "3 张"), data = 3, result = "3" },
         },
         default = 2,
     },
-    addTitle("Random Recipes", "随机配方"),
+    addTitle("Random Blueprint / Recipe Card / Known Blueprint", "随机蓝图/食谱卡/已知蓝图"),
     addConfig(
         "enable_random",
-        "Enable random blueprint / recipe card", "启用随机蓝图/食谱卡",
+        "Enable random recipes", "启用随机配方",
         true,
-        "Add directly-available recipes that consume papyrus to produce a random blueprint or recipe card.",
-        "增加直接可用的配方，消耗 papyrus 产出随机蓝图或食谱卡。",
-        "Random recipes available.", "随机配方已启用。",
+        "Add directly-available random blueprint, random recipe card, and draw-known-blueprint recipes.",
+        "增加直接可用的随机蓝图、随机食谱卡、绘制已知蓝图配方。",
+        "Random recipes enabled.", "随机配方已启用。",
         "Random recipes disabled.", "随机配方已禁用。"
     ),
     {
         name = "random_cost",
-        label = en_zh("Papyrus cost for random recipe", "随机配方消耗 papyrus 数量"),
+        label = en_zh("Papyrus cost for random recipe", "随机配方消耗莎草纸"),
         options = {
-            { description = en_zh("1 sheet", "1 张"), data = 1, result = "1" },
-            { description = en_zh("3 sheets", "3 张"), data = 3, result = "3" },
-            { description = en_zh("5 sheets", "5 张"), data = 5, result = "5" },
-            { description = en_zh("10 sheets", "10 张"), data = 10, result = "10" },
+            { description = en_zh("1", "1 张"), data = 1, result = "1" },
+            { description = en_zh("3", "3 张"), data = 3, result = "3" },
+            { description = en_zh("5", "5 张"), data = 5, result = "5" },
+            { description = en_zh("10", "10 张"), data = 10, result = "10" },
         },
         default = 5,
     },
     addConfig(
         "randombp_all",
-        "Include ALL blueprints (station/character/etc.)", "随机蓝图包含全部类型（制造站/角色专属等）",
+        "Include ALL blueprint types", "蓝图包含全部类型",
         false,
-        "When enabled, random blueprint can generate ANY recipe that has a _blueprint prefab, ignoring official restrictions (station recipes, character-specific, etc.).",
-        "开启后随机蓝图可以从所有有 _blueprint prefab 的配方中随机生成，不限制制造站/角色专属等官方限制。",
-        "All blueprints available.", "全部蓝图可用。",
-        "Only official subset.", "仅官方子集。"
+        "When on, random blueprint can generate ANY recipe with _blueprint prefab (station/character/etc).",
+        "开启后随机蓝图可以从所有 _blueprint prefab 配方中随机生成（制造站/角色专属等）。",
+        "All blueprints included.", "包含全部蓝图。",
+        "Only official filter.", "仅官方过滤。"
     ),
 }
