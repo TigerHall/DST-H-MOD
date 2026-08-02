@@ -1,22 +1,22 @@
 -- 环境设置 使用全局变量
 GLOBAL.setmetatable(env, { __index = function(t, k) return GLOBAL.rawget(GLOBAL, k) end })
 
--- 获取配置项（仅保留发光范围配置）
+-- 获取配置项（GetModConfigData 在 modmain 顶层可能返回 nil，均加 or 兜底）
 local config = {
-  light_radius = GetModConfigData("OceanTreeLightRadius"),
-  shrink_scale = GetModConfigData("OceanTreeShrinkScale"),
+  light_radius = GetModConfigData("OceanTreeLightRadius") or 0,
+  shrink_scale = GetModConfigData("OceanTreeShrinkScale") or 0,
   ocean_tree_cooldown = GetModConfigData("ocean_tree_cooldown"),
-  ovshrink_scale = GetModConfigData("OceanVineShrinkScale"),
+  ovshrink_scale = GetModConfigData("OceanVineShrinkScale") or 0,
   ocean_tree_no_block = GetModConfigData("ocean_tree_no_block"),
-  fig_harvest_count = GetModConfigData("fig_harvest_count"),
+  fig_harvest_count = GetModConfigData("fig_harvest_count") or 1,
   show_leafcanopy = GetModConfigData("show_leafcanopy"),
   glommerfuel_edible = GetModConfigData("glommerfuel_edible"),
-  glommerfuel_period = GetModConfigData("glommerfuel_period"),
+  glommerfuel_period = GetModConfigData("glommerfuel_period") or 0,
   glommerfuel_remove_transplant = GetModConfigData("glommerfuel_remove_transplant"),
-  glommer_sanityaura = GetModConfigData("glommer_sanityaura"),
+  glommer_sanityaura = GetModConfigData("glommer_sanityaura") or 0,
   sgj_fl = GetModConfigData("sgj_fl"),
   glmny_fl = GetModConfigData("glmny_fl"),
-  OceanTreeShadeRange = GetModConfigData("OceanTreeShadeRange"),
+  OceanTreeShadeRange = GetModConfigData("OceanTreeShadeRange") or 22,
   glommer_strong = GetModConfigData("glommer_strong"),
   bullkelp_no_placement_space = GetModConfigData("bullkelp_no_placement_space"),
   farming_utility = GetModConfigData("farming_utility"),
@@ -34,7 +34,7 @@ PrefabFiles = {
 
 
 if config.OceanTreeShadeRange > 22 then
-  TUNING.SHADE_CANOPY_RANGE_SMALL = config.OceanTreeShadeRange or 22
+  TUNING.SHADE_CANOPY_RANGE_SMALL = config.OceanTreeShadeRange
 end
 
 local function add_ocean_tree_cooldown(inst)

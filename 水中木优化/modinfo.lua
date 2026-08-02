@@ -48,7 +48,7 @@ local function addTitle(title)
 end
 
 name = L and "H-Enhanced Waterlogged Tree" or "H-水中木强化"
-version = "2.3"
+version = "2.4"
 description = L
     and
     ("V" .. version .. "\n\nAllows transplanted Waterlogged Trees to glow, reduces the visual size of large trees, shrinks moss vines, increases the shade range of the fig Tree, and adjusts the number of figs obtained per harvest.Modify the production speed and consumption effect of Glommer's Goop, and modify the fertilizer effect of tree jam and Glommer's Goop. When fertilizing with Glommer's Goop, the transplant marker of the crop can be removed (after becoming a native plant, there is no need to fertilize again), and it should no longer wither. The ambient temperature under the tree is 16 degrees. Farming hat enhancements: night vision+storm proof+waterproof+thermal / armor+planar defense+faction immunity+fireproof / mount perks: ride ignoring obedience, knockback immunity, no buck when domesticated, immune to heat-beefalo, electric-proof.")
