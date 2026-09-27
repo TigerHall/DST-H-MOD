@@ -987,7 +987,7 @@ AddPrefabPostInit("cane", function(inst)
           table.insert(buff_info,
             { buffname = "hcane_blue_gem", bufftime = -1 })
         end
-        if hasAny("orangegem", "orangemooneye", "orangeamulet") then
+        if hasAny("orangegem", "orangemooneye", "orangeamulet", "orangestaff") then
           table.insert(buff_info,
             { buffname = "hcane_orange_gem", bufftime = -1 })
         end
@@ -1142,40 +1142,42 @@ AddPrefabPostInit("cane", function(inst)
     -- 黄色宝石结束
 
     -- 橙色宝石开始
-    if HasTargetItem(items, { "orangegem", "orangemooneye", "orangeamulet" }) then
-      -- 传送功能
+    if HasTargetItem(items, { "orangegem", "orangemooneye", "orangeamulet", "orangestaff" }) then
+      -- 传送功能：只要持有橙色宝石相关物品就一直开启（不受右键总开关控制）
       if not inst.components.blinkstaff then
         inst:AddComponent("blinkstaff")
         inst.components.blinkstaff:SetFX("sand_puff_large_front", "sand_puff_large_back")
         inst.components.blinkstaff.onblinkfn = onblink
       end
-      -- 拾取功能
-      local ents = TheSim:FindEntities(x, y, z, WORK_RADIUS,
-        nil,
-        { "INLIMBO", "FX", "NOCLICK", "burnt", "flower", "dead", "knockbackdelayinteraction", "fire", "minesprung",
-          "mineactive", "irreplaceable", "moonglass_geode", "thorny", },
-        { "_inventoryitem", "plant", "witherable", "lureplant", "waterplant", "crop", "lichen", "oceanvine", "kelp",
-          "catchable", "groundmushroom", "sludgestack", }
-      )
-      for _, ent in ipairs(ents) do
-        -- 懒人护符一样的方式啥都捡起来
-        if ent.components.inventoryitem and
-            ent.components.inventoryitem.cangoincontainer and
-            not ent.components.inventoryitem:IsHeld() and
-            doer.components.inventory:CanAcceptCount(ent, 1) > 0 then
-          -- 在物品位置生成沙子特效（视觉反馈）
-          SpawnPrefab("sand_puff").Transform:SetPosition(ent.Transform:GetWorldPosition())
-          -- 记录物品位置用于生成动画
-          local v_pos = ent:GetPosition()
-          -- 特殊处理陷阱：如果是已触发的陷阱，收获陷阱内容
-          if ent.components.trap and ent.components.trap:IsSprung() then
-            ent.components.trap:Harvest(doer)
-          else
-            -- 将物品放入玩家物品栏
-            doer.components.inventory:GiveItem(ent, nil, v_pos)
+      -- 拾取功能：仅在手杖右键总开关打开时启动（与传送功能解耦，开关关闭则停止拾取）
+      if inst.all_active then
+        local ents = TheSim:FindEntities(x, y, z, WORK_RADIUS,
+          nil,
+          { "INLIMBO", "FX", "NOCLICK", "burnt", "flower", "dead", "knockbackdelayinteraction", "fire", "minesprung",
+            "mineactive", "irreplaceable", "moonglass_geode", "thorny", },
+          { "_inventoryitem", "plant", "witherable", "lureplant", "waterplant", "crop", "lichen", "oceanvine", "kelp",
+            "catchable", "groundmushroom", "sludgestack", }
+        )
+        for _, ent in ipairs(ents) do
+          -- 懒人护符一样的方式啥都捡起来
+          if ent.components.inventoryitem and
+              ent.components.inventoryitem.cangoincontainer and
+              not ent.components.inventoryitem:IsHeld() and
+              doer.components.inventory:CanAcceptCount(ent, 1) > 0 then
+            -- 在物品位置生成沙子特效（视觉反馈）
+            SpawnPrefab("sand_puff").Transform:SetPosition(ent.Transform:GetWorldPosition())
+            -- 记录物品位置用于生成动画
+            local v_pos = ent:GetPosition()
+            -- 特殊处理陷阱：如果是已触发的陷阱，收获陷阱内容
+            if ent.components.trap and ent.components.trap:IsSprung() then
+              ent.components.trap:Harvest(doer)
+            else
+              -- 将物品放入玩家物品栏
+              doer.components.inventory:GiveItem(ent, nil, v_pos)
+            end
+            ApplyHungerCost(owner, -0.6, 0.66, inst.prefab)
+            return
           end
-          ApplyHungerCost(owner, -0.6, 0.66, inst.prefab)
-          return
         end
       end
     else
