@@ -49,7 +49,7 @@ end
 
 --  基础信息
 name = L and "H-Cane Enhancement" or "H-手杖强化"
-version = "5.4"
+version = "5.5"
 description =
     L and
     ("V" .. version .. "\n\n" .. "󰀏All features can be turned on or off in the configuration options.\n\nEnhance your walking cane with features including custom movement speed bonuses, damage values (including planar damage values),Ramping Damage, ranged attacks and area-of-effect attacks, life leech (including restoring hunger and sanity), glowing (only when dropped on the ground), preventing being knocked off by bosses, being revivable via haunting, and being theft-proof, etc.\n\nIt also supports various multi-functional tool features, including axe, pickaxe, shovel (with customizable tool efficiency), hammer, circular harvesting, and other multi-functional tools. It can automatically pick harvestable crops around the player. It also features automatic tilling. The multi-functional tool features and light effect function of the cane can be turned off/on by right-clicking.\n\nIn addition, there are permanent features such as watering can, oar, freshwater fishing rod, brush, and razor (with a separate setting switch).\n\nYou can set to craft walrus ivory at the Alchemy Engine (1 bone and 2 fangs) or make walruses drop an extra walrus ivory. It can also resist lightning, rain, and maintain a constant temperature.\n\nYou can place seeds in the character's last inventory slot (the 15th one, closest to the equipment slot), and they will be sown automatically. You can also place gems, sand stones, bear skins (be careful of home destruction), etc., each of which has different abilities. But all abilities come with a hunger cost") or
@@ -136,6 +136,12 @@ configuration_options = {
     label = L and "Damage" or "伤害",
     hover = L and "Attack damage value" or "攻击伤害值",
     options = {
+      {
+        description = "0",
+        data = 0,
+        hover = L and "No damage, becomes a steel wool pillow (knockback + windup)" or
+            "没有伤害，变成钢棉枕头：有前摇，打不痛但能把怪物拍飞"
+      },
       { description = "0.0000006", data = 0.0000006, hover = L and "Almost No damage but still useful" or "基本没伤害但也有用" },
       { description = "1.6", data = 1.6, hover = L and "Just right to hit some butterflies" or "刚好打打蝴蝶" },
       { description = "10", data = 10, hover = L and "weaker than vanilla" or "比原版弱一些" },
@@ -151,7 +157,7 @@ configuration_options = {
       },
       { description = "6666", data = 6666, hover = L and "You can conquer the饥荒 world" or "饥荒世界你都能杀穿了" }
     },
-    default = 16
+    default = 0
   },
   -- 真实伤害选项
   {
@@ -173,20 +179,46 @@ configuration_options = {
       },
       { description = "6666", data = 6666, hover = L and "Dominate all planar creatures" or "碾压所有位面生物" }
     },
-    default = 16
+    default = 0
   },
   -- 越攻击越强
   addConfig(
     "extra_damage",
     "越战越强",
     "Ramping Damage",
-    true,
+    false,
     "是否启用攻击叠加伤害效果（每次攻击有概率增加1~6点伤害，上限1666点，16秒无战斗重置）",
     "Enable ramping damage effect (Maybe randomly increase 1~6 damage per attack, max 1666 damage, reset after 16s of inactivity)",
     "每次攻击都会变强，持续战斗伤害拉满",
     "Damage increases with each attack, max damage in continuous combat",
     "关闭叠加效果，伤害保持基础值不变",
     "Disable ramping effect, damage remains at base value"
+  ),
+  -- 掌掴击飞（独立开关，和伤害互不影响）
+  addConfig(
+    "pillow_knockback",
+    "掌掴击飞",
+    "Pillow Knockback",
+    true,
+    "攻击命中时把目标拍飞（无前摇，保持普通攻击速度，命中后附加击退位移）。和上面的伤害值互不干扰，可以既有伤害又有击飞",
+    "Knock targets back on hit (no windup - normal attack speed, knockback applied after the hit). Independent of damage - you can have both",
+    "打谁谁飞，熊大、龙蝇、蜂后都会被拍退（boss 不会被击退动画打断，直接位移）",
+    "Everything gets punted - even Bearger, Dragonfly and Bee Queen slide backwards",
+    "关闭后不再有击飞，纯普通攻击",
+    "No knockback, just a normal attack"
+  ),
+  -- 受击闪烁
+  addConfig(
+    "hit_flicker",
+    "受击闪烁",
+    "Hit Flicker",
+    true,
+    "攻击命中目标时，目标闪一下光效（白→红急闪 0.36 秒）。对建筑、蜘蛛巢、以及没被击退的目标同样生效",
+    "Targets flash when hit (white/red strobe, 0.36s). Works on structures, spider dens, and targets that can't be knocked back",
+    "打谁谁闪，方便确认打中了什么；有伤害、没伤害都会闪",
+    "Everything you hit flashes, so you always know what you hit - with or without damage",
+    "关闭后不再有任何闪烁，纯原版受击反馈",
+    "No flashing at all; plain vanilla hit feedback"
   ),
   -- 远程攻击范围
   {
@@ -557,7 +589,7 @@ configuration_options = {
     "lightning_protect_enable",
     "防雷保护",
     "Lightning Protection",
-    true,
+    false,
     "是否启用防雷功能（防止雷电伤害和被雷劈）",
     "Whether to enable lightning protection (prevents lightning damage and being struck by lightning)",
     "启用后不会受到雷电伤害，也不会被雷劈中",
@@ -570,7 +602,7 @@ configuration_options = {
     "rain_protect_enable",
     "防雨保护",
     "Rain Protection",
-    true,
+    false,
     "是否启用防雨功能（避免被雨水打湿）",
     "Whether to enable rain protection (prevents getting wet from rain)",
     "启用后不会被雨水打湿，潮湿值不会因降雨上升",
@@ -582,7 +614,7 @@ configuration_options = {
     "constant_temp_effect_enable",
     "恒温效果",
     "Constant Temperature Effect",
-    true,
+    false,
     "是否启用恒温效果",
     "Whether to enable constant temperature effect.",
     "启用后体温始终保持适宜状态，不会过热也不会过冷",

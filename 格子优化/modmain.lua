@@ -85,7 +85,7 @@ AddPrefabPostInit("world", function(inst)
 end)
 
 -- 月眼地图传送的 UI 字符串
-GLOBAL.STRINGS.ACTIONS.TELEPORT_MOONEYE = "传送至月眼"
+GLOBAL.STRINGS.ACTIONS.TELEPORT_MOONEYE = "传送至此地"
 
 -- 实体/特效引用
 PrefabFiles = {
@@ -881,9 +881,23 @@ end
 local MOONEYE_PREFABS = { "purplemooneye", "bluemooneye", "redmooneye",
   "orangemooneye", "yellowmooneye", "greenmooneye",
   "sentryward", "moondial", "townportal" }
+
+-- 地标类传送目标：
+-- 官方所有"科技/制作"类实体都带 "prototyper" 标签（components/prototyper.lua:7 自动 AddTag，
+-- 神龛在 MakePrototyper 里走同一条路），所以科技站、专项制作站、天体锻造台、各色生物神龛
+-- 一次 tag 全包，不用逐个列 prefab 名，MOD 新增的制作站也能自动支持。
+-- 只有眼骨/星空是物品、没有 prototyper，单独补一个标签
+local LANDMARK_TAG = "hslot_landmark"
+local EXTRA_LANDMARK_PREFABS = { "chester_eyebone", "hutch_fishbowl" }
+
 for _, prefab in ipairs(MOONEYE_PREFABS) do
   AddPrefabPostInit(prefab, function(inst)
     inst:AddTag("mooneye")
+  end)
+end
+for _, prefab in ipairs(EXTRA_LANDMARK_PREFABS) do
+  AddPrefabPostInit(prefab, function(inst)
+    inst:AddTag(LANDMARK_TAG)
   end)
 end
 
@@ -892,44 +906,70 @@ AddModRPCHandler("hslot_mooneye", "teleport_to_eye", function(player, x, z)
   if not TheWorld.ismastersim then return end
   if not player or not player:IsValid() then return end
 
-  -- 搜索范围（从 30 扩大到 50，更容易点到目标）
-  local search_range = 50
+  -- 搜索策略（三级，避免"点哪都吸附"）：
+  --   1) 20 格内点到月眼 → 传月眼
+  --   2) 20 格内点到制作站/神龛（prototyper）/眼骨星空 → 传最近的那个
+  --   3) 都没点准 → 放大到 50 格只找月眼/玩家（月眼图标小，保持原来"好点"的手感）
+  -- 基地里制作站挨得很近，若一开始就用 50 格，双击地图任何位置都会被吸到某个站上
+  local PRECISE_RANGE = 20
+  local LOOSE_RANGE = 50
 
-  -- 1. 搜月眼 tag（排除被持有的物品）
-  local mooneye_ents = GLOBAL.TheSim:FindEntities(x, 0, z, search_range, { "mooneye" })
-  -- 2. 搜玩家 tag（排除鬼魂）
-  local player_ents = GLOBAL.TheSim:FindEntities(x, 0, z, search_range, { "player" }, { "playerghost" })
+  -- 在指定半径内，按 tag 找离点击点最近的"月眼/地标/玩家"
+  local function FindNearest(range, tag)
+    local best, best_dist_sq = nil, math.huge
 
-  -- 合并候选目标，找距离点击点最近的
-  local target = nil
-  local min_dist_sq = math.huge
-
-  for _, ent in ipairs(mooneye_ents) do
-    if ent:IsValid() and not (ent.components.inventoryitem and ent.components.inventoryitem:IsHeld()) then
-      local ex, _, ez = ent.Transform:GetWorldPosition()
-      local dist_sq = (ex - x) * (ex - x) + (ez - z) * (ez - z)
-      if dist_sq < min_dist_sq then
-        min_dist_sq = dist_sq
-        target = ent
+    for _, ent in ipairs(GLOBAL.TheSim:FindEntities(x, 0, z, range, { tag })) do
+      -- 排除被拿在手里的物品（眼骨、鱼缸、月眼都可能是物品）
+      if ent:IsValid() and not (ent.components.inventoryitem and ent.components.inventoryitem:IsHeld()) then
+        local ex, _, ez = ent.Transform:GetWorldPosition()
+        local d = (ex - x) * (ex - x) + (ez - z) * (ez - z)
+        if d < best_dist_sq then
+          best_dist_sq, best = d, ent
+        end
       end
     end
-  end
 
-  for _, ent in ipairs(player_ents) do
-    -- 排除自己 + 排除鬼魂
-    if ent:IsValid() and ent ~= player and not ent:HasTag("playerghost") then
-      local ex, _, ez = ent.Transform:GetWorldPosition()
-      local dist_sq = (ex - x) * (ex - x) + (ez - z) * (ez - z)
-      if dist_sq < min_dist_sq then
-        min_dist_sq = dist_sq
-        target = ent
+    for _, ent in ipairs(GLOBAL.TheSim:FindEntities(x, 0, z, range, { "player" }, { "playerghost" })) do
+      -- 排除自己 + 排除鬼魂
+      if ent:IsValid() and ent ~= player and not ent:HasTag("playerghost") then
+        local ex, _, ez = ent.Transform:GetWorldPosition()
+        local d = (ex - x) * (ex - x) + (ez - z) * (ez - z)
+        if d < best_dist_sq then
+          best_dist_sq, best = d, ent
+        end
       end
     end
+
+    return best
   end
+
+  local target = FindNearest(PRECISE_RANGE, "mooneye")
+      or FindNearest(PRECISE_RANGE, "prototyper")
+      or FindNearest(PRECISE_RANGE, LANDMARK_TAG)
+      or FindNearest(LOOSE_RANGE, "mooneye")
 
   if not target then return end
 
   local tx, _, tz = target.Transform:GetWorldPosition()
+
+  -- 落点微调：月眼之类是物品（可直接站上去），但制作站/神龛有碰撞体积，
+  -- 直接传送到中心会卡在建筑里。这里沿"玩家 → 目标"方向退到目标物理半径之外，
+  -- 退出的点若不可通行就退回中心点
+  local landx, landz = tx, tz
+  if target.components.inventoryitem == nil and target.Physics ~= nil then
+    local px, _, pz = player.Transform:GetWorldPosition()
+    local dx, dz = px - tx, pz - tz
+    local len = math.sqrt(dx * dx + dz * dz)
+    if len > 0.01 then
+      local r = target:GetPhysicsRadius(0) + player:GetPhysicsRadius(0) + 0.3
+      if r > 0.6 then
+        local ox, oz = tx + dx / len * r, tz + dz / len * r
+        if TheWorld.Map:IsPassableAtPoint(ox, 0, oz) then
+          landx, landz = ox, oz
+        end
+      end
+    end
+  end
 
   -- 纯净黑屏过场（关键）：ScreenFade 是 player_common 在【服务端】绑定到玩家实体的方法，
   -- 客户端玩家实体（ThePlayer）根本没有这个方法（之前在客户端调 ThePlayer:ScreenFade 直接崩）。
@@ -940,7 +980,7 @@ AddModRPCHandler("hslot_mooneye", "teleport_to_eye", function(player, x, z)
   player:DoTaskInTime(0.45, function()
     if not player:IsValid() then return end
     if player.Physics then
-      player.Physics:Teleport(tx, 0, tz)
+      player.Physics:Teleport(landx, 0, landz)
     end
     player:SnapCamera()
     player:ScreenFade(true, 0.4)

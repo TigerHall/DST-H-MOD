@@ -13,6 +13,8 @@ local config                     = {
   planardamage = GetModConfigData("planardamage"),
   range_attack = GetModConfigData("range_attack"),
   extra_damage = GetModConfigData("extra_damage"),
+  pillow_knockback = GetModConfigData("pillow_knockback"),
+  hit_flicker = GetModConfigData("hit_flicker"),
   aoe_damage_ratio = GetModConfigData("aoe_damage_ratio"),
   life_drain_ratio = GetModConfigData("life_drain_ratio"),
   hunger_conversion_ratio = GetModConfigData("hunger_conversion_ratio"),
@@ -33,8 +35,7 @@ local config                     = {
   enable_tool_toggle_rename = GetModConfigData("enable_tool_toggle_rename"),
   cane_icon_text = GetModConfigData("cane_icon_text"),
   -- 常驻功能配置项
-  enable_watering = GetModConfigData("enable_watering"),
-  enable_paddling = GetModConfigData("enable_paddling"),
+  enable_watering = GetModConfigData("enable_watering"),  enable_paddling = GetModConfigData("enable_paddling"),
   enable_fishingrod = GetModConfigData("enable_fishingrod"),
   enable_brush = GetModConfigData("enable_brush"),
   enable_hoe = GetModConfigData("enable_hoe"),
@@ -50,6 +51,328 @@ local config                     = {
 }
 
 TUNING.hcanelight                = GetModConfigData("hcane_light")
+
+
+-- ============================================================
+-- 掌掴击退（仿 handpillow_steelwool / bearger）
+-- 只借用它的击退数据与 knockback 事件，**不借用前摇**：
+--   加了 `pillow` 标签会让 SGwilson 走 attack_pillow_pre（0.16s 前摇），
+--   这里刻意不加，攻击保持标准 attack 状态 = 普通武器攻速，命中后再附加击退位移
+-- 官方参数来源：
+--   prefabs/pillow_defs.lua        —— steelwool 原始值 strengthmult 2.2（本 MOD 按手感调高到 3.6）
+--   prefabs/pillow_equipment.lua   —— inst._knockback / inst._strengthmult
+--   prefabs/pillow_common.lua      —— DoKnockback：nopush 过滤 + 护具减伤 + PushEvent("knockback")
+--   stategraphs/SGwilson.lua       —— 玩家 knockback 状态：speed = strengthmult * 12 * k
+-- ============================================================
+local PILLOW_KNOCKBACK           = {
+  -- 击飞是独立开关，不再和"伤害是否为 0"绑死：有伤害也能击飞
+  enabled = config.pillow_knockback == true,
+  knockback = 0.16,     -- 击飞半径附加（写进 knockback 事件的 radius）
+  strengthmult = 3.6,   -- 击飞力度（决定飞多远）
+  push_fallback = true, -- 对没有 knockback 状态图的普通生物/ boss 补一次物理推力
+}
+
+-- 不可击退标签：官方 pillow_common 原本是 {"epic", "nopush"}，
+-- 但 epic 覆盖了全部 31 个 boss（熊大/龙蝇/蜂后/克劳斯/远古犀牛…），全排掉就推不动 boss。
+-- 源码里 nopush 目前没有任何 prefab 使用，属于官方预留位 —— 这里就只认它，
+-- 也就是说：boss 照样能被拍飞，除非某个实体显式打了 nopush
+local PILLOW_NOPUSH_TAGS         = { "nopush" }
+
+-- ============================================================
+-- 受击闪烁：被攻击命中的目标闪一下（含建筑、蜘蛛巢等没有击退的东西）
+-- 颜色是客户端渲染属性，服务端设了不渲染，所以服务端广播 ClientModRPC，
+-- 各客户端自己在本地闪。双端都要注册（服务端要 id 映射才能发，客户端要 handler 才能收）。
+--
+-- 视觉效果：**叠加发光色**（鬼魂作祟/冰冻用的那种 AddColour 叠加），红白急闪 6 拍
+-- 不用 SetMultColour 是因为那是"乘算"，会把实体本色压掉（冰冻蓝、月圆白都会被打回白）；
+-- 用 AddColour 是在原色上叠光，打完自动消失，不破坏任何原有底色
+-- 有 colouradder 组件的实体走官方颜色栈（PushColour/PopColour），
+-- 这样和冰冻、高亮等系统共存，不会互相顶掉
+-- ============================================================
+local FLICKER_STEP = 0.06                                   -- 每拍 0.06 秒，6 拍 ≈ 0.36 秒
+local FLICKER_SWITCHES = 6
+local FLICKER_RED = { 0.55, 0.04, 0.04 }                    -- 叠加红光
+local FLICKER_WHITE = { 0.40, 0.40, 0.40 }                  -- 叠加白光（作祟那种泛白）
+
+local function PushFlickerColour(inst, r, g, b)
+  if inst.components ~= nil and inst.components.colouradder ~= nil then
+    inst.components.colouradder:PushColour("hcane_flicker", r, g, b, 0)
+  elseif inst.AnimState ~= nil then
+    inst.AnimState:SetAddColour(r, g, b, 0)
+  end
+end
+
+local function PopFlickerColour(inst)
+  if inst == nil or not inst:IsValid() then
+    return
+  end
+  if inst.components ~= nil and inst.components.colouradder ~= nil then
+    inst.components.colouradder:PopColour("hcane_flicker")
+  elseif inst.AnimState ~= nil then
+    inst.AnimState:SetAddColour(0, 0, 0, 0)
+  end
+end
+
+AddClientModRPCHandler("hcane", "hit_flicker", function(guid)
+  local inst = Ents ~= nil and Ents[guid] or nil
+  if inst == nil or not inst:IsValid() or inst.AnimState == nil then
+    return
+  end
+
+  -- 同一目标连续受击时重置，避免多个 task 抢颜色
+  if inst._hcane_flicker_task ~= nil then
+    inst._hcane_flicker_task:Cancel()
+    inst._hcane_flicker_task = nil
+  end
+  PopFlickerColour(inst) -- 清掉上一次可能残留的叠加色
+
+  local step = 0
+  local function Apply(k)
+    local c = (k % 2 == 1) and FLICKER_RED or FLICKER_WHITE
+    PushFlickerColour(inst, c[1], c[2], c[3])
+  end
+
+  Apply(1) -- 立刻先来一拍红的，别等第一个 tick
+  step = 1
+
+  local function Stop()
+    PopFlickerColour(inst)
+    if inst._hcane_flicker_task ~= nil then
+      inst._hcane_flicker_task:Cancel()
+      inst._hcane_flicker_task = nil
+    end
+  end
+
+  inst._hcane_flicker_task = inst:DoPeriodicTask(FLICKER_STEP, function()
+    if not inst:IsValid() or inst.AnimState == nil then
+      Stop()
+      return
+    end
+    step = step + 1
+    if step > FLICKER_SWITCHES then
+      Stop()
+      return
+    end
+    Apply(step)
+  end)
+end)
+
+-- 缓存 ClientModRPC 句柄（每次 GetClientModRPC 都会 initprint 打日志，别在攻击里反复调）
+local _hit_flicker_rpc
+
+-- 发一次受击闪烁（任何被命中的目标都能闪，不需要有 locomotor 或击退）
+local function SendHitFlicker(target)
+  if target == nil or not target:IsValid() then
+    return
+  end
+  if _hit_flicker_rpc == nil then
+    _hit_flicker_rpc = GetClientModRPC("hcane", "hit_flicker") or false
+  end
+  if _hit_flicker_rpc then
+    SendModRPCToClient(_hit_flicker_rpc, nil, target.GUID)
+  end
+end
+
+-- 官方 handpillow_common.DoKnockback 的通用版：
+-- 不再局限于"兔人枕头大战"小游戏目标，对所有可攻击目标推送 knockback 事件
+local function DoPillowKnockback(attacker, target)
+  if attacker == nil or not attacker:IsValid() or target == nil or not target:IsValid() then
+    return false
+  end
+  for _, tag in ipairs(PILLOW_NOPUSH_TAGS) do
+    if target:HasTag(tag) then
+      return false
+    end
+  end
+  if target.components.health ~= nil and target.components.health:IsDead() then
+    return false
+  end
+
+  -- 身体护具的击退抗性（官方 _defense_amount，只有枕头类身体护具才有值）
+  local body_item = (target.components.inventory ~= nil and
+        target.components.inventory:GetEquippedItem(EQUIPSLOTS.BODY)) or nil
+  local defense = (body_item ~= nil and body_item._defense_amount) or 0
+  local strengthmult = math.max(0.5, PILLOW_KNOCKBACK.strengthmult - defense)
+  local radius = attacker:GetPhysicsRadius(0.5) + math.max(0.025, PILLOW_KNOCKBACK.knockback)
+
+  -- 1. 官方标准 knockback 事件（玩家 / 鬼魂 / chester / 兔人 / 精英猪人等状态图自带处理）
+  target:PushEvent("knockback", {
+    knocker = attacker,
+    radius = radius,
+    strengthmult = strengthmult,
+    forcelanded = (body_item ~= nil and body_item:HasTag("bodypillow")),
+  })
+
+  -- 2. 没有 knockback 状态图的目标（普通生物 + 绝大多数 boss）：
+  --    官方的 knockback 状态图只有玩家/鬼魂/chester/兔人等几种，
+  --    其余实体的 PushEvent 只会重置受击硬直，本体不动。
+  --    物理通道的选择（三种都试过，结论如下）：
+  --      · Physics:SetVel 设的是"实际速度"，而 loco 每帧用 SetMotorVel 设"目标速度"，
+  --        物理引擎每步把实际速度拉回 motor vel → SetVel 一两帧就被吃掉，完全推不动
+  --      · Physics:Teleport 每 0.05 秒一次要重建碰撞体+同步位置，目标一多就卡成 PPT
+  --      · Physics:SetMotorVel 才是生物唯一有效的推力通道，但它是【实体局部坐标】，
+  --        目标一转身方向就跟着变（warglet / shadow_rook 乱飘的根源）
+  --    所以：每 tick 重新 SetRotation(远离角) 锁方向 + SetMotorVel，并在推挤期间
+  --    反复 locomotor:Stop() 清掉它自己的移动目标，否则 brain 的追击指令会和推力抢通道
+  if PILLOW_KNOCKBACK.push_fallback
+      and not target:HasTag("player")
+      and not target:HasTag("playerghost")
+      and target.Physics ~= nil
+      and target.components.locomotor ~= nil
+      and (target.sg == nil or target.sg.states == nil or target.sg.states.knockback == nil)
+      and target._hpillow_push_task == nil
+  then
+    -- 挂起 brain：0.3 秒内它没法下达新的移动/追击指令，等于强行走完整个击退
+    -- StopBrain/RestartBrain 是引擎层的引用计数实现（entityscript.lua:1078/1091），
+    -- 用独立 reason "hcane_pillow" 不会和其它系统（睡眠、冰冻等）互相干扰
+    local brain_paused = false
+    if target.brain ~= nil and target.StopBrain ~= nil then
+      target:StopBrain("hcane_pillow")
+      brain_paused = true
+    end
+
+    local tx, ty, tz = target.Transform:GetWorldPosition()
+    local ax, _, az = attacker.Transform:GetWorldPosition()
+    local dx, dz = tx - ax, tz - az
+    local len = math.sqrt(dx * dx + dz * dz)
+    if len < 0.05 then
+      -- 完全重叠时退化：用攻击者朝向当远离方向
+      local arot = attacker.Transform:GetRotation() * math.pi / 180
+      dx, dz, len = math.sin(arot), math.cos(arot), 1
+    end
+    local ux, uz = dx / len, dz / len
+
+    -- 远离方向对应的实体朝向（DST 里 rotation 与 GetAngleToPoint 同一套角度）
+    local rot = math.atan2(uz, ux) * 180 / math.pi
+    -- 初速沿用 v5.6 已验证手感（strengthmult * 8.4，3.6 → 30），0.3 秒线性降到 0
+    local speed = strengthmult * 8.4
+    local steps = 6
+    local decel = speed / steps
+    local step = 0
+
+    local function PushOnce(t, v)
+      if t.Physics == nil or not t:IsValid() then
+        return
+      end
+      if t.components.locomotor ~= nil then
+        t.components.locomotor:Stop() -- 清掉它自己的移动目标，别和推力抢物理通道
+      end
+      t.Transform:SetRotation(rot) -- 锁死朝向，保证 motor vel 的局部 +x 始终是远离方向
+      t.Physics:SetMotorVel(v, 0, 0)
+    end
+
+    PushOnce(target, speed)
+
+    target._hpillow_push_task = target:DoPeriodicTask(0.05, function(t)
+      if not t:IsValid() then
+        return -- 实体已消失，task 会随实体自动清理
+      end
+      step = step + 1
+      if step >= steps then
+        if t._hpillow_push_task ~= nil then
+          t._hpillow_push_task:Cancel()
+          t._hpillow_push_task = nil
+        end
+        if t.Physics ~= nil then
+          t.Physics:Stop() -- 收尾清掉 motor vel，否则会一直保持这个速度滑下去
+        end
+        -- 恢复 brain，让它重新决策（被击退后重新找目标）
+        if brain_paused and t:IsValid() and t.RestartBrain ~= nil then
+          t:RestartBrain("hcane_pillow")
+        end
+        return
+      end
+      local v = speed - decel * step
+      if v < 0 then
+        v = 0
+      end
+      PushOnce(t, v)
+    end)
+  end
+
+  return true
+end
+
+-- 玩家当前打开着的口袋空间容器（格子优化的月眼空间）
+-- 官方 world 自带注册表：prefabs/world.lua 的 `PocketDimensionContainers[name]` 表 +
+-- GetPocketDimensionContainer(name)。直接遍历这张表即可，不用脚本名/标签，
+-- 也不用 TheSim:FindEntities 全场扫（那样每捡一次东西都要遍历几千实体，会掉帧）
+-- 有多个打开时，优先返回"里面已经有同类物品"的那个，让自动拾取物以类聚
+local function GetOpenPocketContainer(doer, prefab)
+  local pocket_containers = TheWorld ~= nil and TheWorld.PocketDimensionContainers
+  if pocket_containers == nil then
+    return nil
+  end
+
+  local fallback
+  for _, inst in pairs(pocket_containers) do
+    if inst ~= nil and inst:IsValid() and inst.components.container ~= nil then
+      local container = inst.components.container
+      if container:IsOpenedBy(doer) then
+        if prefab ~= nil and container:Has(prefab, 1) then
+          return container -- 这个空间里已经有同类物品，优先塞这里
+        end
+        fallback = fallback or container
+      end
+    end
+  end
+  return fallback
+end
+
+-- 把一件物品投递给玩家：先投进玩家打开的口袋空间（同类优先），其次才进背包
+-- 返回 true 表示投递成功（无论进了空间还是背包）
+local function GiveItemToPlayer(doer, item, src_pos)
+  if doer == nil or item == nil or not item:IsValid() then
+    return false
+  end
+  if doer.components.inventory == nil then
+    return false
+  end
+
+  local pocket = GetOpenPocketContainer(doer, item.prefab)
+  if pocket ~= nil and pocket:CanAcceptCount(item, 1) > 0 then
+    if pocket:GiveItem(item, nil, src_pos) ~= nil then
+      return true
+    end
+  end
+
+  if doer.components.inventory:CanAcceptCount(item, 1) > 0 then
+    doer.components.inventory:GiveItem(item, nil, src_pos)
+    return true
+  end
+  return false
+end
+
+-- 临时接管玩家的 inventory:GiveItem，让"组件内部直接塞背包"的产出（如 pickable:Pick）
+-- 也能先落进打开的口袋空间。fn 必须是同步执行的，跑完立刻还原（用 pcall 兜底）。
+local function RunWithPocketRedirect(doer, fn)
+  if doer == nil or doer.components.inventory == nil or GetOpenPocketContainer(doer, nil) == nil then
+    -- 没有打开的口袋空间，完全走原逻辑，零开销
+    fn()
+    return
+  end
+
+  local inv = doer.components.inventory
+  local old_give = inv.GiveItem
+  inv.GiveItem = function(self, item, slot, src_pos, drop_on_fail, ...)
+    if item ~= nil and item:IsValid() then
+      local pocket = GetOpenPocketContainer(doer, item.prefab)
+      if pocket ~= nil and pocket:CanAcceptCount(item, 1) > 0 then
+        local placed = pocket:GiveItem(item, nil, src_pos)
+        if placed ~= nil then
+          return placed
+        end
+      end
+    end
+    return old_give(self, item, slot, src_pos, drop_on_fail, ...)
+  end
+
+  local ok, err = pcall(fn)
+  inv.GiveItem = old_give
+  if not ok then
+    print("[hcane] 口袋空间转发失败:", err)
+  end
+end
 
 -- 实体/特效引用
 PrefabFiles                      = {
@@ -85,6 +408,9 @@ STRINGS.NAMES.HCANE_GLOMMER      = "H-手杖催熟消耗"
 
 -- 修改步行手杖属性
 AddPrefabPostInit("cane", function(inst)
+  -- 注意：这里**不加 `pillow` 标签**。
+  -- 加了会让 SGwilson 的 ActionHandler 把攻击切成 attack_pillow_pre（0.16 秒前摇），
+  -- 现在击飞不需要前摇，攻击走标准 attack 状态，和普通武器一样的攻速
   -- 以下只在主机端执行修改
   if not TheWorld.ismastersim then
     return inst
@@ -197,9 +523,12 @@ AddPrefabPostInit("cane", function(inst)
     inst.components.weapon:SetDamage(config.damage)
     -- 确保位面伤害组件存在
     inst:AddComponent("planardamage"):SetBaseDamage(config.planardamage)
-    -- 攻击范围
+    -- 攻击范围：完全跟随"远程攻击范围"配置项
     if config.range_attack > 0 then
       inst.components.weapon:SetRange(config.range_attack, config.range_attack + 1)
+    elseif PILLOW_KNOCKBACK.enabled then
+      -- 远程攻击设为 0（近战）时，击打距离放宽到 2.5（官方 PILLOW_HIT_RANGE，比手杖默认的 2 好打中）
+      inst.components.weapon:SetRange(TUNING.DEFAULT_ATTACK_RANGE, TUNING.PILLOW_HIT_RANGE)
     end
     -- 初始化实体的伤害倍率存储（首次使用时赋值，避免nil）
     if not inst._damage_mult then
@@ -248,6 +577,7 @@ AddPrefabPostInit("cane", function(inst)
       inst.singlefight_target = target or false
 
       -- 越攻击越强 核心逻辑（简化版）
+      -- 击飞现在是独立开关，和伤害互不干扰：开着击飞也能叠伤害
       if config.extra_damage then
         -- 初始化累加变量（首次触发时）
         inst.extra_damage = inst.extra_damage or 0
@@ -327,6 +657,15 @@ AddPrefabPostInit("cane", function(inst)
                 ent.components.freezable:SpawnShatterFX()
               end
             end
+
+            -- 群攻目标一起被拍飞（掌掴模式下，像熊大拍地那样一片全飞）
+            if PILLOW_KNOCKBACK.enabled then
+              DoPillowKnockback(attacker, ent)
+            end
+            -- 群攻目标也闪一下
+            if config.hit_flicker then
+              SendHitFlicker(ent)
+            end
           end
         end
       end
@@ -344,6 +683,19 @@ AddPrefabPostInit("cane", function(inst)
           target.components.freezable:AddColdness(16)
           target.components.freezable:SpawnShatterFX()
         end
+      end
+
+      -- 5. 掌掴击退（伤害与位面伤害都为 0 时的核心效果，仿 handpillow_steelwool）
+      --    注意：这不是"另一种状态"，攻击本身照常完整执行（受击动画/仇恨/伤害结算），
+      --    伤害为 0 只是伤害数值是 0，击退是攻击命中后附加的位移
+      if PILLOW_KNOCKBACK.enabled then
+        DoPillowKnockback(attacker, target)
+      end
+
+      -- 6. 受击闪烁：只要命中就闪，和伤害无关、也不需要目标能被击退
+      --    （蜘蛛巢、建筑、有伤害的攻击都会走这里）
+      if config.hit_flicker then
+        SendHitFlicker(target)
       end
     end
   end
@@ -502,16 +854,20 @@ AddPrefabPostInit("cane", function(inst)
       { "INLIMBO", "FX", "NOCLICK", "burnt", "flower", "dead", "thorny" }, -- 排除标签
       { "plant", "crop", "lichen", "oceanvine", "kelp" }                   -- 必须包含标签
     )
-    for _, ent in ipairs(ents) do
-      -- 普通采摘逻辑
-      if ent:IsValid() and ent.components.pickable and ent.components.pickable:CanBePicked() and not ent.components.pickable:IsBarren() then
-        -- 执行采摘
-        doer.SoundEmitter:PlaySound(ent.components.pickable.picksound or "dontstarve/wilson/pickup_plants")
-        ent.components.pickable:Pick(doer)
-        -- 在植物位置生成沙子特效
-        -- SpawnPrefab("sand_puff").Transform:SetPosition(ent.Transform:GetWorldPosition())
+    -- pickable:Pick 内部是直接 inventory:GiveItem 把产出塞背包的，没法在外面拦，
+    -- 所以整批用一次"临时接管 GiveItem"，让产物优先落进玩家打开的口袋空间
+    RunWithPocketRedirect(doer, function()
+      for _, ent in ipairs(ents) do
+        -- 普通采摘逻辑
+        if ent:IsValid() and ent.components.pickable and ent.components.pickable:CanBePicked() and not ent.components.pickable:IsBarren() then
+          -- 执行采摘
+          doer.SoundEmitter:PlaySound(ent.components.pickable.picksound or "dontstarve/wilson/pickup_plants")
+          ent.components.pickable:Pick(doer)
+          -- 在植物位置生成沙子特效
+          -- SpawnPrefab("sand_puff").Transform:SetPosition(ent.Transform:GetWorldPosition())
+        end
       end
-    end
+    end)
   end
   -- 自动采摘状态更新函数
   local function UpdateAutoHarvest()
@@ -1154,29 +1510,38 @@ AddPrefabPostInit("cane", function(inst)
         local ents = TheSim:FindEntities(x, y, z, WORK_RADIUS,
           nil,
           { "INLIMBO", "FX", "NOCLICK", "burnt", "flower", "dead", "knockbackdelayinteraction", "fire", "minesprung",
-            "mineactive", "irreplaceable", "moonglass_geode", "thorny", },
+            "mineactive", "irreplaceable", "moonglass_geode", "thorny",
+            -- 官方语义标签：不该被自动拾取的物品（月眼 prefabs/mooneye.lua:63、牛铃、剃刀、月岩雕像、
+            -- 传送护符、宠物鼠、烟花等）。读标签而不是写死 prefab 名单，联动其他 MOD 也更稳
+            "donotautopick", },
           { "_inventoryitem", "plant", "witherable", "lureplant", "waterplant", "crop", "lichen", "oceanvine", "kelp",
             "catchable", "groundmushroom", "sludgestack", }
         )
         for _, ent in ipairs(ents) do
-          -- 懒人护符一样的方式啥都捡起来
+          -- 懒人护符一样的方式啥都捡起来（donotautopick 已在上面按标签排除）
           if ent.components.inventoryitem and
               ent.components.inventoryitem.cangoincontainer and
-              not ent.components.inventoryitem:IsHeld() and
-              doer.components.inventory:CanAcceptCount(ent, 1) > 0 then
-            -- 在物品位置生成沙子特效（视觉反馈）
-            SpawnPrefab("sand_puff").Transform:SetPosition(ent.Transform:GetWorldPosition())
-            -- 记录物品位置用于生成动画
+              not ent.components.inventoryitem:IsHeld() then
             local v_pos = ent:GetPosition()
-            -- 特殊处理陷阱：如果是已触发的陷阱，收获陷阱内容
+            local wx, wy, wz = ent.Transform:GetWorldPosition()
+
+            -- 已触发的陷阱：直接收获内容，不进任何容器
             if ent.components.trap and ent.components.trap:IsSprung() then
-              ent.components.trap:Harvest(doer)
+              if doer.components.inventory:CanAcceptCount(ent, 1) > 0 then
+                SpawnPrefab("sand_puff").Transform:SetPosition(wx, wy, wz)
+                ent.components.trap:Harvest(doer)
+                ApplyHungerCost(owner, -0.6, 0.66, inst.prefab)
+                return
+              end
             else
-              -- 将物品放入玩家物品栏
-              doer.components.inventory:GiveItem(ent, nil, v_pos)
+              -- ① 优先投进玩家当前打开的口袋空间（月眼空间，同类物品优先）
+              -- ② 空间放不下 / 没开空间 → 退而放进玩家物品栏
+              if GiveItemToPlayer(doer, ent, v_pos) then
+                SpawnPrefab("sand_puff").Transform:SetPosition(wx, wy, wz)
+                ApplyHungerCost(owner, -0.6, 0.66, inst.prefab)
+                return
+              end
             end
-            ApplyHungerCost(owner, -0.6, 0.66, inst.prefab)
-            return
           end
         end
       end
