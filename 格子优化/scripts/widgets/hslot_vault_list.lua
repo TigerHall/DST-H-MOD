@@ -33,7 +33,7 @@ local SCROLLBAR_GAP = 18 -- 滚动条离格子区的距离（和格子拉开，�
 -- 左右非对称留白：左边只留避让金边的量，右边包住「滚动条 + 呼吸」
 local PAD_L = 6
 local PAD_R = 16
-local PANEL_W = GRID_W + PAD_L + PAD_R -- = 800 + 48 = 848
+local PANEL_W = GRID_W + PAD_L + PAD_R -- = 800 + 22 = 822
 local PANEL_H = 908
 -- 网格整体左移，让右侧空出的位置刚好包住滚动条
 local GRID_CX = -(PAD_R - PAD_L) / 2
@@ -44,11 +44,10 @@ local GRID_CX = -(PAD_R - PAD_L) / 2
 -- 这里补一档自身缩放，把有效缩放拉回接近 1.0，金边厚度和整体观感才对得上。
 -- 想再大/再小只改这一个数。
 local PANEL_SCALE = 1.25
--- 默认位置：左上角，紧贴折叠制作栏右侧。
--- 两个偏移量的单位是**屏幕像素**（不是父级局部单位），换分辨率/改 HUD 缩放都不漂。
--- 嫌贴得太近就加 DEFAULT_LEFT_OFFSET，嫌远就减。
-local DEFAULT_LEFT_OFFSET = 360
-local DEFAULT_TOP_OFFSET = 660
+-- 默认位置：直接用「屏幕比例」，任何分辨率 / 宽高比下相对位置都一致。
+-- 左边缘距屏幕左边 10% 宽，上边缘距顶部 30% 高；想微调只改这两个数。
+local DEFAULT_LEFT_RATIO = 0.10
+local DEFAULT_TOP_RATIO = 0.30
 
 -- ⚠️ 垂直排布按「金边」卡死：
 --   金边下沿 → 筛选按钮 → 滚动列表 → 数字信息 → 两个按钮
@@ -57,12 +56,17 @@ local FILTER_ICON = 76
 local FILTER_GAP = 88        -- 选中时按钮放大到 1.15 倍，间距留够别互相压
 local FILTER_SCALE_ON = 1.15 -- 选中时整个按钮放大
 -- 头部只有一行：左侧筛选图标，右侧「n/N + 红色宝箱命中数」
-local FILTER_Y = 406         -- 顶部留白：面板顶 454 - 12 - 36(图标半高)
-local GRID_Y = 0             -- 网格顶 360，与筛选底(370)留 10
-local BOTTOM_Y = -404        -- 底部按钮，网格底 -360 往上留 12
+-- 竖向（面板半高 454，总高固定 908）：
+--   20(顶留白) + 76(图标) + 6 + 720(网格) + 8 + 64(按钮) + 14(底留白) = 908
+local FILTER_Y = 396         -- 图标 358~434，顶部留白 20
+local GRID_Y = -8            -- 网格 352~-368，与筛选底留 6
+local BOTTOM_Y = -408        -- 按钮 -376~-440，与网格底留 8、离底 14
 local BUTTON_W, BUTTON_H = 116, 64
 local SORT_X, CLOSE_X = -85, 85
 local EDGE = 2 -- 内容离面板左右边缘的距离
+local FILTER_X_OFFSET = 14   -- 筛选按钮整体再往右挪一点
+-- 筛选按钮底衬（filterslot_bg.tex）：false = 透明，只留按钮边框和图标
+local FILTER_BG_VISIBLE = false
 
 -- 底色：#99cc99（153,204,153），直接染在 9-slice 的底上 ——
 -- 金边里面整片都是绿底，不会露出原本的黑色内衬。
@@ -449,8 +453,8 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst)
     self.filter_buttons = {}
     self.filter_icons = {}
     self.filter_glows = {}
-    -- 左对齐：从左边距开始排，右侧留给 n/N
-    local x0 = -PANEL_W / 2 + EDGE + FILTER_ICON / 2
+    -- 左对齐：从左边距开始排，右侧留给 n/N（FILTER_X_OFFSET 整体微调右移）
+    local x0 = -PANEL_W / 2 + EDGE + FILTER_X_OFFSET + FILTER_ICON / 2
     for i, def in ipairs(FILTER_DEFS) do
         local btn = self:AddChild(ImageButton(
             CRAFTING_ATLAS,
@@ -473,6 +477,9 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst)
 
         local bg = btn:AddChild(Image(CRAFTING_ATLAS, "filterslot_bg.tex"))
         bg:ScaleToSize(FILTER_ICON - 8, FILTER_ICON - 8)
+        -- 底衬调透明（想恢复就把 FILTER_BG_VISIBLE 改成 true）
+        bg:SetTint(1, 1, 1, FILTER_BG_VISIBLE and 1 or 0)
+        bg:SetClickable(false)
 
         local icon = btn:AddChild(Image(CRAFTING_ICONS_ATLAS, def.icon))
         icon:ScaleToSize(FILTER_ICON - 24, FILTER_ICON - 24)
@@ -772,8 +779,11 @@ function HslotVaultList:ApplyDefaultPos()
     end
 
     -- ② 目标面板中心（屏幕绝对坐标，左下角为原点）
-    local want_cx = DEFAULT_LEFT_OFFSET + (PANEL_W / 2) * kx
-    local want_cy = sh - DEFAULT_TOP_OFFSET - (PANEL_H / 2) * ky
+    -- 偏移量按屏幕比例算，天然适配任何分辨率 / 宽高比
+    local left_px = sw * DEFAULT_LEFT_RATIO
+    local top_px = sh * DEFAULT_TOP_RATIO
+    local want_cx = left_px + (PANEL_W / 2) * kx
+    local want_cy = sh - top_px - (PANEL_H / 2) * ky
 
     local ha = self.h_anchor or ANCHOR_LEFT
     local va = self.v_anchor or ANCHOR_BOTTOM
