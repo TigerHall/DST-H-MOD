@@ -1439,6 +1439,48 @@ AddClassPostConstruct("components/container_replica", function(self)
   end
 end)
 
+-- ====================================================================
+-- 客户端：让口袋维度容器参与「制作时从容器里取材料」
+-- ====================================================================
+-- 官方链路（DST scripts）：
+--   inventory_classified.lua:267-280  Has(prefab, amount, checkallcontainers=true)
+--     → inventory_replica:GetOpenContainers()            (inventory_replica.lua:329)
+--       → 客户端分支只收 `v.inst.entity:IsVisible()` 的容器 (:335)
+--     → container_replica:Has()                          (container_replica.lua:445)
+--
+-- 而官方的口袋维度容器 prefab（prefabs/pocketdimensioncontainers.lua:40）是
+-- `inst.entity:Hide()` 的隐藏实体，本 mod 的 hslot_container 照抄同一套结构，
+-- 于是客户端的「已打开容器列表」永远是空的：
+--   主机   → 走服务端 components.inventory.opencontainers（无可见性过滤）→ 正常
+--   客户端 → 走 HUD.controls.containers 的可见性过滤 → 被跳过 → 只能算背包
+-- 红/绿眼（shadow_container / rabbitkinghorn_container）用的就是官方这个
+-- prefab 工厂，所以**原版同样有这个限制**，不是本次改造引入的。
+--
+-- 修法：只放宽「可见性」这一条，其余判断（IsValid / classified / opener /
+-- IsReadOnlyContainer / excludefromcrafting）全部保持官方原样。
+if not GLOBAL.TheNet:IsDedicated() then
+  AddClassPostConstruct("components/inventory_replica", function(self)
+    local _GetOpenContainers = self.GetOpenContainers
+    function self:GetOpenContainers()
+      local oc = _GetOpenContainers(self)
+      -- 服务端分支直接返回 components.inventory.opencontainers，不需要补
+      if oc == nil or self.inst.components.inventory ~= nil then
+        return oc
+      end
+      local controls = self.inst.HUD ~= nil and self.inst.HUD.controls or nil
+      local list = controls ~= nil and controls.containers or nil
+      if list ~= nil then
+        for k, v in pairs(list) do
+          if v ~= nil and k:IsValid() and k:HasTag("pocketdimension_container") then
+            oc[k] = true
+          end
+        end
+      end
+      return oc
+    end
+  end)
+end
+
 -- 在世界初始化后创建各色口袋空间
 AddPrefabPostInit("world", function(inst)
   if not TheWorld.ismastersim then return end
@@ -1468,16 +1510,17 @@ end)
 if not GLOBAL.TheNet:IsDedicated() then
   local HslotVaultList = require("widgets/hslot_vault_list")
 
-  -- 月眼仓库：四个口袋空间共用同一套列表界面，只换底色 / 默认位置 / 关闭用的 key。
+  -- 月眼仓库：四个口袋空间共用同一套列表界面，只换底色 / 关闭用的 key。
   --   r,g,b   : 9-slice 底色的 RGB —— 取对应**宝石**的色调
   --             （蓝宝石 / 紫宝石 / 橙宝石 / 黄宝石），半透明后正好是同一系的不同色
   --   key     : TheWorld:GetPocketDimensionContainer 的世界 key
-  --   x_ratio : 默认位置的「左边缘占屏幕宽比例」
+  -- 位置不再需要参数：面板默认就是屏幕正中（打开制作栏时自动右移让位），
+  -- 之后拖动的位置按容器分开记忆。
   local VAULT_THEMES = {
-    hslot_container = { r = 0.28, g = 0.52, b = 0.95, key = "hslot",       x_ratio = 0.10 }, -- 蓝宝石
-    purple_fish_box = { r = 0.68, g = 0.34, b = 0.92, key = "purple_fish", x_ratio = 0.30 }, -- 紫宝石
-    orange_fish_box = { r = 1.00, g = 0.58, b = 0.16, key = "orange_fish", x_ratio = 0.50 }, -- 橙宝石
-    yellow_fish_box = { r = 1.00, g = 0.86, b = 0.18, key = "yellow_fish", x_ratio = 0.70 }, -- 黄宝石
+    hslot_container = { r = 0.28, g = 0.52, b = 0.95, key = "hslot" },       -- 蓝宝石
+    purple_fish_box = { r = 0.68, g = 0.34, b = 0.92, key = "purple_fish" }, -- 紫宝石
+    orange_fish_box = { r = 1.00, g = 0.58, b = 0.16, key = "orange_fish" }, -- 橙宝石
+    yellow_fish_box = { r = 1.00, g = 0.86, b = 0.18, key = "yellow_fish" }, -- 黄宝石
   }
 
   -- 官方 ContainerWidget 的处置方式：
@@ -1523,6 +1566,39 @@ if not GLOBAL.TheNet:IsDedicated() then
   AddClassPostConstruct("widgets/controls", function(self)
     local Widget = GLOBAL.require("widgets/widget")
     self.hslot_vault_root = self.containerroot:AddChild(Widget("hslot_vault_root"))
+  end)
+
+  -- 打开/关闭官方制作栏时，月眼仓库面板跟着让位
+  -- （同「简易存储 3383078008」main/ui.lua:88-104 的 OpenCrafting/CloseCrafting 钩子）。
+  -- 位置 = 默认位置（居中 ↔ 右移 260 避让制作栏）+ 用户拖动的偏移，
+  -- 所以这里调 ApplyPos 而不是硬写坐标，手动拖过的面板也只会平移不会被重置。
+  AddClassPostConstruct("screens/playerhud", function(self)
+    local function MoveVaultLists()
+      local controls = self.controls
+      if controls == nil or controls.containers == nil then
+        return
+      end
+      for _, w in pairs(controls.containers) do
+        local list = w ~= nil and w._hslot_list or nil
+        if list ~= nil and list.inst ~= nil and list.inst:IsValid() then
+          list:ApplyPos(true)
+        end
+      end
+    end
+
+    local old_OpenCrafting = self.OpenCrafting
+    function self:OpenCrafting(...)
+      local ret = old_OpenCrafting(self, ...)
+      MoveVaultLists()
+      return ret
+    end
+
+    local old_CloseCrafting = self.CloseCrafting
+    function self:CloseCrafting(...)
+      local ret = old_CloseCrafting(self, ...)
+      MoveVaultLists()
+      return ret
+    end
   end)
 
   AddClassPostConstruct("widgets/containerwidget", function(self)
@@ -1645,6 +1721,57 @@ if not GLOBAL.TheNet:IsDedicated() then
             .. " widget_visible=" .. tostring(self.inst ~= nil and self.inst.entity ~= nil
                 and self.inst.entity:IsVisible() or "nil")
             .. " in_opencontainers=" .. tostring(in_oc))
+
+          -- 延后 1 秒再查一次：classified / opener 是异步同步的，
+          -- 这时候才代表「真正可用」的状态
+          local player = self.owner
+          local cont = container
+          if player ~= nil then
+            player:DoTaskInTime(1, function()
+              if not player:IsValid() or not cont:IsValid() then return end
+              local inv2 = player.replica.inventory
+              local rep2 = cont.replica.container
+              local oc2 = inv2 ~= nil and inv2:GetOpenContainers() or nil
+              local in_oc2 = (oc2 ~= nil and oc2[cont] == true)
+
+              -- opencontainers 里逐个容器的可用性
+              local detail = ""
+              if oc2 ~= nil then
+                for k in pairs(oc2) do
+                  local r = k.replica ~= nil and k.replica.container or nil
+                  detail = detail .. " [" .. tostring(k.prefab)
+                    .. " rep=" .. tostring(r ~= nil)
+                    .. " opener=" .. tostring(r ~= nil and r.opener ~= nil)
+                    .. " cls=" .. tostring(r ~= nil and r.classified ~= nil)
+                    .. " n=" .. tostring(r ~= nil and r:GetNumSlots() or -1) .. "]"
+                end
+              end
+              print("[hslot][vault] +1s in_opencontainers=" .. tostring(in_oc2)
+                .. " rep=" .. tostring(rep2 ~= nil)
+                .. " opener=" .. tostring(rep2 ~= nil and rep2.opener ~= nil)
+                .. " cls=" .. tostring(rep2 ~= nil and rep2.classified ~= nil)
+                .. " oc=" .. tostring(oc2 ~= nil and "table" or "nil")
+                .. detail)
+
+              -- 直接问「这个容器里到底有没有某个物品」，验证 Has 链路
+              if rep2 ~= nil then
+                local items = rep2:GetItems()
+                local n = 0
+                local sample = nil
+                for _ in pairs(items) do n = n + 1 end
+                for _, it in pairs(items) do
+                  sample = it.prefab
+                  break
+                end
+                print("[hslot][vault] +1s items=" .. tostring(n)
+                  .. " sample=" .. tostring(sample))
+                if sample ~= nil then
+                  print("[hslot][vault] +1s Has(" .. sample .. ")="
+                    .. tostring(rep2:Has(sample, 1, true)))
+                end
+              end
+            end)
+          end
         end
       end
     end

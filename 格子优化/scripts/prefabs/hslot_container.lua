@@ -39,6 +39,24 @@ local params = containers.params
 containers.MAXITEMSLOTS = math.max(containers.MAXITEMSLOTS, HSLOT_VAULT_SLOTS)
 
 -- ====================================================================
+-- 互斥类型：四个月眼仓库共用同一个 type
+-- ====================================================================
+-- components/container.lua:504 的 Container:Open 里：
+--     for k in pairs(inventory.opencontainers) do
+--         if k.prefab == self.inst.prefab
+--             or k.components.container.type == self.type then
+--             k.components.container:Close(doer)
+--         end
+--     end
+-- 也就是说「同 prefab 或同 type」的容器会被自动关掉。
+-- 四个仓库的 prefab 各不相同，所以只能靠 type 来互斥：
+-- type 一致 = 开一个自动关掉另一个，面板不会叠在一起
+-- （官方红/绿眼 shadow_container / rabbitkinghorn_container 就是这么互斥的，
+--  它们都是 deepcopy(params.shadowchester)，type 相同）。
+-- ⚠️ 不要用 "chest"，inventory.lua:1921 CloseAllChestContainers 会连带关掉它们。
+local HSLOT_TYPE = "hslot_type"
+
+-- ====================================================================
 -- hslot：古董船 4x4（蓝色月眼）
 -- ====================================================================
 params.hslot_container = {
@@ -56,7 +74,7 @@ params.hslot_container = {
       position = Vector3(0, -190, 0),
     },
   },
-  type = "hslot_type",
+  type = HSLOT_TYPE,
   itemtestfn = function(inst, item, slot)
     return not item:HasTag("irreplaceable")
   end
@@ -98,7 +116,8 @@ for _, colour in ipairs(MOONEYE_FISH_COLOURS) do
         position = Vector3(0, -190, 0),
       },
     },
-    type = colour .. "_fish_type",
+    -- 和蓝月眼共用 HSLOT_TYPE → 四色仓库互斥，开一个自动关另一个
+    type = HSLOT_TYPE,
     itemtestfn = function(inst, item, slot)
       return not item:HasTag("irreplaceable")
     end,

@@ -38,21 +38,18 @@ local PANEL_H = 908
 -- 网格整体左移，让右侧空出的位置刚好包住滚动条
 local GRID_CX = -(PAD_R - PAD_L) / 2
 
--- 自身缩放（基准值；最终大小由 FitPanelSize 按屏幕比例统一覆盖）。
--- 这里必须留一个初值：ctor 里先 SetScale(PANEL_SCALE)，
--- 之后首次 OnUpdate 再由 FitPanelSize 乘上目标比例。
-local PANEL_SCALE = 1.25
--- 面板目标尺寸：**直接按屏幕比例**定，而不是「逻辑尺寸 × HUD 缩放」。
--- 后者会让不同 HUD 设置 / 分辨率下占屏比例完全不同（1080p 默认 HUD 能到 95% 屏高）。
--- 这里统一到「高度占 55%、宽度最多 34%」，任何环境下看起来一样大，
--- 也就能和官方制作栏（约 500×600 / 1080p 下 23%×50%）对得上。
--- 比例是「目标值」，可缩也可放（不再只缩不放）。
-local TARGET_PANEL_W_RATIO = 0.374   -- 0.34 × 1.1
-local TARGET_PANEL_H_RATIO = 0.605   -- 0.55 × 1.1
--- 默认位置：直接用「屏幕比例」，任何分辨率 / 宽高比下相对位置都一致。
--- 左边缘距屏幕左边 10% 宽，上边缘距顶部 30% 高；想微调只改这两个数。
-local DEFAULT_LEFT_RATIO = 0.10
-local DEFAULT_TOP_RATIO = 0.30
+-- 自身缩放：**固定常数，不再按屏幕比例算**。
+-- 父级是 controls.containerroot（controls.lua:261-264 设了 MIDDLE 锚点 +
+-- SCALEMODE_PROPORTIONAL），引擎已经按「1920×1200 设计尺寸」把整层等比缩过，
+-- 所以这里只要一个常数，1080p / 2K / 4K 下占屏比例就完全一致。
+-- 这和「简易存储 3383078008」的做法一致（terminalwidget.lua:813 的
+-- `gridroot:SetScale(0.6)` 是同一个道理：设计尺寸固定，只套一个固定缩放）。
+-- 0.79 偏小 → 放大 1/3 到 1.05。想大想小只改这一个数。
+local PANEL_SCALE = 1
+-- 默认位置：屏幕正中（位置 0,0 = 屏幕中心，因为下面设了 MIDDLE 锚点）。
+-- 打开官方制作栏时整体右移这么多让位，避免压住左侧制作栏
+-- （同简易存储 scripts/widgets/terminalwidget.lua:47-51 的 260）。
+local CRAFTING_OFFSET_X = 260
 
 -- ⚠️ 垂直排布按「金边」卡死：
 --   金边下沿 → 筛选按钮 → 滚动列表 → 数字信息 → 两个按钮
@@ -63,13 +60,15 @@ local FILTER_SCALE_ON = 1.15 -- 选中时整个按钮放大
 -- 头部只有一行：左侧筛选图标，右侧「n/N + 红色宝箱命中数」
 -- 竖向（面板半高 454，总高固定 908）：
 --   20(顶留白) + 76(图标) + 6 + 720(网格) + 8 + 64(按钮) + 14(底留白) = 908
-local FILTER_Y = 396         -- 图标 358~434，顶部留白 20
-local GRID_Y = -8            -- 网格 352~-368，与筛选底留 6
-local BOTTOM_Y = -408        -- 按钮 -376~-440，与网格底留 8、离底 14
-local BUTTON_W, BUTTON_H = 116, 64
+local FILTER_Y = 396  -- 图标 358~434，顶部留白 20
+local GRID_Y = -8     -- 网格 352~-368，与筛选底留 6
+-- 按钮中心固定在 -408，只加高时上下各长一点：
+-- 高 76 → -370~-446（与网格底 -368 留 2、离面板底 -454 留 8）
+local BOTTOM_Y = -408
+local BUTTON_W, BUTTON_H = 116, 76
 local SORT_X, CLOSE_X = -85, 85
-local EDGE = 2 -- 内容离面板左右边缘的距离
-local FILTER_X_OFFSET = 14   -- 筛选按钮整体再往右挪一点
+local EDGE = 2             -- 内容离面板左右边缘的距离
+local FILTER_X_OFFSET = 14 -- 筛选按钮整体再往右挪一点
 -- 筛选按钮底衬（filterslot_bg.tex）：false = 透明，只留按钮边框和图标
 local FILTER_BG_VISIBLE = false
 
@@ -82,7 +81,7 @@ local FILTER_BG_VISIBLE = false
 -- 它们是并排不重叠的；面板上另有一层 alpha 0.001 的 Image，只是用来接
 -- tooltip 的不可见抓取层，不参与观感。
 -- 想更透就调小这个值（0.15 已经很淡），0 就是全透明只剩金边。
-local BG_R, BG_G, BG_B = 0.28, 0.52, 0.95   -- 蓝宝石色（兜底；实际由 theme 传入）
+local BG_R, BG_G, BG_B = 0.28, 0.52, 0.95 -- 蓝宝石色（兜底；实际由 theme 传入）
 local FRAME_BG_ALPHA = 0.22
 
 -- 选中分类图标的手杖同款跑马灯（0.05 秒一帧，1.6 秒一圈色相）
@@ -366,12 +365,16 @@ local function UpdateCell(context, cell, data, index)
 end
 
 -- ====================================================================
--- 拖动位置记忆（关掉面板/再打开还在原地）
+-- 拖动偏移记忆（关掉面板/再打开还在同一处）
 -- ====================================================================
--- ⚠️ 位置记忆要**按容器分开存**：四个月眼空间各有自己的默认位，
--- 共用一个 key 的话，把蓝月眼拖到某处后紫月眼也会跑过去。
-local SAVE_KEY = "hslot_vault_pos"
-local saved_pos = {}        -- [container_key] = Vector3
+-- ⚠️ 存的是「相对默认位置的偏移」，不是屏幕绝对坐标：
+--   默认位置会随「制作栏开关」变化（居中 ↔ 右移 260），
+--   存偏移的话面板会跟着让位，用户拖过的那一点微调也不会丢。
+-- ⚠️ 还要**按容器分开存**：四个月眼空间各有自己的默认位，
+--   共用一个 key 的话，把蓝月眼拖到某处后紫月眼也会跑过去。
+-- key 带 v2：v1 存的是屏幕绝对坐标，语义完全不同，换名让它自然作废。
+local SAVE_KEY = "hslot_vault_pos2"
+local saved_pos = {} -- [container_key] = Vector3 偏移（相对默认位置）
 local saved_pos_loaded = {}
 
 local function PosKeyOf(key)
@@ -396,7 +399,8 @@ local function LoadSavedPos(key)
         -- 面板已经开着、而且是同一个容器的话，直接把位置搬过去
         if active_list ~= nil and active_list.inst ~= nil and active_list.inst:IsValid()
             and PosKeyOf(active_list.container_key) == key then
-            active_list:SetPosition(saved_pos[key].x, saved_pos[key].y, 0)
+            active_list._offset = saved_pos[key]
+            active_list:ApplyPos()
         end
     end)
     return saved_pos[key]
@@ -408,34 +412,33 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
     -- theme（由 modmain 的 VAULT_THEMES 传进来）：
     --   r/g/b    底色
     --   key      容器世界 key（关闭按钮按它发 RPC）
-    --   x_ratio  默认位置：左边缘占屏幕宽的比例
+    -- 位置不再需要主题参数：默认就是屏幕正中（见 DefaultPos）
     theme = theme or {}
     self.theme = theme
     self.bg_r = theme.r or BG_R
     self.bg_g = theme.g or BG_G
     self.bg_b = theme.b or BG_B
     self.container_key = theme.key
-    self.x_ratio = theme.x_ratio or DEFAULT_LEFT_RATIO
 
     active_list = self
     HookCameraZoom()
 
     -- ⚠️ DST Widget 默认以屏幕左下角为原点，不设锚点会跑到左下角。
+    -- 父级（controls.containerroot）自带 MIDDLE 锚点，这里再设一次，
+    -- 保证「位置 0,0 = 屏幕正中」在所有机器上都成立。
     self:SetHAnchor(ANCHOR_MIDDLE)
     self:SetVAnchor(ANCHOR_MIDDLE)
     -- 记录锚点：GetWorldPosition 返回的是相对锚点的坐标，
     -- 换算成屏幕绝对坐标时要靠它（见 GetMouseLocalPos）
     self.h_anchor = ANCHOR_MIDDLE
     self.v_anchor = ANCHOR_MIDDLE
-    self:SetPosition(0, 0, 0)
-    -- 补一档自身缩放，抵消父级 HUD 缩放，让金边/文字的观感接近官方窗口
+    -- 固定设计缩放（父级 PROPORTIONAL 已按分辨率缩过，这里不再自适应）
     self:SetScale(PANEL_SCALE)
 
-    -- 记忆上次拖动到的位置（按容器分开；异步读盘，读到了会自己搬过去）
-    local p = LoadSavedPos(self.container_key)
-    if p ~= nil then
-        self:SetPosition(p.x, p.y, 0)
-    end
+    -- 用户手动拖动留下的偏移（相对默认位置），(0,0) = 屏幕正中
+    self._offset = Vector3(0, 0, 0)
+    -- 读上次的位置（按容器分开存；异步读盘，读到了会自己搬过去）
+    LoadSavedPos(self.container_key)
 
     self.owner = owner
     self.container_inst = container_inst
@@ -615,6 +618,8 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
     container_inst:ListenForEvent("itemlose", self.onchanged)
     container_inst:ListenForEvent("refresh", self.onchanged)
 
+    -- 位置：默认居中（制作栏开着就右移让位），有记忆偏移时叠上去
+    self:ApplyPos()
     self:UpdateFilterButtons()
     self:RefreshData()
     self:StartFlash()
@@ -780,129 +785,41 @@ function HslotVaultList:StartDrag(button)
 end
 
 -- ====================================================================
--- 默认位置：左上角（DEFAULT_*_OFFSET 单位是屏幕像素）
+-- 位置：默认屏幕正中，打开制作栏时右移让位
 -- ====================================================================
--- 父级缩放 = 累计缩放 / 自身缩放（GetScale 返回的是两者相乘）
-function HslotVaultList:GetParentScale()
-    local g_s = self:GetScale()
-    local lx, ly = self:GetLooseScale()
-    lx = (lx ~= nil and lx ~= 0) and lx or 1
-    ly = (ly ~= nil and ly ~= 0) and ly or 1
-    return g_s.x / lx, g_s.y / ly
+-- 父级 controls.containerroot 自带 MIDDLE 锚点 + SCALEMODE_PROPORTIONAL
+-- （controls.lua:261-264），所以位置 (0,0) 就是屏幕正中，不需要自己按
+-- 屏幕比例去推算 —— 这正是「简易存储」能「一开出来就在画面中心」的原因
+-- （main/ui.lua:10-13：挂到 containerroot 同级，只套一个 GetHUDScale，
+--  面板自己永远 SetPosition(0,0)）。之前那套 MeasureScale / FitPanelSize
+-- 是「先按屏幕比例硬算一遍」，屏幕一变就整体走形，已删除。
+function HslotVaultList:DefaultPos()
+    local hud = ThePlayer ~= nil and ThePlayer.HUD or nil
+    local offset_x = (hud ~= nil and hud.IsCraftingOpen ~= nil and hud:IsCraftingOpen())
+        and CRAFTING_OFFSET_X or 0
+    return Vector3(offset_x, 0, 0)
 end
 
--- 标定「父级逻辑单位 → 设备像素」：实测两点取差值，
--- 差值天然抵消「坐标原点在哪」的不确定性，只留比例。
-function HslotVaultList:MeasureScale()
-    local keep = self:GetPosition()
-    self:SetPosition(keep.x, keep.y, keep.z)
-    local a = self:GetWorldPosition()
-    self:SetPosition(keep.x + 100, keep.y + 100, keep.z)
-    local b = self:GetWorldPosition()
-    self:SetPosition(keep.x, keep.y, keep.z)
-
-    local kx = (b.x - a.x) / 100
-    local ky = (b.y - a.y) / 100
-    if kx == 0 or ky == 0 then
-        -- 兜底：万一 GetWorldPosition 没即时更新，退回父级缩放
-        local psx, psy = self:GetParentScale()
-        kx, ky = psx, psy
-    end
-    return kx, ky
-end
-
--- 把面板缩放到「目标占屏比例」（可缩可放，所有分辨率/HUD 设置下相对大小一致）
-function HslotVaultList:FitPanelSize()
-    local sw, sh = TheSim:GetScreenSize()
-    local kx, ky = self:MeasureScale()
-    if kx == 0 or ky == 0 then
-        return
-    end
-
-    local lx, ly = self:GetLooseScale()
-    lx = (lx ~= nil and lx ~= 0) and lx or 1
-    ly = (ly ~= nil and ly ~= 0) and ly or 1
-
-    -- 面板此刻在屏幕上的实际像素尺寸
-    local w = PANEL_W * lx * kx
-    local h = PANEL_H * ly * ky
-    if w <= 0 or h <= 0 then
-        return
-    end
-
-    local f = math.min((sw * TARGET_PANEL_W_RATIO) / w, (sh * TARGET_PANEL_H_RATIO) / h)
-    if f > 0 and math.abs(f - 1) > 0.01 then
-        self:SetScale(lx * f)
+-- 实际位置 = 默认位置 + 用户拖动留下的偏移
+-- smooth = true 时用 0.25 秒补间（制作栏开/关时跟着平移，不跳）
+function HslotVaultList:ApplyPos(smooth)
+    local base = self:DefaultPos()
+    local o = self._offset or Vector3(0, 0, 0)
+    local target = Vector3(base.x + o.x, base.y + o.y, 0)
+    if smooth and self.inst ~= nil and self.inst:IsValid() then
+        self:MoveTo(self:GetPosition(), target, 0.25)
+    else
+        self:SetPosition(target.x, target.y, 0)
     end
 end
 
-function HslotVaultList:ApplyDefaultPos()
-    local sw, sh = TheSim:GetScreenSize()
-    local keep = self:GetPosition()
-
-    local kx, ky = self:MeasureScale()
-    -- 自身缩放（可能被 FitPanelSize 缩过），半宽/半高要乘上它才是真实屏幕尺寸
-    local lx, ly = self:GetLooseScale()
-    lx = (lx ~= nil and lx ~= 0) and lx or 1
-    ly = (ly ~= nil and ly ~= 0) and ly or 1
-
-    -- ② 目标面板中心（屏幕绝对坐标，左下角为原点）
-    -- 偏移量按屏幕比例算，天然适配任何分辨率 / 宽高比
-    local left_px = sw * (self.x_ratio or DEFAULT_LEFT_RATIO)
-    local top_px = sh * DEFAULT_TOP_RATIO
-    local want_cx = left_px + (PANEL_W / 2) * lx * kx
-    local want_cy = sh - top_px - (PANEL_H / 2) * ly * ky
-
-    local ha = self.h_anchor or ANCHOR_LEFT
-    local va = self.v_anchor or ANCHOR_BOTTOM
-
-    -- 把 GetWorldPosition 的结果换算成「屏幕绝对坐标」。
-    -- ⚠️ 这一步有两种可能的语义（返回的是绝对坐标 / 是相对锚点的坐标），
-    -- 不同版本/不同父级行为不一致，硬猜就会像之前那样整体偏移、面板被屏幕裁掉。
-    -- 所以两种都算一遍，各设上去读回真实位置，选误差小的那个。
-    local function ToScreen(w, with_fix)
-        local x, y = w.x, w.y
-        if with_fix then
-            if ha == ANCHOR_MIDDLE then
-                x = sw / 2 + x
-            elseif ha == ANCHOR_RIGHT then
-                x = sw - x
-            end
-            if va == ANCHOR_MIDDLE then
-                y = sh / 2 + y
-            elseif va == ANCHOR_TOP then
-                y = sh - y
-            end
-        end
-        return x, y
-    end
-
-    local best_x, best_y, best_err = keep.x, keep.y, math.huge
-    for _, with_fix in ipairs({ true, false }) do
-        self:SetPosition(0, 0, 0)
-        local ox, oy = ToScreen(self:GetWorldPosition(), with_fix)
-        local px = (want_cx - ox) / kx
-        local py = (want_cy - oy) / ky
-
-        self:SetPosition(px, py, 0)
-        local cx2, cy2 = ToScreen(self:GetWorldPosition(), with_fix)
-        local err = math.abs(cx2 - want_cx) + math.abs(cy2 - want_cy)
-        if err < best_err then
-            best_err, best_x, best_y = err, px, py
-        end
-    end
-
-    self:SetPosition(best_x, best_y, 0)
-end
-
--- 中键复原：搬回默认位置并写盘
+-- 中键复原：偏移清零 → 回默认位置（居中 / 制作栏右侧）并写盘
 function HslotVaultList:ResetToDefaultPos()
-    self:ApplyDefaultPos()
+    self._offset = Vector3(0, 0, 0)
+    self:ApplyPos(true)
     local key = PosKeyOf(self.container_key)
-    local pos = self:GetPosition()
-    saved_pos[key] = Vector3(pos.x, pos.y, 0)
-    TheSim:SetPersistentString(SAVE_KEY .. "_" .. key,
-        string.format("%.2f,%.2f", pos.x, pos.y), false)
+    saved_pos[key] = Vector3(0, 0, 0)
+    TheSim:SetPersistentString(SAVE_KEY .. "_" .. key, "0.00,0.00", false)
 end
 
 -- ====================================================================
@@ -939,12 +856,14 @@ function HslotVaultList:EndDrag()
     self._grab_dy = nil
     self._grab_dz = nil
     self._drag_button = nil
-    -- 记住这次拖到哪了（按容器分开存），下次打开还在原地
+    -- 记住这次拖到哪了（存「相对默认位置的偏移」，按容器分开），下次打开还在原地
     local key = PosKeyOf(self.container_key)
+    local base = self:DefaultPos()
     local pos = self:GetPosition()
-    saved_pos[key] = Vector3(pos.x, pos.y, 0)
+    self._offset = Vector3(pos.x - base.x, pos.y - base.y, 0)
+    saved_pos[key] = self._offset
     TheSim:SetPersistentString(SAVE_KEY .. "_" .. key,
-        string.format("%.2f,%.2f", pos.x, pos.y), false)
+        string.format("%.2f,%.2f", self._offset.x, self._offset.y), false)
 end
 
 function HslotVaultList:SetFilter(id)
@@ -995,11 +914,9 @@ function HslotVaultList:OnUpdate(dt)
     -- GetScale() 拿不到父级缩放，算出来的屏幕半宽是错的
     if not self._pos_applied then
         self._pos_applied = true
-        -- 先按占屏比例上限缩一次（1080p + 默认 HUD 时面板会撑满屏）
-        self:FitPanelSize()
-        if saved_pos[PosKeyOf(self.container_key)] == nil then
-            self:ApplyDefaultPos()
-        end
+        -- ctor 时父级可能还没挂上、锚点还没生效，这里再套一次位置兜底。
+        -- 位置 = 默认位置（居中 / 制作栏右侧）+ 上次拖动留下的偏移。
+        self:ApplyPos()
     end
 
     -- 兜底：官方的底图/按钮/槽位被任何途径（refresh、暂停恢复、别的 MOD 调 Show）
