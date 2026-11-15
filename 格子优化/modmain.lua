@@ -21,6 +21,8 @@ local config = {
   repair_to_full = GetModConfigData("repair_to_full"),
   -- 定时整理配置
   auto_sort_repair = GetModConfigData("auto_sort_repair"),
+  -- 快捷键：H 开关蓝月眼空间
+  pocket_hotkey = GetModConfigData("pocket_hotkey"),
 }
 
 -- ═══════════════════════════════════════════════════════
@@ -514,6 +516,16 @@ local function TogglePocketDimensionChest(viewer, container_key)
     container:Open(viewer)
   end
 end
+
+-- 快捷键 H 开关蓝月眼空间（客户端发 RPC，服务端真正开关）。
+-- 参考「简易宠物增强 3587643283」modmain.lua:661 的
+-- `TheInput:AddKeyDownHandler(key, fn)` + `SendModRPCToServer` 写法。
+-- ⚠️ 两端都要 AddModRPCHandler，否则 MOD_RPC 里没有这个 id，客户端发不出去。
+-- 注意：这个 RPC 不按 config 拦截 —— 面板底部的「关闭」按钮也走它。
+-- 快捷键开关只在客户端注册按键时判断。
+AddModRPCHandler("hslot_pocket", "toggle_blue", function(player)
+  TogglePocketDimensionChest(player, "hslot")
+end)
 
 -- 眼骨
 AddPrefabPostInit("chester_eyebone", function(inst)
@@ -1429,14 +1441,132 @@ end)
 
 -- 客户端：调大这两个容器按钮的字体
 if not GLOBAL.TheNet:IsDedicated() then
+  local HslotVaultList = require("widgets/hslot_vault_list")
+
+  -- 快捷键 H：开关蓝月眼空间（默认开启，可在 mod 设置里关掉）
+  -- 参考「简易宠物增强 3587643283」modmain.lua:661：AddKeyDownHandler + SendModRPCToServer
+  if config.pocket_hotkey then
+    TheInput:AddKeyDownHandler(KEY_H, function()
+      if ThePlayer == nil or not ThePlayer:IsValid() then
+        return
+      end
+      local hud = ThePlayer.HUD
+      -- 打字 / 聊天 / 暂停 / 地图 / 打开其他界面时不要抢键
+      if hud == nil or hud:IsChatInputScreenOpen() or hud:IsPauseScreenOpen()
+          or hud:IsConsoleScreenOpen() then
+        return
+      end
+      local active = TheFrontEnd:GetActiveScreen()
+      if active ~= nil and active.name ~= "HUD" then
+        return
+      end
+      SendModRPCToServer(MOD_RPC["hslot_pocket"]["toggle_blue"])
+    end)
+  end
+
+  -- 客户端：给月眼仓库找一个合适的挂载点。
+  -- ⚠️ 不要用 self:AddChild（挂到 controls 末尾）：
+  --   controls.lua:294 的鼠标跟随层 self.mousefollow 是在 ctor 里建的，
+  --   而"手上的物品"（ActiveItem）就渲染在 mousefollow 下面
+  --   （inventorybar.lua:1504 `mousefollow:AddChild(ItemTile(item))`）。
+  --   末尾追加的 root 会盖住 mousefollow → 拿起物品往仓库里放时看不见手持图标。
+  -- ✅ 挂到 controls.containerroot：官方容器 UI 的家。
+  --   它自带 MIDDLE 锚点 + SCALEMODE_PROPORTIONAL（controls.lua:261-264），
+  --   缩放由 Controls:SetHUDSize 统一设为 GetHUDScale()（controls.lua:563），
+  --   层级又低于 mousefollow —— 尺寸自适应和 z 序一次都对。
+  AddClassPostConstruct("widgets/controls", function(self)
+    local Widget = GLOBAL.require("widgets/widget")
+    self.hslot_vault_root = self.containerroot:AddChild(Widget("hslot_vault_root"))
+  end)
+
   AddClassPostConstruct("widgets/containerwidget", function(self)
+    -- ⚠️ HslotVaultList 是 Widget（不是 EntityScript），没有 IsValid() 方法。
+    -- 之前 self._hslot_list:IsValid() 在开关蓝眼仓库时抛
+    -- "attempt to call method 'IsValid' (a nil value)"（modmain.lua:1470）。
+    -- 另外官方 Widget:Kill()（widgets/widget.lua:325）不会调用 OnDestroy，
+    -- 事件监听必须手动清理，否则反复开关会累积 itemget/itemlose/refresh 回调。
+    local function KillHslotList(widget)
+      local list = widget._hslot_list
+      if list == nil then return end
+      widget._hslot_list = nil
+      if list.OnDestroy ~= nil then
+        list:OnDestroy()
+      end
+      list:Kill()
+    end
+
+    -- ⚠️ 官方 ContainerWidget 在蓝色月眼空间下完全没用（它只有 16 格网格，
+    -- 而容器有 160 格），关掉它不能只靠一次 Hide()：
+    --   * Open 内部会 self:Show()；
+    --   * 按钮的 continuefrompause 监听里还会 self.button:Show()；
+    -- 结果旧的 4x4 底图动画（bganim）和那个图标按钮会重新露出来。
+    -- 所以直接把 Show 也拦掉，保证"官方 UI 不出现"这件事没有例外。
+    local old_Show = self.Show
+    self.Show = function(widget, ...)
+      if widget._hslot_suppress then
+        return
+      end
+      return old_Show(widget, ...)
+    end
+
     local old_Open = self.Open
     self.Open = function(self, container, doer)
+      -- 必须在 old_Open 之前置位：old_Open 内部就会调 self:Show()
+      self._hslot_suppress = (container ~= nil and container.prefab == "hslot_container")
       old_Open(self, container, doer)
       local prefab = container and container.prefab
       if (prefab == "rabbitkinghorn_container" or prefab == "shadow_container") and self.button then
         self.button:SetTextSize(36)
       end
+
+      -- 蓝色月眼口袋空间：官方网格只有 16 个槽位，但容量已经扩到 160，
+      -- 这里把官方网格藏起来，换成类制作栏界面（顶部图标筛选 + 下方滚动网格）
+      if prefab == "hslot_container" then
+        if self.button ~= nil then self.button:Hide() end
+        if self.bgimage ~= nil then self.bgimage:Hide() end
+        if self.bganim ~= nil then self.bganim:Hide() end
+        self:Hide()
+        KillHslotList(self)
+        local list = HslotVaultList(self.owner, container)
+        list.container_widget = self
+        self._hslot_list = list
+        -- 挂到官方容器层，尺寸自适应 + 层级都跟官方容器一致。
+        -- ⚠️ 兜底绝不能回退到 self：官方 widget 已被隐藏，挂在它下面会一起隐身
+        local vault_root = nil
+        if ThePlayer ~= nil and ThePlayer.HUD ~= nil and ThePlayer.HUD.controls ~= nil then
+          vault_root = ThePlayer.HUD.controls.hslot_vault_root
+            or ThePlayer.HUD.controls.containerroot
+        end
+        vault_root = vault_root
+          or (ThePlayer ~= nil and ThePlayer.HUD)
+          or self.parent
+        if vault_root ~= nil then
+          vault_root:AddChild(list)
+          list:MoveToFront()
+        end
+      end
+    end
+
+    -- 官方网格的 Refresh 会遍历所有物品去对应 self.inv[k]，槽位超过 16 时 k 会越界崩掉。
+    -- 月眼仓库走列表界面，官方网格没必要刷新，直接跳过
+    local old_Refresh = self.Refresh
+    self.Refresh = function(self, ...)
+      if self.container ~= nil and self.container.prefab == "hslot_container" then
+        return
+      end
+      return old_Refresh(self, ...)
+    end
+
+    local old_Close = self.Close
+    self.Close = function(self, ...)
+      self._hslot_suppress = false
+      if self._hslot_list ~= nil then
+        KillHslotList(self)
+        -- 官方 ContainerWidget:Close 不会自己 Hide()，它靠 should_close_widget
+        -- 延后 Kill；期间如果又 Show 出来就会闪一下旧底图，这里直接藏起来
+        self:Hide()
+      end
+      return old_Close(self, ...)
     end
   end)
 end

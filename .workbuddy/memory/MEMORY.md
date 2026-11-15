@@ -40,6 +40,12 @@
 ### 已创建技能
 - `dst-mod-dev`（用户级 `~/.workbuddy/skills/dst-mod-dev/`）
 - 包含：踩坑库 `references/pitfalls.md`、代码模板 `references/code-templates.md`、API 速查 `references/api-quick-reference.md`、MOD 模式索引 `references/mod-patterns.md`
+- **崩溃日志排查能力**（2026-11-15 新增）：`references/client-log-triage.md`（先按 `Loading mod: ... Version:` 锚点切到最近一轮会话，再找报错；用版本号+堆栈行号交叉验证磁盘代码）+ `scripts/log_triage.py`（自动切最近一轮、去重 Insight 重复输出、报错最新在前）
+  - 用法：`python scripts/log_triage.py [--mod hslot] [--pattern BODYDEPTH] [--all] [--log <path>]`
+  - 触发：用户报崩溃/贴堆栈时，**先跑这个**再动手修，避免修一个已修复的旧 bug
+  - **只读铁律**：`~/Documents/Klei/DoNotStarveTogether/` 是存档/用户数据根目录，排查时**只能读**，不得写入/修改/移动/删除（含 `backup/`、`<userid>/Cluster_N/` 存档）；结论写到项目 `.workbuddy/memory/`
+  - **两处日志**：当前 `client_log.txt` + 归档 `backup/client_log/client_log_<时间戳>.txt`（DST 启动时归档上一份）；排查用 `--all-logs` 两个都扫，别只看当前日志
+  - 日志路径补充：`client_log.cr.txt`、`master_server_log.txt` / `caves_server_log.txt`；专用服务器在 `Cluster_N/Master|Caves/server_log.txt`
 - 触发词：DST mod、饥荒 mod、modmain、modinfo、AddPrefabPostInit 等
 
 ### 已创建专家
@@ -50,13 +56,25 @@
 - 从左侧「专家」入口可进入对话
 
 ### 踩坑记录
-- 完整踩坑库已迁移至技能 `references/pitfalls.md`（14 条）
+- 踩坑库主文件 `~/.workbuddy/skills/dst-mod-dev/references/pitfalls.md`（2026-11-15 已 47 条）
+- ⚠️ 技能有 **3 份副本、2 套编号**：用户级主库（47 条，`## #N`）、专家包内嵌（`plugins/marketplaces/my-experts/plugins/dst-mod-expert/...`，16 条）、运行缓存副本（`plugins/cache/my-experts/dst-mod-expert/...`，16 条）。新增坑要同步 3 份，标题编号按各自体系递增
 - 核心坑概要：`Text` 需 `GLOBAL.require` | UI 图标用 `self.image:SetTint` | `GLOBAL.AddXxx` 会 strict 报错 | `finiteuses.Use` 无预检 | `globalmapicon._target` 客户端为 nil
 
 ### UI 图标着色
 - 完整模板已迁移至技能 `references/code-templates.md`
 - 核心：`AnimState:SetMultColour()` 不影响 UI 图标 → 用 `self.image:SetTint()`
-- 文字/图标中插入 DST 内置图标：`"\239\129\128\143"` = 󰀏 | `"\239\129\128\156"` = 󰀜
+
+### DST 内置图标字符（PUA 字形，2026-11-15 实测）
+- 游戏字体自带一套**私有区图标字形**（U+F0000 起）：背包/箱子/宝石/红心/箭头等
+- 可用在 `Text`、`ImageButton:SetText`、`modinfo.description`、`STRINGS`，
+  走字体 fallback 链，**和中文同排一行没问题**（mod 描述里「阿比盖尔 + 图标」就是它）
+- 完整 50 条对照表：技能 `references/dst-icon-glyphs.md`（用户级 + 专家包 + cache 三份已同步）
+- 常用几个（务必用**字节转义**，4 字节，防文件编码变动）：
+  - 背包 `"\243\176\128\158"` | 箱子 `"\243\176\128\130"` | 红宝石 `"\243\176\128\146"`
+  - 灯泡 `"\243\176\128\143"` | 点赞 `"\243\176\128\171"` | 手 `"\243\176\128\174"`
+- ⚠️ 本文件旧版写的 `"\239\129\128\143"` 是**错的**（漏了首字节，只有 3 字节），
+  实际都是 `\243\176\128\xxx` 四字节；字形来源见 `实验代码/modinfo.lua` 的中文描述区
+- 做「图标 + 数字」布局时拼进同一个 `Text`，别用两个 Text 算 x 偏移（位数变化会错位）
 
 ---
 

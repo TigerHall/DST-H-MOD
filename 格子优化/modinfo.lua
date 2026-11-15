@@ -47,7 +47,7 @@ end
 
 --  基础信息
 name = en_zh("H-SLOT", "H-无限格子")
-version = "3.5"
+version = "3.5.34"
 description = en_zh("V" .. version .. [[
 
 Items in Chester's and Hutch's grids do not spoil. Items in Shadow Chester's grid spoil at an accelerated rate, while items in Ice Chester's grid are preserved (remain fresh).
@@ -55,7 +55,7 @@ Items in Chester's and Hutch's grids can be stacked infinitely.
 The red moon eye can open the shadow space, and the green moon eye can open the poaching rabbit space. Eyebone and Fishbowl can also open the rabbit space by inspecting.
 The shadow space and the poaching rabbit space can be set with infinite stacking, corruption acceleration, and anti-fresh acceleration.
 Trading feature added -- try trading various items with eyebone/fishbowl to discover hidden recipes!
-Blue moon eye opens an pocket space (4x4 slots)!
+Blue moon eye opens a scrollable vault (160 slots, 10 per row); press H to toggle it!
 Purple, orange, yellow moon eyes each open a pocket space (5x4 slots)!
 Yellow/Orange/Purple moon eyes can reveal set piece locations on the map!
 Open map and double-left-click moon eyes/sentry/moondial/townportal/players to teleport with fade transition!
@@ -68,7 +68,7 @@ Open map and double-left-click moon eyes/sentry/moondial/townportal/players to t
 红色月眼可打开暗影空间，绿色月眼可打开挖角兔空间。眼骨和星空右键检查也可打开挖角兔空间。
 暗影空间和挖角兔空间可设置无限堆叠，腐败加速和反鲜加速。
 新增交易功能——尝试向眼骨或星空提交各种物品，发现隐藏配方彩蛋吧！
-蓝色月眼可打开格子空间（4x4 格子）！
+蓝色月眼可打开滚动仓库（160 格，每行 10 格），按 H 键可快捷开关！
 紫色、橙色、黄色月眼可各打开一个格子空间（5x4 格子）！
 ]])
 author = "hehu"
@@ -215,5 +215,18 @@ configuration_options = {
     "Enable timed sort & repair",
     "关闭定时整理修复",
     "Disable timed sort & repair"
+  ),
+  addTitle("Hotkey", "快捷键"),
+  addConfig(
+    "pocket_hotkey",
+    "快捷键 H 开关蓝月眼空间",
+    "Hotkey H toggles blue moon eye space",
+    true,
+    "按键盘 H 直接开关蓝色月眼的口袋空间（不用再右键检查月眼）",
+    "Press H to toggle the blue moon eye pocket space",
+    "开启（默认）：按 H 开关蓝月眼空间",
+    "On (default): press H to toggle the space",
+    "关闭：只能右键检查蓝月眼打开",
+    "Off: only right-click inspecting the moon eye works"
   ),
 }
