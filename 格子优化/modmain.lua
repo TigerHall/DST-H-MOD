@@ -527,6 +527,14 @@ AddModRPCHandler("hslot_pocket", "toggle_blue", function(player)
   TogglePocketDimensionChest(player, "hslot")
 end)
 
+-- 通用版：带容器 key，紫/橙/黄面板的「关闭」按钮走这个
+AddModRPCHandler("hslot_pocket", "toggle", function(player, key)
+  if type(key) ~= "string" then
+    return
+  end
+  TogglePocketDimensionChest(player, key)
+end)
+
 -- 眼骨
 AddPrefabPostInit("chester_eyebone", function(inst)
   if not TheWorld.ismastersim then
@@ -1443,6 +1451,18 @@ end)
 if not GLOBAL.TheNet:IsDedicated() then
   local HslotVaultList = require("widgets/hslot_vault_list")
 
+  -- 月眼仓库：四个口袋空间共用同一套列表界面，只换底色 / 默认位置 / 关闭用的 key。
+  --   r,g,b   : 9-slice 底色的 RGB —— 取对应**宝石**的色调
+  --             （蓝宝石 / 紫宝石 / 橙宝石 / 黄宝石），半透明后正好是同一系的不同色
+  --   key     : TheWorld:GetPocketDimensionContainer 的世界 key
+  --   x_ratio : 默认位置的「左边缘占屏幕宽比例」
+  local VAULT_THEMES = {
+    hslot_container = { r = 0.28, g = 0.52, b = 0.95, key = "hslot",       x_ratio = 0.10 }, -- 蓝宝石
+    purple_fish_box = { r = 0.68, g = 0.34, b = 0.92, key = "purple_fish", x_ratio = 0.30 }, -- 紫宝石
+    orange_fish_box = { r = 1.00, g = 0.58, b = 0.16, key = "orange_fish", x_ratio = 0.50 }, -- 橙宝石
+    yellow_fish_box = { r = 1.00, g = 0.86, b = 0.18, key = "yellow_fish", x_ratio = 0.70 }, -- 黄宝石
+  }
+
   -- 快捷键 H：开关蓝月眼空间（默认开启，可在 mod 设置里关掉）
   -- 参考「简易宠物增强 3587643283」modmain.lua:661：AddKeyDownHandler + SendModRPCToServer
   if config.pocket_hotkey then
@@ -1511,23 +1531,24 @@ if not GLOBAL.TheNet:IsDedicated() then
 
     local old_Open = self.Open
     self.Open = function(self, container, doer)
+      local theme = (container ~= nil) and VAULT_THEMES[container.prefab] or nil
       -- 必须在 old_Open 之前置位：old_Open 内部就会调 self:Show()
-      self._hslot_suppress = (container ~= nil and container.prefab == "hslot_container")
+      self._hslot_suppress = (theme ~= nil)
       old_Open(self, container, doer)
       local prefab = container and container.prefab
       if (prefab == "rabbitkinghorn_container" or prefab == "shadow_container") and self.button then
         self.button:SetTextSize(36)
       end
 
-      -- 蓝色月眼口袋空间：官方网格只有 16 个槽位，但容量已经扩到 160，
+      -- 四色口袋空间：官方网格只有 16~20 个槽位，但容量已经扩到 160，
       -- 这里把官方网格藏起来，换成类制作栏界面（顶部图标筛选 + 下方滚动网格）
-      if prefab == "hslot_container" then
+      if theme ~= nil then
         if self.button ~= nil then self.button:Hide() end
         if self.bgimage ~= nil then self.bgimage:Hide() end
         if self.bganim ~= nil then self.bganim:Hide() end
         self:Hide()
         KillHslotList(self)
-        local list = HslotVaultList(self.owner, container)
+        local list = HslotVaultList(self.owner, container, theme)
         list.container_widget = self
         self._hslot_list = list
         -- 挂到官方容器层，尺寸自适应 + 层级都跟官方容器一致。
@@ -1551,7 +1572,7 @@ if not GLOBAL.TheNet:IsDedicated() then
     -- 月眼仓库走列表界面，官方网格没必要刷新，直接跳过
     local old_Refresh = self.Refresh
     self.Refresh = function(self, ...)
-      if self.container ~= nil and self.container.prefab == "hslot_container" then
+      if self.container ~= nil and VAULT_THEMES[self.container.prefab] ~= nil then
         return
       end
       return old_Refresh(self, ...)

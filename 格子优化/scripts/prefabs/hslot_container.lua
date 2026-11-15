@@ -1,5 +1,5 @@
 -- scripts/prefabs/hslot_container.lua
--- 口袋空间容器合集：hslot（古董船4x4）+ 紫/橙/黄月眼（鱼箱5x4）
+-- 口袋空间容器合集：hslot（蓝）+ 紫/橙/黄月眼，四个各 160 格，共用列表界面
 
 local function OnAnyOpenStorage(inst, data)
   if inst.components.container.opencount > 1 then
@@ -87,6 +87,8 @@ for _, colour in ipairs(MOONEYE_FISH_COLOURS) do
   params[param_name] = {
     widget = {
       slotpos = {},
+      -- 和蓝月眼一样扩到 160 格（界面已换成滚动列表，slotpos 只留 20 个占位）
+      numslots = HSLOT_VAULT_SLOTS,
       animbank = "ui_fish_box_5x4",
       animbuild = "ui_fish_box_5x4",
       pos = FISH_POSITIONS[colour],

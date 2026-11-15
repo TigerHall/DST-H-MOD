@@ -68,14 +68,16 @@ local FILTER_X_OFFSET = 14   -- 筛选按钮整体再往右挪一点
 -- 筛选按钮底衬（filterslot_bg.tex）：false = 透明，只留按钮边框和图标
 local FILTER_BG_VISIBLE = false
 
--- 底色：#99cc99（153,204,153），直接染在 9-slice 的底上 ——
+-- 底色：这里只是兜底值（蓝宝石色）；四种颜色由 modmain 的
+-- VAULT_THEMES 传入 theme.r/g/b 覆盖。
+-- 直接染在 9-slice 的底上 ——
 -- 金边里面整片都是绿底，不会露出原本的黑色内衬。
 -- ⚠️ 绿色只有这一层：TEMPLATES.RectangleWindow 的 SetBackgroundTint
 -- （templates.lua:1863）只染 mid_left / mid_right / mid_center 三块同一材质，
 -- 它们是并排不重叠的；面板上另有一层 alpha 0.001 的 Image，只是用来接
 -- tooltip 的不可见抓取层，不参与观感。
 -- 想更透就调小这个值（0.15 已经很淡），0 就是全透明只剩金边。
-local BG_R, BG_G, BG_B = 0.6, 0.8, 0.6
+local BG_R, BG_G, BG_B = 0.28, 0.52, 0.95   -- 蓝宝石色（兜底；实际由 theme 传入）
 local FRAME_BG_ALPHA = 0.22
 
 -- 选中分类图标的手杖同款跑马灯（0.05 秒一帧，1.6 秒一圈色相）
@@ -361,16 +363,23 @@ end
 -- ====================================================================
 -- 拖动位置记忆（关掉面板/再打开还在原地）
 -- ====================================================================
+-- ⚠️ 位置记忆要**按容器分开存**：四个月眼空间各有自己的默认位，
+-- 共用一个 key 的话，把蓝月眼拖到某处后紫月眼也会跑过去。
 local SAVE_KEY = "hslot_vault_pos"
-local saved_pos = nil
-local saved_pos_loaded = false
+local saved_pos = {}        -- [container_key] = Vector3
+local saved_pos_loaded = {}
 
-local function LoadSavedPos()
-    if saved_pos_loaded then
-        return saved_pos
+local function PosKeyOf(key)
+    return key or "hslot"
+end
+
+local function LoadSavedPos(key)
+    key = PosKeyOf(key)
+    if saved_pos_loaded[key] then
+        return saved_pos[key]
     end
-    saved_pos_loaded = true
-    TheSim:GetPersistentString(SAVE_KEY, function(ok, data)
+    saved_pos_loaded[key] = true
+    TheSim:GetPersistentString(SAVE_KEY .. "_" .. key, function(ok, data)
         if not ok or data == nil or data == "" then
             return
         end
@@ -378,17 +387,30 @@ local function LoadSavedPos()
         if sx == nil or sy == nil then
             return
         end
-        saved_pos = Vector3(tonumber(sx), tonumber(sy), 0)
-        -- 面板已经开着的话，直接把位置搬过去
-        if active_list ~= nil and active_list.inst ~= nil and active_list.inst:IsValid() then
-            active_list:SetPosition(saved_pos.x, saved_pos.y, 0)
+        saved_pos[key] = Vector3(tonumber(sx), tonumber(sy), 0)
+        -- 面板已经开着、而且是同一个容器的话，直接把位置搬过去
+        if active_list ~= nil and active_list.inst ~= nil and active_list.inst:IsValid()
+            and PosKeyOf(active_list.container_key) == key then
+            active_list:SetPosition(saved_pos[key].x, saved_pos[key].y, 0)
         end
     end)
-    return saved_pos
+    return saved_pos[key]
 end
 
-local HslotVaultList = Class(Widget, function(self, owner, container_inst)
+local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme)
     Widget._ctor(self, "HslotVaultList")
+
+    -- theme（由 modmain 的 VAULT_THEMES 传进来）：
+    --   r/g/b    底色
+    --   key      容器世界 key（关闭按钮按它发 RPC）
+    --   x_ratio  默认位置：左边缘占屏幕宽的比例
+    theme = theme or {}
+    self.theme = theme
+    self.bg_r = theme.r or BG_R
+    self.bg_g = theme.g or BG_G
+    self.bg_b = theme.b or BG_B
+    self.container_key = theme.key
+    self.x_ratio = theme.x_ratio or DEFAULT_LEFT_RATIO
 
     active_list = self
     HookCameraZoom()
@@ -404,8 +426,8 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst)
     -- 补一档自身缩放，抵消父级 HUD 缩放，让金边/文字的观感接近官方窗口
     self:SetScale(PANEL_SCALE)
 
-    -- 记忆上次拖动到的位置（异步读盘，读到了会自己搬过去）
-    local p = LoadSavedPos()
+    -- 记忆上次拖动到的位置（按容器分开；异步读盘，读到了会自己搬过去）
+    local p = LoadSavedPos(self.container_key)
     if p ~= nil then
         self:SetPosition(p.x, p.y, 0)
     end
@@ -423,7 +445,7 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst)
     self.frame:SetScale(1, 1, 1)
     self.frame:SetSize(PANEL_W, PANEL_H)
     -- 金边里面整片染成绿底（之前是黑的，跟绿色对不上）
-    self.frame:SetBackgroundTint(BG_R, BG_G, BG_B, FRAME_BG_ALPHA)
+    self.frame:SetBackgroundTint(self.bg_r, self.bg_g, self.bg_b, FRAME_BG_ALPHA)
 
     -- 悬停提示用的抓取层：铺满整块面板、几乎全透明（alpha 0.001，肉眼不可见）。
     -- 拖动/复原的命中判定走 IsMouseOverPanel() 的矩形计算，不依赖这个 widget，
@@ -780,7 +802,7 @@ function HslotVaultList:ApplyDefaultPos()
 
     -- ② 目标面板中心（屏幕绝对坐标，左下角为原点）
     -- 偏移量按屏幕比例算，天然适配任何分辨率 / 宽高比
-    local left_px = sw * DEFAULT_LEFT_RATIO
+    local left_px = sw * (self.x_ratio or DEFAULT_LEFT_RATIO)
     local top_px = sh * DEFAULT_TOP_RATIO
     local want_cx = left_px + (PANEL_W / 2) * kx
     local want_cy = sh - top_px - (PANEL_H / 2) * ky
@@ -830,9 +852,11 @@ end
 -- 中键复原：搬回默认位置并写盘
 function HslotVaultList:ResetToDefaultPos()
     self:ApplyDefaultPos()
+    local key = PosKeyOf(self.container_key)
     local pos = self:GetPosition()
-    saved_pos = Vector3(pos.x, pos.y, 0)
-    TheSim:SetPersistentString(SAVE_KEY, string.format("%.2f,%.2f", pos.x, pos.y), false)
+    saved_pos[key] = Vector3(pos.x, pos.y, 0)
+    TheSim:SetPersistentString(SAVE_KEY .. "_" .. key,
+        string.format("%.2f,%.2f", pos.x, pos.y), false)
 end
 
 -- ====================================================================
@@ -869,10 +893,12 @@ function HslotVaultList:EndDrag()
     self._grab_dy = nil
     self._grab_dz = nil
     self._drag_button = nil
-    -- 记住这次拖到哪了，下次打开还在原地
+    -- 记住这次拖到哪了（按容器分开存），下次打开还在原地
+    local key = PosKeyOf(self.container_key)
     local pos = self:GetPosition()
-    saved_pos = Vector3(pos.x, pos.y, 0)
-    TheSim:SetPersistentString(SAVE_KEY, string.format("%.2f,%.2f", pos.x, pos.y), false)
+    saved_pos[key] = Vector3(pos.x, pos.y, 0)
+    TheSim:SetPersistentString(SAVE_KEY .. "_" .. key,
+        string.format("%.2f,%.2f", pos.x, pos.y), false)
 end
 
 function HslotVaultList:SetFilter(id)
@@ -923,7 +949,7 @@ function HslotVaultList:OnUpdate(dt)
     -- GetScale() 拿不到父级缩放，算出来的屏幕半宽是错的
     if not self._pos_applied then
         self._pos_applied = true
-        if saved_pos == nil then
+        if saved_pos[PosKeyOf(self.container_key)] == nil then
             self:ApplyDefaultPos()
         end
     end
@@ -1100,8 +1126,14 @@ function HslotVaultList:RebuildViewSlots(items, numslots)
 end
 
 -- 关闭按钮：容器现在是打开的，走同一个 mod RPC 的 toggle 就是关闭
+-- 关闭按钮：按容器自己的 key 走通用 toggle（蓝= hslot，紫/橙/黄= *_fish）
 function HslotVaultList:DoCloseButton()
-    SendModRPCToServer(MOD_RPC["hslot_pocket"]["toggle_blue"])
+    local key = self.container_key
+    if key == nil then
+        SendModRPCToServer(MOD_RPC["hslot_pocket"]["toggle_blue"])
+        return
+    end
+    SendModRPCToServer(MOD_RPC["hslot_pocket"]["toggle"], key)
 end
 
 -- ====================================================================
