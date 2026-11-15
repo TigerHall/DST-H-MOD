@@ -23,6 +23,8 @@ local config = {
   auto_sort_repair = GetModConfigData("auto_sort_repair"),
   -- 快捷键：H 开关蓝月眼空间
   pocket_hotkey = GetModConfigData("pocket_hotkey"),
+  -- 兼容排查用的诊断日志
+  vault_debug = GetModConfigData("vault_debug"),
 }
 
 -- ═══════════════════════════════════════════════════════
@@ -508,6 +510,21 @@ local function TogglePocketDimensionChest(viewer, container_key)
 
   -- 3. 切换容器开关状态（仅影响当前玩家）
   local container = target_chest.components.container
+  if config.vault_debug then
+    -- ⚠️ strict 模式下连 `GLOBAL.containers` 都不能碰：GLOBAL 就是 _G，
+    -- 读它的字段会走 strict 的 __index，未声明的全局直接 error
+    -- （"variable 'containers' is not declared"，会在打开空间时把 RPC 打断）。
+    -- 老老实实用 require 拿一个局部引用。
+    local _containers = require("containers")
+    print("[hslot][vault] open " .. tostring(container_key)
+      .. " prefab=" .. tostring(target_chest.prefab)
+      .. " type=" .. tostring(container.type)
+      .. " numslots=" .. tostring(container.numslots)
+      .. " maxitemslots=" .. tostring(_containers ~= nil and _containers.MAXITEMSLOTS or "?")
+      .. " opencount=" .. tostring(container.opencount)
+      .. " hastag_chest=" .. tostring(target_chest:HasTag("chest"))
+      .. " hastag_container=" .. tostring(target_chest:HasTag("container")))
+  end
   if container:IsOpen() and container:IsOpenedBy(viewer) then
     -- 仅关闭当前玩家的界面（传入viewer作为参数）
     container:Close(viewer)
@@ -1463,6 +1480,15 @@ if not GLOBAL.TheNet:IsDedicated() then
     yellow_fish_box = { r = 1.00, g = 0.86, b = 0.18, key = "yellow_fish", x_ratio = 0.70 }, -- 黄宝石
   }
 
+  -- 官方 ContainerWidget 的处置方式：
+  --   false（默认/原本形式）= self:Hide()，界面最干净。
+  --     ⚠️ 代价：客户端 inventory_replica:GetOpenContainers() 要求 widget 可见，
+  --     藏掉之后这个容器不算「已打开」，于是
+  --       ① Shift+左键快速转移失效
+  --       ② 制作时不会把容器里的材料算进去（能存能取，但做东西用不上）
+  --   true = 保持 widget 可见、只藏内容（底图/按钮/槽位），上面两条功能恢复。
+  local VAULT_KEEP_WIDGET_VISIBLE = true
+
   -- 快捷键 H：开关蓝月眼空间（默认开启，可在 mod 设置里关掉）
   -- 参考「简易宠物增强 3587643283」modmain.lua:661：AddKeyDownHandler + SendModRPCToServer
   if config.pocket_hotkey then
@@ -1515,15 +1541,44 @@ if not GLOBAL.TheNet:IsDedicated() then
       list:Kill()
     end
 
-    -- ⚠️ 官方 ContainerWidget 在蓝色月眼空间下完全没用（它只有 16 格网格，
-    -- 而容器有 160 格），关掉它不能只靠一次 Hide()：
-    --   * Open 内部会 self:Show()；
-    --   * 按钮的 continuefrompause 监听里还会 self.button:Show()；
-    -- 结果旧的 4x4 底图动画（bganim）和那个图标按钮会重新露出来。
-    -- 所以直接把 Show 也拦掉，保证"官方 UI 不出现"这件事没有例外。
+    -- ⚠️⚠️ 千万不要 self:Hide() 官方 ContainerWidget！
+    -- 客户端判断「哪些容器是打开的」用的是
+    --   components/inventory_replica.lua:349 GetOpenContainers()
+    --     for k, v in pairs(HUD.controls.containers) do
+    --         if v.inst.entity:IsVisible() and k:IsValid() then containers[k] = true end
+    -- 把 widget 藏起来，这个容器就不算「已打开」，于是：
+    --   * Shift+左键快速转移（widgets/invslot.lua:301 InvSlot:TradeItem）拿不到目标容器
+    --   * 制作时 inventory:Has(prefab, n, true) 不会把容器里的材料算进去 → 材料不识别
+    -- 正确做法：widget 本身保持可见，只把它的「内容」全部藏起来。
+    local function HideContents(w)
+      if w.bgimage ~= nil then w.bgimage:Hide() end
+      if w.bganim ~= nil then w.bganim:Hide() end
+      if w.button ~= nil then w.button:Hide() end
+      if w.inv ~= nil then
+        for _, slot in pairs(w.inv) do
+          if slot ~= nil and slot.Hide ~= nil then slot:Hide() end
+        end
+      end
+    end
+
+    local function RestoreContents(w)
+      if w.bgimage ~= nil then w.bgimage:Show() end
+      if w.bganim ~= nil then w.bganim:Show() end
+      if w.button ~= nil then w.button:Show() end
+      if w.inv ~= nil then
+        for _, slot in pairs(w.inv) do
+          if slot ~= nil and slot.Show ~= nil then slot:Show() end
+        end
+      end
+    end
+
+    -- 「隐藏 widget」模式下要和官方那几处 Show() 对抗：
+    --   * Open 内部 self:Show()
+    --   * 按钮的 continuefrompause 监听里 self.button:Show()
+    -- 所以把 Show 直接拦掉（仅在非 KEEP_VISIBLE 模式）。
     local old_Show = self.Show
     self.Show = function(widget, ...)
-      if widget._hslot_suppress then
+      if widget._hslot_suppress and not VAULT_KEEP_WIDGET_VISIBLE then
         return
       end
       return old_Show(widget, ...)
@@ -1532,8 +1587,13 @@ if not GLOBAL.TheNet:IsDedicated() then
     local old_Open = self.Open
     self.Open = function(self, container, doer)
       local theme = (container ~= nil) and VAULT_THEMES[container.prefab] or nil
-      -- 必须在 old_Open 之前置位：old_Open 内部就会调 self:Show()
+      if theme == nil and self._hslot_suppress then
+        -- 切回普通容器：把之前藏起来的内容恢复
+        RestoreContents(self)
+        self:Show()
+      end
       self._hslot_suppress = (theme ~= nil)
+      self._hslot_keep_visible = VAULT_KEEP_WIDGET_VISIBLE
       old_Open(self, container, doer)
       local prefab = container and container.prefab
       if (prefab == "rabbitkinghorn_container" or prefab == "shadow_container") and self.button then
@@ -1543,10 +1603,14 @@ if not GLOBAL.TheNet:IsDedicated() then
       -- 四色口袋空间：官方网格只有 16~20 个槽位，但容量已经扩到 160，
       -- 这里把官方网格藏起来，换成类制作栏界面（顶部图标筛选 + 下方滚动网格）
       if theme ~= nil then
-        if self.button ~= nil then self.button:Hide() end
-        if self.bgimage ~= nil then self.bgimage:Hide() end
-        if self.bganim ~= nil then self.bganim:Hide() end
-        self:Hide()
+        if VAULT_KEEP_WIDGET_VISIBLE then
+          -- 保可见：只藏内容，容器仍算「已打开」（材料识别 / Shift+左键可用）
+          self:Show()
+          HideContents(self)
+        else
+          -- 原本形式：整块藏起来（界面最干净，但上面两个功能会失效）
+          self:Hide()
+        end
         KillHslotList(self)
         local list = HslotVaultList(self.owner, container, theme)
         list.container_widget = self
@@ -1565,6 +1629,23 @@ if not GLOBAL.TheNet:IsDedicated() then
           vault_root:AddChild(list)
           list:MoveToFront()
         end
+
+        -- 诊断（modinfo 里「月眼仓库诊断日志」开关打开时才输出）。
+        -- ⚠️ 必须放在 modmain 里读 config：widget 模块不是 mod 的 main chunk，
+        -- 在那边调 GetModConfigData 会抛 modutil 的报错。
+        if config.vault_debug then
+          local rep = container.replica ~= nil and container.replica.container or nil
+          local inv = (self.owner ~= nil and self.owner.replica ~= nil)
+            and self.owner.replica.inventory or nil
+          local oc = inv ~= nil and inv:GetOpenContainers() or nil
+          local in_oc = (oc ~= nil and oc[container] == true)
+          print("[hslot][vault] client prefab=" .. tostring(container.prefab)
+            .. " nums=" .. tostring(rep ~= nil and rep:GetNumSlots() or "nil")
+            .. " isopen=" .. tostring(rep ~= nil and rep:IsOpen() or "nil")
+            .. " widget_visible=" .. tostring(self.inst ~= nil and self.inst.entity ~= nil
+                and self.inst.entity:IsVisible() or "nil")
+            .. " in_opencontainers=" .. tostring(in_oc))
+        end
       end
     end
 
@@ -1580,12 +1661,18 @@ if not GLOBAL.TheNet:IsDedicated() then
 
     local old_Close = self.Close
     self.Close = function(self, ...)
+      local was_suppressed = self._hslot_suppress
       self._hslot_suppress = false
       if self._hslot_list ~= nil then
         KillHslotList(self)
-        -- 官方 ContainerWidget:Close 不会自己 Hide()，它靠 should_close_widget
-        -- 延后 Kill；期间如果又 Show 出来就会闪一下旧底图，这里直接藏起来
-        self:Hide()
+      end
+      if was_suppressed then
+        -- 关闭瞬间别让旧底图闪一下
+        if self._hslot_keep_visible then
+          HideContents(self)
+        else
+          self:Hide()
+        end
       end
       return old_Close(self, ...)
     end

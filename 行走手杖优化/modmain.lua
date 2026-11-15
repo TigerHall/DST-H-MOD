@@ -2393,9 +2393,27 @@ end)
 
 --骨头碎片1和犬牙1制作海象牙
 if config.enable_walrus_tusk_craft then
+  -- TECH.NONE = 不需要任何科技等级；nounlock = 连"先解锁配方"都不要求，直接可做
   AddRecipe2("walrus_tusk", { Ingredient("boneshard", 1), Ingredient("houndstooth", 1) },
-    TECH.NONE, nil,
+    TECH.NONE, { nounlock = true },
     { "REFINE", })
+
+  -- 步行手杖（cane）的另一条制作路线：海象牙 + 黄金 + 木头 + 树枝
+  -- ⚠️ 官方原配方是 Recipe2("cane", {goldnugget×2, walrus_tusk×1, twigs×4}, TECH.SCIENCE_TWO)
+  -- （scripts/recipes.lua），配方名必须唯一，所以这里用 hcane_walkingcane 作 recipe 名，
+  -- 再用 config.product 指定产物为 cane —— 两条配方并存，材料齐哪条就能用哪条。
+  AddRecipe2("hcane_walkingcane", {
+    Ingredient("walrus_tusk", 1),
+    Ingredient("goldnugget", 2),
+    Ingredient("log", 1),
+    Ingredient("twigs", 2),
+  }, TECH.NONE, {
+    product = "cane",
+    nounlock = true,
+    -- ⚠️ 别用 `L`：那是 modinfo 里的局部变量，modmain 里读未声明的全局
+    -- 会被 strict 直接报错（"variable 'L' is not declared"）。
+    description = "用海象牙与木料制作步行手杖",
+  }, { "TOOLS", })
 
   AddPrefabPostInit("houndbone", function(inst)
     -- 只在服务端生效

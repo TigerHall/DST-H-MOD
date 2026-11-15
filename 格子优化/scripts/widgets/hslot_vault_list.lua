@@ -38,12 +38,17 @@ local PANEL_H = 908
 -- 网格整体左移，让右侧空出的位置刚好包住滚动条
 local GRID_CX = -(PAD_R - PAD_L) / 2
 
--- ⚠️ 关键：面板挂在 controls.containerroot 下，父级已经按 GetHUDScale()
--- （0.6~1.1，再乘分辨率补偿）缩过一遍，所以整块 UI 比「简易存储」小一圈 ——
--- 9-slice 的金边是固定像素厚度，被父级缩完就显得很细，文字/按钮同理。
--- 这里补一档自身缩放，把有效缩放拉回接近 1.0，金边厚度和整体观感才对得上。
--- 想再大/再小只改这一个数。
+-- 自身缩放（基准值；最终大小由 FitPanelSize 按屏幕比例统一覆盖）。
+-- 这里必须留一个初值：ctor 里先 SetScale(PANEL_SCALE)，
+-- 之后首次 OnUpdate 再由 FitPanelSize 乘上目标比例。
 local PANEL_SCALE = 1.25
+-- 面板目标尺寸：**直接按屏幕比例**定，而不是「逻辑尺寸 × HUD 缩放」。
+-- 后者会让不同 HUD 设置 / 分辨率下占屏比例完全不同（1080p 默认 HUD 能到 95% 屏高）。
+-- 这里统一到「高度占 55%、宽度最多 34%」，任何环境下看起来一样大，
+-- 也就能和官方制作栏（约 500×600 / 1080p 下 23%×50%）对得上。
+-- 比例是「目标值」，可缩也可放（不再只缩不放）。
+local TARGET_PANEL_W_RATIO = 0.374   -- 0.34 × 1.1
+local TARGET_PANEL_H_RATIO = 0.605   -- 0.55 × 1.1
 -- 默认位置：直接用「屏幕比例」，任何分辨率 / 宽高比下相对位置都一致。
 -- 左边缘距屏幕左边 10% 宽，上边缘距顶部 30% 高；想微调只改这两个数。
 local DEFAULT_LEFT_RATIO = 0.10
@@ -437,6 +442,11 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
     self.container = container_inst.replica.container
     self.filter = "ALL"
 
+    -- ⚠️ 不要在这里调 GetModConfigData：widget 模块不是 mod 的 main chunk 环境，
+    -- 会抛 "modname must be supplied manually if calling GetModConfigData
+    -- from an environment other than the mod's main chunk"（新档直接报错）。
+    -- 诊断日志统一在 modmain 的 Open hook 里打（那边有 config）。
+
     -- 窗口外框：直接复用官方 9-slice 窗口（「简易存储 3383078008」
     -- terminalwidget.lua:109 用的同一套 TEMPLATES.RectangleWindow），
     -- 上下自带金色装饰冠。
@@ -781,16 +791,15 @@ function HslotVaultList:GetParentScale()
     return g_s.x / lx, g_s.y / ly
 end
 
-function HslotVaultList:ApplyDefaultPos()
-    local sw, sh = TheSim:GetScreenSize()
+-- 标定「父级逻辑单位 → 设备像素」：实测两点取差值，
+-- 差值天然抵消「坐标原点在哪」的不确定性，只留比例。
+function HslotVaultList:MeasureScale()
     local keep = self:GetPosition()
-
-    -- ① 标定「父级逻辑单位 → 设备像素」：实测两点取差值，
-    --    差值天然抵消「坐标原点在哪」的不确定性，只留比例。
     self:SetPosition(keep.x, keep.y, keep.z)
     local a = self:GetWorldPosition()
     self:SetPosition(keep.x + 100, keep.y + 100, keep.z)
     local b = self:GetWorldPosition()
+    self:SetPosition(keep.x, keep.y, keep.z)
 
     local kx = (b.x - a.x) / 100
     local ky = (b.y - a.y) / 100
@@ -799,13 +808,50 @@ function HslotVaultList:ApplyDefaultPos()
         local psx, psy = self:GetParentScale()
         kx, ky = psx, psy
     end
+    return kx, ky
+end
+
+-- 把面板缩放到「目标占屏比例」（可缩可放，所有分辨率/HUD 设置下相对大小一致）
+function HslotVaultList:FitPanelSize()
+    local sw, sh = TheSim:GetScreenSize()
+    local kx, ky = self:MeasureScale()
+    if kx == 0 or ky == 0 then
+        return
+    end
+
+    local lx, ly = self:GetLooseScale()
+    lx = (lx ~= nil and lx ~= 0) and lx or 1
+    ly = (ly ~= nil and ly ~= 0) and ly or 1
+
+    -- 面板此刻在屏幕上的实际像素尺寸
+    local w = PANEL_W * lx * kx
+    local h = PANEL_H * ly * ky
+    if w <= 0 or h <= 0 then
+        return
+    end
+
+    local f = math.min((sw * TARGET_PANEL_W_RATIO) / w, (sh * TARGET_PANEL_H_RATIO) / h)
+    if f > 0 and math.abs(f - 1) > 0.01 then
+        self:SetScale(lx * f)
+    end
+end
+
+function HslotVaultList:ApplyDefaultPos()
+    local sw, sh = TheSim:GetScreenSize()
+    local keep = self:GetPosition()
+
+    local kx, ky = self:MeasureScale()
+    -- 自身缩放（可能被 FitPanelSize 缩过），半宽/半高要乘上它才是真实屏幕尺寸
+    local lx, ly = self:GetLooseScale()
+    lx = (lx ~= nil and lx ~= 0) and lx or 1
+    ly = (ly ~= nil and ly ~= 0) and ly or 1
 
     -- ② 目标面板中心（屏幕绝对坐标，左下角为原点）
     -- 偏移量按屏幕比例算，天然适配任何分辨率 / 宽高比
     local left_px = sw * (self.x_ratio or DEFAULT_LEFT_RATIO)
     local top_px = sh * DEFAULT_TOP_RATIO
-    local want_cx = left_px + (PANEL_W / 2) * kx
-    local want_cy = sh - top_px - (PANEL_H / 2) * ky
+    local want_cx = left_px + (PANEL_W / 2) * lx * kx
+    local want_cy = sh - top_px - (PANEL_H / 2) * ly * ky
 
     local ha = self.h_anchor or ANCHOR_LEFT
     local va = self.v_anchor or ANCHOR_BOTTOM
@@ -949,17 +995,17 @@ function HslotVaultList:OnUpdate(dt)
     -- GetScale() 拿不到父级缩放，算出来的屏幕半宽是错的
     if not self._pos_applied then
         self._pos_applied = true
+        -- 先按占屏比例上限缩一次（1080p + 默认 HUD 时面板会撑满屏）
+        self:FitPanelSize()
         if saved_pos[PosKeyOf(self.container_key)] == nil then
             self:ApplyDefaultPos()
         end
     end
 
-    -- 兜底：官方 ContainerWidget 只要被任何途径重新显示（refresh、暂停恢复、
-    -- 别的 MOD 调 Show），立刻再藏回去
-    local w = self.container_widget
-    if w ~= nil and w.inst ~= nil and w.inst:IsValid() and w.shown then
-        w:Hide()
-    end
+    -- 兜底：官方的底图/按钮/槽位被任何途径（refresh、暂停恢复、别的 MOD 调 Show）
+    -- 重新显示时再藏回去。
+    -- ⚠️ 只藏「内容」，绝不藏 widget 本身 —— widget 不可见会让客户端认为容器没打开，
+    -- 导致 Shift+左键转移、制作时材料识别全部失效（见 modmain 里的详细注释）。
 
     -- ⚠️ 合并堆叠时容器不推 itemget（components/container.lua:494/511 直接 return），
     -- 只改物品自己的 stacksize 网络变量，我们收不到任何事件。
@@ -967,6 +1013,22 @@ function HslotVaultList:OnUpdate(dt)
     self._poll = (self._poll or 0) + dt
     if self._poll >= POLL_INTERVAL then
         self._poll = 0
+        local w = self.container_widget
+        if w ~= nil and w.inst ~= nil and w.inst:IsValid() then
+            if w._hslot_keep_visible then
+                -- 保可见模式：只藏内容，widget 本身必须 visible（否则容器不算已打开）
+                if w.bgimage ~= nil and w.bgimage.shown then w.bgimage:Hide() end
+                if w.bganim ~= nil and w.bganim.shown then w.bganim:Hide() end
+                if w.button ~= nil and w.button.shown then w.button:Hide() end
+                if w.inv ~= nil then
+                    for _, slot in pairs(w.inv) do
+                        if slot ~= nil and slot.shown then slot:Hide() end
+                    end
+                end
+            elseif w.shown then
+                w:Hide()
+            end
+        end
         local sig = self:ContainerSignature()
         if sig ~= self._sig then
             self._sig = sig

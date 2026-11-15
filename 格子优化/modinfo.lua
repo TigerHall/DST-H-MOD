@@ -47,7 +47,7 @@ end
 
 --  基础信息
 name = en_zh("H-SLOT", "H-无限格子")
-version = "3.6"
+version = "3.7"
 description = en_zh("V" .. version .. [[
 
 Items in Chester's and Hutch's grids do not spoil. Items in Shadow Chester's grid spoil at an accelerated rate, while items in Ice Chester's grid are preserved (remain fresh).
@@ -228,5 +228,18 @@ configuration_options = {
     "On (default): press H to toggle the space",
     "关闭：只能右键检查蓝月眼打开",
     "Off: only right-click inspecting the moon eye works"
+  ),
+  addTitle("Debug", "调试"),
+  addConfig(
+    "vault_debug",
+    "月眼仓库诊断日志",
+    "Vault debug logging",
+    false,
+    "排查与其他 MOD 的兼容问题时临时打开；正常游玩请关闭",
+    "Turn on only when troubleshooting mod compatibility",
+    "开启：打开月眼仓库时在日志里输出容器信息",
+    "On: log container info when opening the vault",
+    "关闭（默认）：不输出",
+    "Off (default): silent"
   ),
 }
