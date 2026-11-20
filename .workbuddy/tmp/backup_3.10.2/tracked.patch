@@ -1,0 +1,875 @@
+diff --git "a/\346\240\274\345\255\220\344\274\230\345\214\226/modinfo.lua" "b/\346\240\274\345\255\220\344\274\230\345\214\226/modinfo.lua"
+index 995fbef..70b50f6 100644
+--- "a/\346\240\274\345\255\220\344\274\230\345\214\226/modinfo.lua"
++++ "b/\346\240\274\345\255\220\344\274\230\345\214\226/modinfo.lua"
+@@ -47,7 +47,7 @@ end
+ 
+ --  基础信息
+ name = en_zh("H-SLOT", "H-无限格子")
+-version = "3.8"
++version = "3.10.2"
+ description = en_zh("V" .. version .. [[
+ 
+ Items in Chester's and Hutch's grids do not spoil. Items in Shadow Chester's grid spoil at an accelerated rate, while items in Ice Chester's grid are preserved (remain fresh).
+diff --git "a/\346\240\274\345\255\220\344\274\230\345\214\226/modmain.lua" "b/\346\240\274\345\255\220\344\274\230\345\214\226/modmain.lua"
+index 9deeff0..c9d285b 100644
+--- "a/\346\240\274\345\255\220\344\274\230\345\214\226/modmain.lua"
++++ "b/\346\240\274\345\255\220\344\274\230\345\214\226/modmain.lua"
+@@ -1508,7 +1508,8 @@ end)
+ 
+ -- 客户端：调大这两个容器按钮的字体
+ if not GLOBAL.TheNet:IsDedicated() then
+-  local HslotVaultList = require("widgets/hslot_vault_list")
++  -- ⭐ 数据版面板：后台是 hspace 记录池，不再依赖真实容器
++  local HspacePanel = require("widgets/hspace_panel")
+ 
+   -- 月眼仓库：四个口袋空间共用同一套列表界面，只换底色 / 关闭用的 key。
+   --   r,g,b   : 9-slice 底色的 RGB —— 取对应**宝石**的色调
+@@ -1559,13 +1560,26 @@ if not GLOBAL.TheNet:IsDedicated() then
+   --   而"手上的物品"（ActiveItem）就渲染在 mousefollow 下面
+   --   （inventorybar.lua:1504 `mousefollow:AddChild(ItemTile(item))`）。
+   --   末尾追加的 root 会盖住 mousefollow → 拿起物品往仓库里放时看不见手持图标。
+-  -- ✅ 挂到 controls.containerroot：官方容器 UI 的家。
+-  --   它自带 MIDDLE 锚点 + SCALEMODE_PROPORTIONAL（controls.lua:261-264），
+-  --   缩放由 Controls:SetHUDSize 统一设为 GetHUDScale()（controls.lua:563），
+-  --   层级又低于 mousefollow —— 尺寸自适应和 z 序一次都对。
++  --
++  -- ✅ 照搬「简易存储 3383078008」main/ui.lua:10-20 的做法：
++  --   挂到 containerroot.parent（controls.lua:265 把 self.containerroot 重赋值为内层
++  --   Widget，所以这里拿到的是**外层** containerroot）—— 在 mousefollow 之前建，z 序安全，
++  --   且不会被官方容器 UI 的对齐/隐藏逻辑带着动。
++  --   缩放由自己用 TheFrontEnd:GetHUDScale() 设定并 hook SetHUDSize 实时跟随，
++  --   和简易存储 ui.lua:15-20 完全一致；面板自身只留一个固定设计缩放（不再做
++  --   那种基于 GetScreenSize 的补偿 —— 那套在两种分辨率下算出的值几乎一样，是失效的）。
+   AddClassPostConstruct("widgets/controls", function(self)
+     local Widget = GLOBAL.require("widgets/widget")
+-    self.hslot_vault_root = self.containerroot:AddChild(Widget("hslot_vault_root"))
++    local root = self.containerroot.parent -- 外层 containerroot（z 序在 mousefollow 之前）
++    self.hslot_vault_root = root:AddChild(Widget("hslot_vault_root"))
++    self.hslot_vault_root:SetScale(GLOBAL.TheFrontEnd:GetHUDScale())
++
++    local old_SetHUDSize = self.SetHUDSize
++    function self:SetHUDSize(...)
++      self.hslot_vault_root:SetScale(GLOBAL.TheFrontEnd:GetHUDScale())
++      return old_SetHUDSize(self, ...)
++    end
++
+   end)
+ 
+   -- 打开/关闭官方制作栏时，月眼仓库面板跟着让位
+@@ -1599,6 +1613,31 @@ if not GLOBAL.TheNet:IsDedicated() then
+       MoveVaultLists()
+       return ret
+     end
++
++    -- ESC 关闭月眼仓库面板（照搬简存 main/ui.lua:106-118 的 OnControl hook）。
++    -- 面板自己不是 screen、吃不到 CONTROL_PAUSE，所以在 playerhud 层拦；
++    -- 只在有仓库面板打开时吞掉 ESC，否则交还原版（保留暂停菜单）。
++    local old_OnControl = self.OnControl
++    function self:OnControl(control, down)
++      if control == CONTROL_PAUSE and not down then
++        local controls = self.controls
++        if controls ~= nil and controls.containers ~= nil then
++          for _, w in pairs(controls.containers) do
++            local list = w ~= nil and w._hslot_list or nil
++            if list ~= nil and list.inst ~= nil and list.inst:IsValid() then
++              -- ⚠️ 旧面板叫 DoCloseButton，搬来的简易存储面板叫 DoCloseAction，
++              -- 直接写死一个名字会 attempt to call a nil value
++              local closefn = list.DoCloseButton or list.DoCloseAction
++              if closefn ~= nil then
++                closefn(list)
++                return true
++              end
++            end
++          end
++        end
++      end
++      return old_OnControl(self, control, down)
++    end
+   end)
+ 
+   AddClassPostConstruct("widgets/containerwidget", function(self)
+@@ -1688,10 +1727,24 @@ if not GLOBAL.TheNet:IsDedicated() then
+           self:Hide()
+         end
+         KillHslotList(self)
+-        local list = HslotVaultList(self.owner, container, theme)
++        -- ⭐ 所有月眼统一走 HspacePanel：
++        --    UI = 简易存储布局（680×420 / 15 列 × 6 行 / 格子 64px）
++        --    数据 = 真实容器（和旧逻辑一致，Insight、右键检查全部保留）
++        --    vault_id 只用于区分各月眼的位置记忆
++        local list = HspacePanel(self.owner, theme.key or "hslot")
+         list.container_widget = self
+         self._hslot_list = list
+-        -- 挂到官方容器层，尺寸自适应 + 层级都跟官方容器一致。
++        local ctr0 = ThePlayer ~= nil and ThePlayer.HUD ~= nil
++          and ThePlayer.HUD.controls or nil
++        if ctr0 ~= nil then
++          ctr0.hspace_panel = list
++        end
++        local opened = {}
++        if container ~= nil and container:IsValid() then
++          opened[container.GUID] = container
++        end
++        list:Open(opened)
++        -- 挂到 hslot_vault_root（缩放跟随 GetHUDScale，z 序在 mousefollow 之前）。
+         -- ⚠️ 兜底绝不能回退到 self：官方 widget 已被隐藏，挂在它下面会一起隐身
+         local vault_root = nil
+         if ThePlayer ~= nil and ThePlayer.HUD ~= nil and ThePlayer.HUD.controls ~= nil then
+@@ -1706,6 +1759,15 @@ if not GLOBAL.TheNet:IsDedicated() then
+           list:MoveToFront()
+         end
+ 
++        -- ⭐ 照搬简存 main/ui.lua:59：打开面板时把官方容器层整体右移 300，
++        -- 让面板不遮住同时打开的其它容器格子（锅等露在面板右侧）。
++        -- hslot 面板挂在 containerroot.parent 下，移内层 containerroot 不会带动面板。
++        local hud = ThePlayer ~= nil and ThePlayer.HUD or nil
++        local ctr = hud ~= nil and hud.controls or nil
++        if ctr ~= nil and ctr.containerroot ~= nil then
++          ctr.containerroot:SetPosition(300, 0)
++        end
++
+         -- 诊断（modinfo 里「月眼仓库诊断日志」开关打开时才输出）。
+         -- ⚠️ 必须放在 modmain 里读 config：widget 模块不是 mod 的 main chunk，
+         -- 在那边调 GetModConfigData 会抛 modutil 的报错。
+@@ -1800,6 +1862,12 @@ if not GLOBAL.TheNet:IsDedicated() then
+         else
+           self:Hide()
+         end
++        -- 官方容器层归位（对应打开时的右移 300，简存 ui.lua:83）
++        local hud = ThePlayer ~= nil and ThePlayer.HUD or nil
++        local ctr = hud ~= nil and hud.controls or nil
++        if ctr ~= nil and ctr.containerroot ~= nil then
++          ctr.containerroot:SetPosition(0, 0)
++        end
+       end
+       return old_Close(self, ...)
+     end
+@@ -1827,3 +1895,392 @@ if not GLOBAL.TheNet:IsDedicated() then
+     end
+   end)
+ end
++
++-- ═══════════════════════════════════════════════════════════════════
++-- 蓝眼空间数据仓库（hspace）
++--
++-- 思路：物品以「纯数据记录」存在，不占世界实体、不占容器槽位，
++--       容量上限只看存档体积，不看世界里有多少箱子。
++--   序列化闭环  ← components/unwrappable.lua:47-70 / 80-138 / 182-199
++--   独立文件持久化 ← 简易存储 3383078008 / ss_util/persistentdata.lua
++--
++-- 分阶段：
++--   期1（本段）数据层 + 持久化 + 旧容器迁移 + console 验证
++--   期2       假容器（FakeContainer/FakeItem）+ UI 接入
++--   期3       shift+左键 / 右键 / 抓取 / 制作栏伪造 opencontainers
++-- ═══════════════════════════════════════════════════════════════════
++local HSpace = require("hspace/datastore")
++-- ⚠️ 必须在 modmain 执行期间 require 并注册：RPC 注册函数只有在这个阶段调用才有效，
++-- 拖到运行时（比如第一次开面板）再注册，MOD_RPC 已经冻结，包发不出去。
++local HSpaceRPC = require("hspace/rpc")
++
++local _hs_rpc_count = 0
++for name, fn in pairs(HSpaceRPC.ServerHandlers) do
++  AddModRPCHandler("hspace", name, fn)
++  _hs_rpc_count = _hs_rpc_count + 1
++end
++-- ⚠️ server→client 方向也必须在**两端**都调 AddClientModRPCHandler：
++--    它的 id 是「按注册顺序递增」的（networkclientrpc.lua:1851-1864），
++--    服务端不注册就拿不到 id，SendModRPCToClient 会永远失败（日志提示"RPC 未注册"）。
++--    专用服务器上该函数可能不存在，所以判空。
++for name, fn in pairs(HSpaceRPC.ClientHandlers) do
++  if AddClientModRPCHandler ~= nil then
++    AddClientModRPCHandler("hspace", name, fn)
++    _hs_rpc_count = _hs_rpc_count + 1
++  end
++end
++print("[hspace] 已注册 " .. tostring(_hs_rpc_count) .. " 个 RPC 处理函数")
++
++-- 数据化的空间 id（存档命名空间，和 VAULT_THEMES 的 key 对齐）
++-- 期1 只做蓝眼；四色月眼加到这张表即可复用整套逻辑
++local HSPACE_IDS = { "hslot" }
++
++-- ⚠️ 自动迁移：第一次进游戏时把旧的 160 格容器内容搬进数据仓库。
++-- 迁移只做一次（meta.migrated 落盘）。数据搬完旧容器是空的，
++-- 靠 hspace_migrate("hslot", true) 才能重跑。
++local HSPACE_AUTO_MIGRATE = false
++
++-- -------------------------------------------------------------------
++-- tag 备份
++-- 服务端没有枚举实体 tag 的 API（客户端靠 classified），只能 hook
++-- AddTag/RemoveTag 自己记一份。参考简易存储 main/hook.lua:177-191。
++-- ⚠️ 用 `or {}` 而不是直接 `= {}`，避免和别的 mod 互相清空
++-- -------------------------------------------------------------------
++AddGlobalClassPostConstruct("entityscript", "EntityScript", function(self)
++  self.tags_backup = self.tags_backup or {}
++  local _AddTag = self.AddTag
++  function self:AddTag(tag)
++    self.tags_backup[tag] = 1
++    return _AddTag(self, tag)
++  end
++  local _RemoveTag = self.RemoveTag
++  function self:RemoveTag(tag)
++    self.tags_backup[tag] = nil
++    return _RemoveTag(self, tag)
++  end
++end)
++
++-- ⚠️ 前向声明必须放在 AddGamePostInit **之前**：
++-- 那个闭包在下面几行就创建了，Lua 在编译期就要决定 HSpaceMigrate 是 local
++-- 还是全局。声明写在后面的话闭包会编成全局访问，运行时是 nil，迁移静默失败。
++local HSpaceMigrate
++
++-- -------------------------------------------------------------------
++-- 世界启动：载入各库 + 周期兜底刷盘
++-- -------------------------------------------------------------------
++AddGamePostInit(function()
++  if not TheWorld.ismastersim then
++    return
++  end
++
++  for _, id in ipairs(HSPACE_IDS) do
++    local store = HSpace.Get(id)
++    if store ~= nil then
++      store:Load()
++    end
++  end
++
++  -- MarkDirty 已有 5 秒 debounce，这里再兜一层：
++  -- 任何忘了 MarkDirty 的改动路径也不会把数据搁在内存里。
++  TheWorld:DoPeriodicTask(30, function()
++    HSpace.FlushAll()
++  end)
++
++  -- ⭐ 数据回迁：之前迁进记录池的物品，还回真实容器
++  --    （方案从"虚拟数据"改回"160 格真实容器"，池里剩下的东西要物归原处）
++  TheWorld:DoTaskInTime(4, function()
++    local s = HSpace.Get("hslot")
++    if s == nil then
++      return
++    end
++    s:WhenReady(function(store)
++      if store:Count() == 0 then
++        return
++      end
++      local c = TheWorld:GetPocketDimensionContainer("hslot")
++      if c == nil or not c:IsValid() or c.components.container == nil then
++        print("[hspace] 回迁跳过：找不到口袋容器")
++        return
++      end
++      local total = store:Count()
++      local put = 0
++      local guard = 0
++      while store:Count() > 0 and guard < total + 5 do
++        guard = guard + 1
++        local item = store:SpawnRecord(1, nil, nil, nil)
++        if item == nil then
++          break
++        end
++        if c.components.container:GiveItem(item) then
++          put = put + 1
++        else
++          item:Remove()
++          break
++        end
++      end
++      store:Flush()
++      print(string.format("[hspace] 数据回迁完成：%d/%d 件放回容器，余 %d 条",
++        put, total, store:Count()))
++    end)
++  end)
++
++  -- 自动迁移：等世界实体全部加载完再动手（容器是世界加载时从存档重建的）
++  if HSPACE_AUTO_MIGRATE then
++    TheWorld:DoTaskInTime(3, function()
++      if HSpaceMigrate ~= nil then
++        HSpaceMigrate("hslot", false)
++      else
++        print("[hspace] HSpaceMigrate 未定义，自动迁移跳过")
++      end
++    end)
++  end
++end)
++
++-- -------------------------------------------------------------------
++-- 旧 160 格容器 → 数据记录
++-- -------------------------------------------------------------------
++local function HSpacePushToAll(id)
++  if AllPlayers == nil then
++    return
++  end
++  for _, pl in pairs(AllPlayers) do
++    if pl ~= nil and pl:IsValid() then
++      HSpaceRPC.PushSnapshot(pl, id)
++    end
++  end
++end
++
++HSpaceMigrate = function(id, force, _depth)
++  id = id or "hslot"
++  _depth = _depth or 0
++  -- ⚠️ 容器组件是异步初始化的，要重试；但绝不能无上限递归，
++  -- 万一容器永远不初始化就是一个死循环
++  if _depth > 20 then
++    print("[hspace] 容器组件迟迟未就绪，放弃迁移：" .. id)
++    return
++  end
++
++  local store = HSpace.Get(id)
++  if store == nil then
++    print("[hspace] 只能在游戏内服务端执行")
++    return
++  end
++
++  store:WhenReady(function(s)
++    if s.meta.migrated and not force then
++      print("[hspace] " .. id .. " 已迁移过，跳过（第二个参数传 true 可强制重跑）")
++      return
++    end
++
++    local container_inst = TheWorld:GetPocketDimensionContainer(id)
++    if container_inst == nil or not container_inst:IsValid() then
++      -- 新存档 / 从没打开过月眼：容器还没被创建，等玩家第一次打开时再迁
++      print("[hspace] 找不到口袋空间容器，稍后再试：" .. tostring(id))
++      return
++    end
++    if container_inst.components.container == nil then
++      TheWorld:DoTaskInTime(0, function()
++        HSpaceMigrate(id, force, _depth + 1)
++      end)
++      return
++    end
++
++    local before = s:Count()
++    print(string.format("[hspace] 开始迁移 %s：容器现有 %d 格，库里已有 %d 条",
++      id, container_inst.components.container.numslots or 0, before))
++
++    local moved, kept = s:AddContainer(container_inst)
++    s.meta.migrated = true
++    s.meta.migrated_at = GetTime()
++    s:Flush(function()
++      -- ⚠️ 回调拿不到 success（TheFrontEnd 存在时官方不传参），别打印 tostring(ok)
++      print(string.format("[hspace] %s 迁移完成：%d 件入库，%d 件保留，现共 %d 条",
++        id, moved, kept, s:Count()))
++      -- 迁移完立刻把新数据推给所有开着面板的玩家
++      HSpacePushToAll(id)
++    end)
++  end)
++end
++
++if HSPACE_AUTO_MIGRATE then
++  -- 世界加载后容器已经重建好了，但组件可能是异步补的，这里再兜一次
++  AddPrefabPostInit("hslot_container", function(inst)
++    if not TheWorld.ismastersim then
++      return
++    end
++    inst:DoTaskInTime(1, function()
++      HSpaceMigrate("hslot", false)
++    end)
++  end)
++end
++
++-- -------------------------------------------------------------------
++-- Inventory 补充方法：把鼠标上的物品放进目标容器
++-- ⚠️ 官方 Inventory 没有 MoveItemFrom*Active（只有 MoveItemFrom*Slot），
++--    这是简易存储自己挂的钩子，搬过来。
++-- -------------------------------------------------------------------
++AddComponentPostInit("inventory", function(self)
++  function self:MoveItemFromAllOfActive(container)
++    local item = self:GetActiveItem()
++    if item == nil or container == nil then
++      return
++    end
++    local c = container.components ~= nil and container.components.container or nil
++    if c == nil or not c:IsOpenedBy(self.inst) then
++      return
++    end
++    c.currentuser = self.inst
++    if c:CanTakeItemInSlot(item) then
++      self:RemoveItem(item, true)
++      if not c:GiveItem(item, nil, nil, false) then
++        self:GiveActiveItem(item)
++      end
++    end
++    c.currentuser = nil
++  end
++
++  function self:MoveItemFromOneOfActive(container)
++    local item = self:GetActiveItem()
++    if item == nil or container == nil
++      or item.components == nil or item.components.stackable == nil then
++      return
++    end
++    local c = container.components ~= nil and container.components.container or nil
++    if c == nil or not c:IsOpenedBy(self.inst) then
++      return
++    end
++    c.currentuser = self.inst
++    local one = item.components.stackable:Get(1)
++    if one ~= nil then
++      one.prevslot = nil
++      if not c:GiveItem(one) then
++        item.components.stackable:Put(one)
++      end
++    end
++    c.currentuser = nil
++  end
++end)
++
++-- -------------------------------------------------------------------
++-- 面板关闭回调（关闭按钮 / ESC 都走这里）
++-- 后台容器为了「材料识别」还是开着的，所以仍然走原来的 toggle RPC 关掉它，
++-- 并把打开时右移的 containerroot 复位。
++-- -------------------------------------------------------------------
++AddClassPostConstruct("widgets/controls", function(self)
++  function self:CloseHspacePanel(vault_id)
++    print("[hspace][panel] 关闭面板：" .. tostring(vault_id))
++    local pocket = MOD_RPC ~= nil and MOD_RPC["hslot_pocket"] or nil
++    local rpc = pocket ~= nil and pocket["toggle"] or nil
++    if rpc ~= nil then
++      SendModRPCToServer(rpc, vault_id or "hslot")
++    else
++      print("[hspace][panel] 找不到 toggle RPC，容器可能还开着")
++    end
++    if self.containerroot ~= nil then
++      self.containerroot:SetPosition(0, 0)
++    end
++  end
++end)
++
++-- -------------------------------------------------------------------
++-- console 验证入口
++--   hspace_status("hslot")      看条数 / 总件数 / 是否已迁移
++--   hspace_migrate("hslot")     手动把旧容器搬进数据仓库
++--   hspace_put(1)               把背包第 1 格存进库
++--   hspace_give(1, 5)           把第 1 条记录取出 5 个丢到脚下
++-- -------------------------------------------------------------------
++GLOBAL.hspace_status = function(id)
++  id = id or "hslot"
++  local store = HSpace.Get(id)
++  if store == nil then
++    print("[hspace] 只能在游戏内服务端执行")
++    return
++  end
++  store:WhenReady(function(s)
++    print(string.format("[hspace] %s：%d 条记录，共 %d 件，migrated=%s，ready=%s，dirty=%s",
++      s.id, s:Count(), s:TotalStack(),
++      tostring(s.meta.migrated), tostring(s.ready), tostring(s.dirty)))
++    for i = 1, math.min(s:Count(), 10) do
++      local rec = s:Get(i)
++      local view = rec.view or {}
++      print(string.format("  #%d %s x%d%s",
++        i, tostring(view.name or rec.prefab),
++        view.stacksize or 1,
++        view.percent ~= nil and string.format(" (%.0f%%)", view.percent * 100) or ""))
++    end
++  end)
++end
++
++GLOBAL.hspace_migrate = HSpaceMigrate
++
++-- ⚠️ console 里 ThePlayer 指向的是**客户端实体**，没有 components。
++-- 服务端玩家实体要从 AllPlayers[userid] 取（单机同样适用）。
++local function HSpaceServerPlayer()
++  if ThePlayer == nil then
++    return nil
++  end
++  local sp = (AllPlayers ~= nil and AllPlayers[ThePlayer.userid]) or nil
++  if sp ~= nil then
++    return sp
++  end
++  return TheWorld.ismastersim and ThePlayer or nil
++end
++
++-- 存物品进数据仓库（期1 验证用）
++-- slot 不传 = 鼠标手持物品，没有就取背包第 1 格；传了 = 取背包第 slot 格
++GLOBAL.hspace_put = function(slot)
++  local store = HSpace.Get("hslot")
++  if store == nil then
++    print("[hspace] 只能在游戏内服务端执行")
++    return
++  end
++  local pl = HSpaceServerPlayer()
++  if pl == nil or pl.components.inventory == nil then
++    print("[hspace] 找不到服务端玩家实体")
++    return
++  end
++  local inv = pl.components.inventory
++  local item = nil
++  if slot ~= nil then
++    item = inv:GetItemInSlot(slot)
++  else
++    item = inv:GetActiveItem() or inv:GetItemInSlot(1)
++  end
++  if item == nil then
++    print("[hspace] 没找到要存的物品（试试 hspace_put(1)）")
++    return
++  end
++  store:WhenReady(function(s)
++    if not item:IsValid() then
++      return
++    end
++    local prefab = item.prefab
++    local n = item.components.stackable ~= nil
++      and item.components.stackable:StackSize() or 1
++    -- 先脱离背包再入库，避免 Remove 时背包槽位状态残留
++    pl.components.inventory:RemoveItem(item, true, false)
++    local index, err = s:AddItem(item)
++    if index == nil then
++      print("[hspace] 入库失败：" .. tostring(err))
++    else
++      print(string.format("[hspace] 已存入 %s x%d → #%d（共 %d 条记录）",
++        prefab, n, index, s:Count()))
++    end
++  end)
++end
++
++GLOBAL.hspace_give = function(index, count)
++  local store = HSpace.Get("hslot")
++  if store == nil then
++    print("[hspace] 只能在游戏内服务端执行")
++    return
++  end
++  store:WhenReady(function(s)
++    local item = s:SpawnRecord(index, nil, count, HSpaceServerPlayer())
++    if item == nil then
++      print("[hspace] 取不出来，index 越界？" .. tostring(index))
++    else
++      print("[hspace] 取出：" .. tostring(item.prefab))
++    end
++  end)
++end
+diff --git "a/\346\240\274\345\255\220\344\274\230\345\214\226/scripts/widgets/hslot_vault_list.lua" "b/\346\240\274\345\255\220\344\274\230\345\214\226/scripts/widgets/hslot_vault_list.lua"
+index a8b9fb7..8f1ebbe 100644
+--- "a/\346\240\274\345\255\220\344\274\230\345\214\226/scripts/widgets/hslot_vault_list.lua"
++++ "b/\346\240\274\345\255\220\344\274\230\345\214\226/scripts/widgets/hslot_vault_list.lua"
+@@ -18,57 +18,51 @@ local TEMPLATES = require("widgets/redux/templates")
+ -- ====================================================================
+ -- 尺寸
+ -- ====================================================================
+--- 一行 10 格（简易存储 3383078008 用的是 15 格，但那是全屏面板；
+--- 我们还要给标题/筛选/按钮留地方，10 格是 160 格 ÷ 16 行的整数倍）。
+--- 间距 84 是在官方箱子 80 上放大一档，SLOT_SCALE 跟着等比走。
++-- ⭐ 完全照搬「简易存储 3383078008」的分层缩放架构（terminalwidget.lua）：
++--   · 面板本身**不缩放**（self:SetScale 已移除）
++--   · 只有网格层 gridroot:SetScale(0.6)（terminalwidget.lua:813-815 同款）
++--   · 边框/筛选/按钮都在不缩放的面板层，用绝对设计尺寸（简存就是这么排的）
++-- 这样格子屏幕大小和简存严格一致——两者缩放链逐级对称，没有补偿系数。
+ local COLS = 10
+-local ROWS = 9       -- 可视行数
++local ROWS = 9       -- 可视行数（竖向长条保留，用户确认 OK）
+ local EXTRA_ROWS = 1 -- 额外渲染的行数（滚动时从底部滑上来，不会突现）
+-local CELL = 80      -- 官方箱子槽位间距，SLOT_SCALE 1.0 = 和普通空间同款大小
+-local SLOT_SCALE = CELL / 80
+-local GRID_W = COLS * CELL
+-local GRID_H = ROWS * CELL
++local CELL = 80      -- 格子设计间距（gridroot 内部坐标，和简存 widget_width 一致）
++local GRID_SCALE = 0.6 -- ⭐ 网格层缩放，和简存 gridroot 的 0.6 同值
++local GRID_W = COLS * CELL       -- gridroot 内部尺寸 800
++local GRID_H = ROWS * CELL       --                 720
++local SCR_W, SCR_H = GRID_W, GRID_H -- TrueScrollList 裁剪区（gridroot 内部坐标）
+ local SCROLLBAR_GAP = 18 -- 滚动条离格子区的距离（和格子拉开，别贴着）
+ 
+--- 左右非对称留白：左边只留避让金边的量，右边包住「滚动条 + 呼吸」
+-local PAD_L = 6
+-local PAD_R = 16
+-local PANEL_W = GRID_W + PAD_L + PAD_R -- = 800 + 22 = 822
+-local PANEL_H = 908
+--- 网格整体左移，让右侧空出的位置刚好包住滚动条
+-local GRID_CX = -(PAD_R - PAD_L) / 2
+-
+--- 自身缩放：**固定常数，不再按屏幕比例算**。
+--- 父级是 controls.containerroot（controls.lua:261-264 设了 MIDDLE 锚点 +
+--- SCALEMODE_PROPORTIONAL），引擎已经按「1920×1200 设计尺寸」把整层等比缩过，
+--- 所以这里只要一个常数，1080p / 2K / 4K 下占屏比例就完全一致。
+--- 这和「简易存储 3383078008」的做法一致（terminalwidget.lua:813 的
+--- `gridroot:SetScale(0.6)` 是同一个道理：设计尺寸固定，只套一个固定缩放）。
+--- 0.79 偏小 → 放大 1/3 到 1.05。想大想小只改这一个数。
+-local PANEL_SCALE = 1
++-- 面板设计尺寸（面板不缩放，这些就是最终设计单位）。
++-- 网格缩放后屏幕尺寸 = GRID_W×0.6=480 宽、GRID_H×0.6=432 高。
++-- 面板包住网格 + 顶部筛选行 + 底部按钮行，竖向长条。
++local PAD_X = 16
++local PANEL_W = GRID_W * GRID_SCALE + PAD_X * 2 -- = 480 + 32 = 512
++local PANEL_TOP = 58  -- 顶部筛选行高度
++local PANEL_BOT = 58  -- 底部按钮行高度
++local PANEL_H = GRID_H * GRID_SCALE + PANEL_TOP + PANEL_BOT -- = 432+116 = 548
++local GRID_CX = 0
++local GRID_Y = 0      -- 网格中心（面板坐标系），筛选/按钮分列上下
+ -- 默认位置：屏幕正中（位置 0,0 = 屏幕中心，因为下面设了 MIDDLE 锚点）。
+ -- 打开官方制作栏时整体右移这么多让位，避免压住左侧制作栏
+ -- （同简易存储 scripts/widgets/terminalwidget.lua:47-51 的 260）。
+ local CRAFTING_OFFSET_X = 260
+ 
+--- ⚠️ 垂直排布按「金边」卡死：
+---   金边下沿 → 筛选按钮 → 滚动列表 → 数字信息 → 两个按钮
+---   → 底部金边
+-local FILTER_ICON = 76
+-local FILTER_GAP = 88        -- 选中时按钮放大到 1.15 倍，间距留够别互相压
++-- ⚠️ 垂直排布（面板总高 548，半高 274）：
++--   顶部筛选行(高58) → 网格(高432) → 底部按钮行(高58)
++--   网格中心 0，占 -216~+216；筛选行 +216~+274；按钮行 -274~-216。
++local FILTER_ICON = 40      -- 筛选图标（简存 button_size=39，接近）
++local FILTER_GAP = 46       -- 5 个图标间距，别互相压
+ local FILTER_SCALE_ON = 1.15 -- 选中时整个按钮放大
+--- 头部只有一行：左侧筛选图标，右侧「n/N + 红色宝箱命中数」
+--- 竖向（面板半高 454，总高固定 908）：
+---   20(顶留白) + 76(图标) + 6 + 720(网格) + 8 + 64(按钮) + 14(底留白) = 908
+-local FILTER_Y = 396  -- 图标 358~434，顶部留白 20
+-local GRID_Y = -8     -- 网格 352~-368，与筛选底留 6
+--- 按钮中心固定在 -408，只加高时上下各长一点：
+--- 高 76 → -370~-446（与网格底 -368 留 2、离面板底 -454 留 8）
+-local BOTTOM_Y = -408
+-local BUTTON_W, BUTTON_H = 116, 76
+-local SORT_X, CLOSE_X = -85, 85
+-local EDGE = 2             -- 内容离面板左右边缘的距离
+-local FILTER_X_OFFSET = 14 -- 筛选按钮整体再往右挪一点
++local FILTER_Y = 245        -- 筛选行中心（+216~+274 的中点）
++local BOTTOM_Y = -245       -- 按钮行中心
++local BUTTON_W, BUTTON_H = 96, 46
++local SORT_X, CLOSE_X = -70, 70
++local EDGE = 2              -- 内容离面板左右边缘的距离
++local FILTER_X_OFFSET = 6   -- 筛选按钮整体再往右挪一点
++-- 数量文字（右上角 n/N），简存 text_size 约 30
++local INFO_SIZE = 30
++local INFO_W = 160
+ -- 筛选按钮底衬（filterslot_bg.tex）：false = 透明，只留按钮边框和图标
+ local FILTER_BG_VISIBLE = false
+ 
+@@ -96,8 +90,8 @@ local DRAG_EXCLUDE_GRID = false
+ local REFRESH_INTERVAL = 0.12
+ local POLL_INTERVAL = 0.3
+ 
+--- 面板由 modmain 挂到 controls.containerroot 下（MIDDLE 锚点 + SCALEMODE_PROPORTIONAL，
+--- 缩放由 Controls:SetHUDSize 设成 GetHUDScale()），再乘上面的 PANEL_SCALE 补偿。
++-- 面板由 modmain 挂到 hslot_vault_root（controls 下，GetHUDScale 跟随）。
++-- 面板自身不缩放；只有 gridroot 缩 0.6，和简存的分层完全一致。
+ 
+ -- ⚠️ 面板打开期间屏蔽相机缩放。
+ -- 官方靠 playercontroller.lua:4463 的 HUD.controls.craftingmenu.focus 来阻止
+@@ -319,12 +313,13 @@ local function CreateCells(context, list_root)
+             ((ROWS - 1) * CELL) / 2 - row * CELL
+         )
+ 
+-        -- 格子就是「普通月眼空间」同款的官方 inv_slot.tex
++        -- ⭐ 官方 InvSlot，**不碰 scale** —— invslot.lua:466-467 构造末尾自带
++        -- base_scale=1.5，这就是「真实格子」尺寸。之前 SetScale(1.0) 覆盖掉，
++        -- 图标小一圈，正是格子比简存小的根因。
++        -- ⚠️ 不要照抄简存的 SetTile(ItemTile())：简存用的是魔改 terminal_itemtile
++        -- （支持 invitem=nil），官方 ItemTile 在 itemtile.lua:94 会索引 nil 直接崩。
++        -- 空格子不设 tile，等 UpdateCell 拿到真实 item 再 SetTile(ItemTile(item))。
+         local slot = InvSlot(1, "images/hud.xml", "inv_slot.tex", context.owner, context.container)
+-        -- 等比放大槽位（官方 containerwidget 的 slotscale 也是这么改 base_scale 的）
+-        slot.highlight_scale = SLOT_SCALE * 1.15
+-        slot.base_scale = SLOT_SCALE
+-        slot:SetScale(SLOT_SCALE)
+         cell.slot = cell:AddChild(slot)
+ 
+         list_root:AddChild(cell)
+@@ -432,13 +427,21 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
+     -- 换算成屏幕绝对坐标时要靠它（见 GetMouseLocalPos）
+     self.h_anchor = ANCHOR_MIDDLE
+     self.v_anchor = ANCHOR_MIDDLE
+-    -- 固定设计缩放（父级 PROPORTIONAL 已按分辨率缩过，这里不再自适应）
+-    self:SetScale(PANEL_SCALE)
++    -- ⭐ 面板本身不缩放（照搬简存：TerminalWidget 无 SetScale）。
++    -- 分辨率自适应交给父级 hslot_vault_root（GetHUDScale 跟随）；
++    -- 只有下方的网格层 gridroot 单独缩 GRID_SCALE，和简存 gridroot 同款。
+ 
+     -- 用户手动拖动留下的偏移（相对默认位置），(0,0) = 屏幕正中
+     self._offset = Vector3(0, 0, 0)
+-    -- 读上次的位置（按容器分开存；异步读盘，读到了会自己搬过去）
+-    LoadSavedPos(self.container_key)
++    -- 读上次的位置（按容器分开存）。
++    -- ⚠️ BUG 修复：LoadSavedPos 命中缓存时会直接 return saved_pos[key]，
++    -- 但异步读盘的回调只在「首次打开」把值写进 active_list._offset；
++    -- 关掉再开时走缓存支路、回调不再触发，旧代码丢弃返回值 → _offset 回到 (0,0,0)
++    -- → 面板又弹回正中。这里必须显式接收返回值。
++    local cached_offset = LoadSavedPos(self.container_key)
++    if cached_offset ~= nil then
++        self._offset = cached_offset
++    end
+ 
+     self.owner = owner
+     self.container_inst = container_inst
+@@ -476,22 +479,30 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
+     -- 全部时白字 n/N，筛选后整条变红 x/N。
+     -- ⚠️ Text 的 region 以 position 为中心，右对齐要把 position 放在 region 中心。
+     local right_edge = PANEL_W / 2 - EDGE
+-    local info_w = 400
+-    self.info = self:AddChild(Text(NEWFONT_OUTLINE, 64, ""))
+-    self.info:SetRegionSize(info_w, 80)
++    self.info = self:AddChild(Text(NEWFONT_OUTLINE, INFO_SIZE, ""))
++    self.info:SetRegionSize(INFO_W, 44)
+     self.info:SetHAlign(ANCHOR_RIGHT)
+-    self.info:SetPosition(right_edge - info_w / 2, FILTER_Y)
++    self.info:SetPosition(right_edge - INFO_W / 2, FILTER_Y)
+     self.info:SetClickable(false)
+ 
+     -- 顶部一行分类图标：用官方制作栏的 filterslot_frame / filterslot_bg
+     -- （craftingmenu_widget.lua:736 MakeFilterButton 同款），选中态用官方 select 贴图
+-    self.filter_buttons = {}
++    self.filter_buttons = {}  -- button（Select/Unselect/tint 用）
++    self.filter_roots = {}    -- 外层 w（位置/整体缩放用）
+     self.filter_icons = {}
+     self.filter_glows = {}
+     -- 左对齐：从左边距开始排，右侧留给 n/N（FILTER_X_OFFSET 整体微调右移）
+     local x0 = -PANEL_W / 2 + EDGE + FILTER_X_OFFSET + FILTER_ICON / 2
+     for i, def in ipairs(FILTER_DEFS) do
+-        local btn = self:AddChild(ImageButton(
++        -- ⭐ 逐行照抄简存 MakeFilterButton（terminalwidget.lua:184-226）：
++        -- 外层 w → scalingroot:SetScale(39/64) → ImageButton(原图不缩放)，
++        -- 图标 ScaleToSize(54,54) 再被 scalingroot 缩成 54×0.609≈33。
++        -- 之前用 ForceImageSize(40)+图标(16) 导致图标只有简存的一半。
++        local w = self:AddChild(Widget("filter_" .. def.id))
++        local scalingroot = w:AddChild(Widget("ScalingRoot"))
++        scalingroot:SetScale(FILTER_ICON / 64)
++
++        local btn = scalingroot:AddChild(ImageButton(
+             CRAFTING_ATLAS,
+             "filterslot_frame.tex",
+             "filterslot_frame_highlight.tex",
+@@ -499,49 +510,50 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
+             nil,
+             "filterslot_frame_select.tex"
+         ))
+-        -- ⚠️ 官方 ImageButton 在 image_focus == image_normal 时会 SetScale(1.2)，
+-        -- 失去焦点时 SetScale(1,1,1) 会覆盖 ForceImageSize 的 ScaleToSize，
+-        -- 图标被还原成贴图原始尺寸（巨大且不再缩小）。直接关掉焦点缩放。
+-        btn.scale_on_focus = false
+-        btn:ForceImageSize(FILTER_ICON, FILTER_ICON)
+         btn:SetTooltip(def.label)
+         btn:SetOnClick(function()
+             self:SetFilter(def.id)
+         end)
+-        btn:SetPosition(x0 + (i - 1) * FILTER_GAP, FILTER_Y)
++        w:SetPosition(x0 + (i - 1) * FILTER_GAP, FILTER_Y)
+ 
+         local bg = btn:AddChild(Image(CRAFTING_ATLAS, "filterslot_bg.tex"))
+-        bg:ScaleToSize(FILTER_ICON - 8, FILTER_ICON - 8)
+-        -- 底衬调透明（想恢复就把 FILTER_BG_VISIBLE 改成 true）
+         bg:SetTint(1, 1, 1, FILTER_BG_VISIBLE and 1 or 0)
+         bg:SetClickable(false)
+ 
+         local icon = btn:AddChild(Image(CRAFTING_ICONS_ATLAS, def.icon))
+-        icon:ScaleToSize(FILTER_ICON - 24, FILTER_ICON - 24)
++        icon:ScaleToSize(54, 54) -- 简存同款，再经 scalingroot 缩
+ 
+         -- 白光叠加层：官方高亮框再复制一份，选中时做透明度呼吸
+         local glow = btn:AddChild(Image(CRAFTING_ATLAS, "filterslot_frame_highlight.tex"))
+-        glow:ScaleToSize(FILTER_ICON + 10, FILTER_ICON + 10)
++        glow:ScaleToSize(70, 70)
+         glow:SetTint(1, 1, 1, 0)
+         glow:SetClickable(false)
+ 
+         self.filter_buttons[def.id] = btn
++        self.filter_roots[def.id] = w
+         self.filter_icons[def.id] = icon
+         self.filter_glows[def.id] = glow
+     end
+ 
+-    -- 下方滚动物品网格。第 9 参数是滚动条相对裁剪区右边的额外偏移，
++    -- ⭐ 网格专用缩放层（照搬简存 terminalwidget.lua:813-815）：
++    -- gridroot 只包住网格，SetScale(0.6)；面板边框/筛选/按钮都在 self 上不缩放。
++    self.gridroot = self:AddChild(Widget("GridRoot"))
++    self.gridroot:SetScale(GRID_SCALE)
++    self.gridroot:SetPosition(GRID_CX, GRID_Y)
++
++    -- 下方滚动物品网格。scissor 用 gridroot 内部坐标（GRID_W/GRID_H）。
++    -- 第 9 参数是滚动条相对裁剪区右边的额外偏移，
+     -- 第 10 参数是滚动条高度增量（传 0，别传一整个 GRID_H 导致滚动条过高）
+-    self.scrolllist = self:AddChild(TrueScrollList(
++    self.scrolllist = self.gridroot:AddChild(TrueScrollList(
+         { owner = owner, container = self.container },
+         CreateCells,
+         UpdateCell,
+-        -GRID_W / 2, -GRID_H / 2, GRID_W, GRID_H,
++        -SCR_W / 2, -SCR_H / 2, SCR_W, SCR_H,
+         SCROLLBAR_GAP,
+         0,
+         1
+     ))
+-    self.scrolllist:SetPosition(GRID_CX, GRID_Y)
++    self.scrolllist:SetPosition(0, 0)
+ 
+     -- 底部按钮：用官方 carny 系列贴图（简易存储/官方弹窗底部那套），
+     -- 图标取自 DST 字体（背包 = 整理，黑洞 = 关闭），不再带任何文字。
+@@ -607,10 +619,26 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
+     self.onchanged = function()
+         self:QueueRefresh()
+     end
+-    -- 放入物品后跳到对应格子（非堆叠物品时容器会带 data.slot）
++    -- ⚠️ 同步滚动坑：口袋容器是**世界单例**（一个 hslot_container 全服共用），
++    -- A 玩家放入物品 → 服务端 itemget 广播给所有打开者 → B 客户端也收到 itemget，
++    -- 于是 B 的界面也 ScrollToDataIndex 跟着跳。
++    -- 判据：只有「本地玩家背包刚失去物品」后短时间内收到的 itemget 才算我上传的，
++    -- 才滚动；别人上传只刷新数据、不滚。
++    -- 玩家物品栏失物 push 在 ThePlayer 上（inventory_classified.lua），
++    -- 别的玩家失物不会同步到我这里，所以能可靠区分操作者。
++    self._my_put_until = 0
++    self.onplayeritemlose = function()
++        self._my_put_until = GetTime() + 0.5
++    end
++    if ThePlayer ~= nil then
++        ThePlayer:ListenForEvent("itemlose", self.onplayeritemlose)
++    end
++
++    -- 放入物品后跳到对应格子（仅自己上传时；非堆叠物品时容器会带 data.slot）
+     self.onitemget = function(_, data)
+-        if data ~= nil and data.slot ~= nil then
++        if data ~= nil and data.slot ~= nil and GetTime() <= (self._my_put_until or 0) then
+             self._pending_slot = data.slot
++            self._my_put_until = 0 -- 一次失物只对应一次滚动，避免连滚
+         end
+         self:QueueRefresh()
+     end
+@@ -666,12 +694,13 @@ end
+ 
+ function HslotVaultList:UpdateFilterButtons()
+     for id, btn in pairs(self.filter_buttons) do
++        local root = self.filter_roots[id]
+         if id == self.filter then
+             btn:Select()
+-            btn:SetScale(FILTER_SCALE_ON) -- 选中整体放大
++            if root ~= nil then root:SetScale(FILTER_SCALE_ON) end -- 选中整体放大
+         else
+             btn:Unselect()
+-            btn:SetScale(1)
++            if root ~= nil then root:SetScale(1) end
+             -- 复位上一轮跑马灯留下的颜色和白光
+             btn.image:SetTint(1, 1, 1, 1)
+             local icon = self.filter_icons[id]
+@@ -835,16 +864,16 @@ function HslotVaultList:IsMouseOverPanel()
+         and math.abs(loc.y - pos.y) <= PANEL_H / 2 * ly
+ end
+ 
+--- 鼠标是否落在格子（滚动列表可视区）里
++-- 鼠标是否落在格子（滚动列表可视区）里。
++-- 网格现在在 gridroot 内（SetScale(GRID_SCALE) + 位置 GRID_CX/GRID_Y），
++-- 而 GetMouseLocal 返回的是 self 坐标系，所以要减掉 gridroot 偏移、再除以网格缩放。
+ function HslotVaultList:IsMouseOverGrid()
+     local loc = self:GetMouseLocal()
+     local pos = self:GetPosition()
+-    local lx, ly = self:GetLooseScale()
+-    lx = (lx ~= nil and lx ~= 0) and lx or 1
+-    ly = (ly ~= nil and ly ~= 0) and ly or 1
+-    local dx = (loc.x - pos.x) / lx - GRID_CX
+-    local dy = (loc.y - pos.y) / ly - GRID_Y
+-    return math.abs(dx) <= GRID_W / 2 and math.abs(dy) <= GRID_H / 2
++    local dx = (loc.x - pos.x) - GRID_CX
++    local dy = (loc.y - pos.y) - GRID_Y
++    return math.abs(dx) <= (GRID_W / 2) * GRID_SCALE
++        and math.abs(dy) <= (GRID_H / 2) * GRID_SCALE
+ end
+ 
+ function HslotVaultList:EndDrag()
+@@ -1187,6 +1216,10 @@ function HslotVaultList:OnDestroy()
+         self._refreshtask:Cancel()
+         self._refreshtask = nil
+     end
++    if ThePlayer ~= nil and self.onplayeritemlose ~= nil then
++        ThePlayer:RemoveEventCallback("itemlose", self.onplayeritemlose)
++        self.onplayeritemlose = nil
++    end
+     if self.container_inst ~= nil and self.container_inst:IsValid() then
+         self.container_inst:RemoveEventCallback("itemget", self.onitemget)
+         self.container_inst:RemoveEventCallback("itemlose", self.onchanged)
