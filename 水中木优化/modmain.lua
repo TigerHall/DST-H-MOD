@@ -574,21 +574,28 @@ if config.farming_mount then
   end)
 
   -- 全局 hook：戴帽时饥饿值（原始值）不低于下限 0.6（濒死但没死，非比例）
-  -- 自然衰减经 DoDec → DoDelta，本 hook 在其后抬升到下限，故不会饿死；脱帽后恢复自然衰减
-  -- 官方 hunger.lua:128 DoDelta、:146 DoDec（current<=0 才触发饿伤，见 :160）
+  --
+  -- ⚠️ 踩坑：旧版 hook DoDelta 之后用 SetCurrent(floor) 抬升，会每帧额外 push 一次
+  --   hungerdelta（且没传 overtime）→ statusdisplays.lua:699 判定 not data.overtime 为真，
+  --   newpercent > oldpercent → PulseGreen + hunger_up 音效 → 饥饿条反复飘 +1。
+  --
+  -- 正解（仿 Too Many Items Plus 的 SetMinHealth / 官方 Health:SetVal）：把 clamp 放在
+  --   数据入口 SetCurrent 内部，只产生一次 hungerdelta；稳定态 delta=0，既不飘绿也不响音效。
+  --   · 自然衰减 DoDec → DoDelta → SetCurrent（overtime=true）→ 在此被夹到 0.6
+  --   · current 恒 >0 → DoDec 永不进饿伤分支（hunger.lua:156）→ 不会饿死
+  --   · 脱帽后 EquipHasTag 为 false → 不 clamp → 恢复原版自然衰减至饿伤
   local HUNGER_MIN_VALUE = 0.6   -- 原始饥饿值下限（濒死但没死）
   AddComponentPostInit("hunger", function(self)
-    local oldDoDelta = self.DoDelta
-    self.DoDelta = function(self, delta, overtime, ignore_invincible)
-      oldDoDelta(self, delta, overtime, ignore_invincible)
-      if self.inst ~= nil
+    local oldSetCurrent = self.SetCurrent
+    self.SetCurrent = function(self, current, overtime, ...)
+      if current < HUNGER_MIN_VALUE
+          and self.inst ~= nil
           and self.inst.components.inventory ~= nil
           and self.inst.components.inventory:EquipHasTag("htree_cowboy") then
-        local floor = HUNGER_MIN_VALUE
-        if self.current < floor then
-          self:SetCurrent(floor)   -- 仅抬升到下限，不触发额外衰减或致死分支
-        end
+        current = HUNGER_MIN_VALUE
       end
+      -- 必须透传 overtime：自然衰减是 true，HUD 才不会当成"瞬间回饥饿"播特效
+      return oldSetCurrent(self, current, overtime, ...)
     end
   end)
 
