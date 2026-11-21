@@ -79,20 +79,25 @@
 - 详细工作流：`docs/workshop_mod_reference_workflow.md`
 
 ### 踩坑记录
-- 踩坑库主文件 `~/.workbuddy/skills/dst-mod-dev/references/pitfalls.md`（2026-11-21 已 65 条）
-- ⚠️ 技能有 **3 份副本、3 套编号**：用户级主库（65 条 `## #N`）、市场包（34 条 `## N.`）、cache（30 条）。新增坑要同步 3 份，各按自己体系递增
+- 踩坑库主文件 `~/.workbuddy/skills/dst-mod-dev/references/pitfalls.md`（2026-11-21 已 67 条）
+- ⚠️ 技能有 **3 份副本、3 套编号**：用户级主库（67 条 `## #N`）、市场包（36 条 `## N.`）、cache（32 条）。新增坑要同步 3 份，各按自己体系递增
 - 核心坑概要：`Text` 需 `GLOBAL.require` | UI 图标用 `self.image:SetTint` | `GLOBAL.AddXxx` 会 strict 报错 | `finiteuses.Use` 无预检 | `globalmapicon._target` 客户端为 nil
-- 2026-11-21 新增 #63~#65：Widget 无 DoTaskInTime/IsValid（用 self.inst）| 改挂 containerroot.parent 后鼠标坐标必须锚点无关（world_scale 法）| 拖动抖动（move 里别读实时 GetWorldPosition，用起始快照差值）
+- 2026-11-21 新增 #63~#67（全部围绕月眼面板 UI，详见下方专节）：Widget 无 DoTaskInTime/IsValid | 锚点无关的 world_scale 坐标 | 拖动防抖用起始快照 | 位置状态单一化 | 坐标语义改变要同步改命中判定
 
-### 大容量容器 UI + 拖动（2026-11-21 定稿，hslot v3.8.x）
-- **完整流程已写入技能** `references/large_container_ui.md`（三份副本同步），含扩容三路线对比、挂载缩放链、peek 参数、拖动、回中心、刷新清理。遇同类需求先读它。
-- 扩容：抬 `containers.MAXITEMSLOTS`（两端文件顶层、SetPristine 前）；真容器 + 换 UI 是最稳路线
-- 挂载：`controls.containerroot.parent` → `hslot_vault_root`(SetScale GetHUDScale + hook SetHUDSize) → 面板(不设锚点不缩放) → gridroot(缩 0.6)
+### 大容量容器 UI + 拖动（2026-11-21 定稿，hslot v3.8.10，已实测稳定）
+- **完整流程写入技能** `references/large_container_ui.md`（三副本同步，9 章），同类需求先读它
+- 扩容：抬 `containers.MAXITEMSLOTS`（两端顶层、SetPristine 前）；真容器 + 换 UI 最稳
+- 挂载链：`containerroot.parent` → `hslot_vault_root`(SetScale GetHUDScale + hook SetHUDSize) → 面板(不设锚点不缩放) → gridroot(缩 0.6)
 - 换皮：劫持 ContainerWidget.Open，**绝不 Hide widget**（GetOpenContainers 靠 IsVisible，藏了 Shift转移/制作材料全失效），只藏内容；格子用官方 `InvSlot`（ItemTile 空格会崩），零 RPC
-- 布局对齐简存：ScrollingGrid 必须传 `peek_percent=1, peek_height=-5`（否则官方默认 peek=20 把网格下推 ~7.5px）；gridroot (0,-30)；scrollbar_height_offset=-50
-- 拖动两要件：①坐标用 world_scale 动态测量（临时挪 10 单位量 GetWorldPosition 变化，锚点无关）②防抖用起始快照差值（StartDrag 存鼠标/面板起点，move 只算 delta×world_scale，全程不读实时世界坐标）——分别抄简存 terminalwidget.lua:967-993 和能力勋章 medal_globalfn.lua:540-568
-- 出画面回中心：`IsCenterOffScreen()`（中心世界坐标超 [0,screen]±20）→ 打开首帧（延迟1帧）+ EndDrag 各查一次，**不在 move 里查**
-- 当前版本 3.8.8；改动必须三段式递增第三段
+- 布局对齐简存：ScrollingGrid 传 `peek_percent=1, peek_height=-5`（官方默认 peek=20 会下推 ~7.5px）；gridroot (0,-30)；scrollbar_height_offset=-50
+- **拖动稳定三件套（缺一不可）**：
+  ① world_scale 动态测量（临时挪 10 单位量 GetWorldPosition 变化，锚点无关）——抄简存 terminalwidget.lua:967-993
+  ② 防抖用起始快照差值（StartDrag 存鼠标/面板起点，move 只算 delta×world_scale，全程不读实时世界坐标）——抄能力勋章 medal_globalfn.lua:540-568
+  ③ **命中判定与①语义一致**：GetMouseLocal 返回「相对面板中心偏移」后，IsMouseOverPanel/Grid 必须直接 `abs(loc.x)`，**绝不能再减 self:GetPosition()**（重复减位置→只有角落响应）
+- **位置状态单一化**：默认位置恒 (0,0)，只有一个 `_offset`；删除制作栏开/关让位 hook（两个 ApplyPos(true) 补间打架会让中键复位失效）
+- 中键复位**独立于命中判定**：面板开着 anywhere 按中键都回中心；右键拖动才需 IsMouseOverPanel
+- 出画面回中心：`IsCenterOffScreen()`（中心世界坐标超 [0,screen]±20）→ 打开首帧(延迟1帧)+EndDrag 各查一次，**不在 move 里查**
+- 当前版本 3.8.10；改动必须三段式递增第三段
 
 ### UI 图标着色
 - 完整模板已迁移至技能 `references/code-templates.md`

@@ -42,10 +42,9 @@ local PANEL_W = 680
 local PANEL_H = 420
 local GRID_CX = 0
 local GRID_Y = -30    -- ⭐ 简存 gridroot:SetPosition(0,-30)
--- 默认位置：屏幕正中（位置 0,0 = 屏幕中心，因为下面设了 MIDDLE 锚点）。
--- 打开官方制作栏时整体右移这么多让位，避免压住左侧制作栏
--- （同简易存储 scripts/widgets/terminalwidget.lua:47-51 的 260）。
-local CRAFTING_OFFSET_X = 260
+-- 默认位置恒为屏幕正中（0,0 = 屏幕中心，父级自带 MIDDLE 锚点）。
+-- 曾照简存做「制作栏打开右移 260 让位」，但该让位与中键复位互相打断，
+-- 2026-11-21 已去掉：位置只由用户拖动偏移 _offset 决定，中键永远回正中。
 
 -- 垂直排布（照抄简存，面板 420 高、半高 210）：
 --   筛选行 y=175、分隔线 y=144、网格中心 y=-30（占 -30±144）
@@ -592,16 +591,19 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
             return
         end
         if down then
+            -- ⭐ 中键复位不需要命中判定：面板开着时 anywhere 按中键都回中心。
+            -- 之前中键和右键共用 IsMouseOverPanel() 门禁，命中判定一偏中键就跟着失效。
+            if button == MOUSEBUTTON_MIDDLE then
+                self:ResetToDefaultPos()
+                return
+            end
+            -- 右键拖动才要求鼠标在面板内（避免抢占别处的右键查看物品）
             if not self:IsMouseOverPanel() then
                 return
             end
-            if button == MOUSEBUTTON_RIGHT then
-                -- DRAG_EXCLUDE_GRID 为 true 时，格子区不接右键拖动
-                if not (DRAG_EXCLUDE_GRID and self:IsMouseOverGrid()) then
-                    self:StartDrag(button) -- 右键：拖动
-                end
-            else
-                self:ResetToDefaultPos() -- 中键：位置复原
+            -- DRAG_EXCLUDE_GRID 为 true 时，格子区不接右键拖动
+            if not (DRAG_EXCLUDE_GRID and self:IsMouseOverGrid()) then
+                self:StartDrag(button)
             end
         elseif self._drag_button == button then
             self:EndDrag()
@@ -820,14 +822,15 @@ end
 --  面板自己永远 SetPosition(0,0)）。之前那套 MeasureScale / FitPanelSize
 -- 是「先按屏幕比例硬算一遍」，屏幕一变就整体走形，已删除。
 function HslotVaultList:DefaultPos()
-    local hud = ThePlayer ~= nil and ThePlayer.HUD or nil
-    local offset_x = (hud ~= nil and hud.IsCraftingOpen ~= nil and hud:IsCraftingOpen())
-        and CRAFTING_OFFSET_X or 0
-    return Vector3(offset_x, 0, 0)
+    -- ⭐ 2026-11-21 简化：默认位置恒为屏幕正中，不再随制作栏开/关右移。
+    -- 旧逻辑按 IsCraftingOpen 在 0↔260 间跳，且制作栏 hook 的 ApplyPos(true)
+    -- 与中键复位的 ApplyPos(true) 互相打断 → 中键"复位"到 260 而非中心，效果像失效。
+    -- 现在位置只有一个变量：_offset（用户拖动偏移），中键永远回 (0,0)。
+    return Vector3(0, 0, 0)
 end
 
--- 实际位置 = 默认位置 + 用户拖动留下的偏移
--- smooth = true 时用 0.25 秒补间（制作栏开/关时跟着平移，不跳）
+-- 实际位置 = 默认位置(0,0) + 用户拖动留下的偏移
+-- smooth = true 时用 0.25 秒补间（中键复位/出画面回中心时用）
 function HslotVaultList:ApplyPos(smooth)
     local base = self:DefaultPos()
     local o = self._offset or Vector3(0, 0, 0)
@@ -870,26 +873,29 @@ function HslotVaultList:ResetToDefaultPos()
 end
 
 -- ====================================================================
--- 鼠标命中判定（父级局部坐标）
+-- 鼠标命中判定
 -- ====================================================================
+-- ⭐ 2026-11-21 修复：GetMouseLocal() 现在返回的是「鼠标相对面板中心的偏移」
+-- （m - GetWorldPosition，面板中心=原点），**不是**旧版的父级绝对坐标。
+-- 所以这里直接用 loc.x/loc.y 跟半宽比，**绝不能再减 self:GetPosition()**——
+-- 旧代码 loc - pos 在面板居中(pos≈0)时碰巧对，一旦拖到右上角(pos=+300,+200)
+-- 就把命中区整体推到左上，导致中键/右键只有特定区域才响应。
 function HslotVaultList:IsMouseOverPanel()
     local loc = self:GetMouseLocal()
-    local pos = self:GetPosition()
     local lx, ly = self:GetLooseScale()
     lx = (lx ~= nil and lx ~= 0) and lx or 1
     ly = (ly ~= nil and ly ~= 0) and ly or 1
-    return math.abs(loc.x - pos.x) <= PANEL_W / 2 * lx
-        and math.abs(loc.y - pos.y) <= PANEL_H / 2 * ly
+    return math.abs(loc.x) <= PANEL_W / 2 * lx
+        and math.abs(loc.y) <= PANEL_H / 2 * ly
 end
 
 -- 鼠标是否落在格子（滚动列表可视区）里。
--- 网格现在在 gridroot 内（SetScale(GRID_SCALE) + 位置 GRID_CX/GRID_Y），
--- 而 GetMouseLocal 返回的是 self 坐标系，所以要减掉 gridroot 偏移、再除以网格缩放。
+-- loc 已是相对面板中心的偏移；网格在 gridroot 内（位置 GRID_CX/GRID_Y，缩放 GRID_SCALE），
+-- 所以减掉 gridroot 偏移即可（同样不再减 self:GetPosition()）。
 function HslotVaultList:IsMouseOverGrid()
     local loc = self:GetMouseLocal()
-    local pos = self:GetPosition()
-    local dx = (loc.x - pos.x) - GRID_CX
-    local dy = (loc.y - pos.y) - GRID_Y
+    local dx = loc.x - GRID_CX
+    local dy = loc.y - GRID_Y
     return math.abs(dx) <= (GRID_W / 2) * GRID_SCALE
         and math.abs(dy) <= (GRID_H / 2) * GRID_SCALE
 end

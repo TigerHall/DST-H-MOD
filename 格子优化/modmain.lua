@@ -1600,37 +1600,11 @@ if not GLOBAL.TheNet:IsDedicated() then
     -- ===== 诊断结束 =====
   end)
 
-  -- 打开/关闭官方制作栏时，月眼仓库面板跟着让位
-  -- （同「简易存储 3383078008」main/ui.lua:88-104 的 OpenCrafting/CloseCrafting 钩子）。
-  -- 位置 = 默认位置（居中 ↔ 右移 260 避让制作栏）+ 用户拖动的偏移，
-  -- 所以这里调 ApplyPos 而不是硬写坐标，手动拖过的面板也只会平移不会被重置。
   AddClassPostConstruct("screens/playerhud", function(self)
-    local function MoveVaultLists()
-      local controls = self.controls
-      if controls == nil or controls.containers == nil then
-        return
-      end
-      for _, w in pairs(controls.containers) do
-        local list = w ~= nil and w._hslot_list or nil
-        if list ~= nil and list.inst ~= nil and list.inst:IsValid() then
-          list:ApplyPos(true)
-        end
-      end
-    end
-
-    local old_OpenCrafting = self.OpenCrafting
-    function self:OpenCrafting(...)
-      local ret = old_OpenCrafting(self, ...)
-      MoveVaultLists()
-      return ret
-    end
-
-    local old_CloseCrafting = self.CloseCrafting
-    function self:CloseCrafting(...)
-      local ret = old_CloseCrafting(self, ...)
-      MoveVaultLists()
-      return ret
-    end
+    -- ⭐ 2026-11-21：已删除「制作栏开/关时让面板平移 260」的 OpenCrafting/CloseCrafting hook。
+    -- 原因：那个让位的 ApplyPos(true) 与中键复位的 ApplyPos(true) 互相打断，
+    -- 且制作栏开着时中键"复位"到 260 而非屏幕中心 → 用户感知为复位失效。
+    -- 现在面板默认位置恒为屏幕正中，位置只由用户拖动偏移决定，中键永远回中心。
 
     -- ESC 关闭月眼仓库面板（照搬简存 main/ui.lua:106-118 的 OnControl hook）。
     -- 面板自己不是 screen、吃不到 CONTROL_PAUSE，所以在 playerhud 层拦；
