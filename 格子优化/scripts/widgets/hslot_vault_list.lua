@@ -12,63 +12,57 @@ local Text = require("widgets/text")
 local ImageButton = require("widgets/imagebutton")
 local InvSlot = require("widgets/invslot")
 local ItemTile = require("widgets/itemtile")
-local TrueScrollList = require("widgets/truescrolllist")
+-- 滚动网格改用官方 TEMPLATES.ScrollingGrid（内部就是 TrueScrollList），不再直接 require
 local TEMPLATES = require("widgets/redux/templates")
 
 -- ====================================================================
--- 尺寸
+-- 尺寸 —— ⭐ 完全照搬「简易存储 3383078008」terminalwidget.lua 的设计
 -- ====================================================================
--- 一行 10 格（简易存储 3383078008 用的是 15 格，但那是全屏面板；
--- 我们还要给标题/筛选/按钮留地方，10 格是 160 格 ÷ 16 行的整数倍）。
--- 间距 84 是在官方箱子 80 上放大一档，SLOT_SCALE 跟着等比走。
-local COLS = 10
-local ROWS = 9       -- 可视行数
+-- 简存原文：
+--   · 面板 RectangleWindow(680, 420)（InitPanel:109）
+--   · 网格 row_w=64 + row_spacing=16 = 80 间距，15 列 × 6 行（MakeInvGrid:693/784-785）
+--   · 网格层 gridroot 挂 self.root，SetScale(0.6)，SetPosition(0,-30)（813-816）
+--   · 筛选行 y=175，分隔线 y=144（134/142）
+--   · 搜索框 186×40，数量文字 x=292（153/159）
+-- 面板自身不缩放；只有 gridroot 缩 0.6。这样格子屏幕尺寸/排布和简存逐像素一致。
+local COLS = 15
+local ROWS = 6       -- 可视行数（简存 num_visible_rows=6）
 local EXTRA_ROWS = 1 -- 额外渲染的行数（滚动时从底部滑上来，不会突现）
-local CELL = 80      -- 官方箱子槽位间距，SLOT_SCALE 1.0 = 和普通空间同款大小
-local SLOT_SCALE = CELL / 80
-local GRID_W = COLS * CELL
-local GRID_H = ROWS * CELL
-local SCROLLBAR_GAP = 18 -- 滚动条离格子区的距离（和格子拉开，别贴着）
+local CELL = 80      -- 格子设计间距（gridroot 内部坐标 = 简存 row_w64+spacing16）
+local GRID_SCALE = 0.6 -- ⭐ 网格层缩放，和简存 gridroot 的 0.6 同值
+local GRID_W = COLS * CELL       -- gridroot 内部尺寸 1200
+local GRID_H = ROWS * CELL       --                  480
+local SCR_W, SCR_H = GRID_W, GRID_H -- TrueScrollList 裁剪区（gridroot 内部坐标）
+local SCROLLBAR_GAP = 8 -- 简存 scrollbar_offset=8
 
--- 左右非对称留白：左边只留避让金边的量，右边包住「滚动条 + 呼吸」
-local PAD_L = 6
-local PAD_R = 16
-local PANEL_W = GRID_W + PAD_L + PAD_R -- = 800 + 22 = 822
-local PANEL_H = 908
--- 网格整体左移，让右侧空出的位置刚好包住滚动条
-local GRID_CX = -(PAD_R - PAD_L) / 2
-
--- 自身缩放：**固定常数，不再按屏幕比例算**。
--- 父级是 controls.containerroot（controls.lua:261-264 设了 MIDDLE 锚点 +
--- SCALEMODE_PROPORTIONAL），引擎已经按「1920×1200 设计尺寸」把整层等比缩过，
--- 所以这里只要一个常数，1080p / 2K / 4K 下占屏比例就完全一致。
--- 这和「简易存储 3383078008」的做法一致（terminalwidget.lua:813 的
--- `gridroot:SetScale(0.6)` 是同一个道理：设计尺寸固定，只套一个固定缩放）。
--- 0.79 偏小 → 放大 1/3 到 1.05。想大想小只改这一个数。
-local PANEL_SCALE = 1
+-- 面板设计尺寸：直接照抄简存 680×420。
+-- 网格屏幕尺寸 = GRID_W×0.6=720 宽（比面板略宽，两侧各溢出 20，简存原样）、
+--               GRID_H×0.6=288 高。gridroot 位置 (0,-30)，见 GRID_CX/GRID_Y。
+local PANEL_W = 680
+local PANEL_H = 420
+local GRID_CX = 0
+local GRID_Y = -30    -- ⭐ 简存 gridroot:SetPosition(0,-30)
 -- 默认位置：屏幕正中（位置 0,0 = 屏幕中心，因为下面设了 MIDDLE 锚点）。
 -- 打开官方制作栏时整体右移这么多让位，避免压住左侧制作栏
 -- （同简易存储 scripts/widgets/terminalwidget.lua:47-51 的 260）。
 local CRAFTING_OFFSET_X = 260
 
--- ⚠️ 垂直排布按「金边」卡死：
---   金边下沿 → 筛选按钮 → 滚动列表 → 数字信息 → 两个按钮
---   → 底部金边
-local FILTER_ICON = 76
-local FILTER_GAP = 88        -- 选中时按钮放大到 1.15 倍，间距留够别互相压
+-- 垂直排布（照抄简存，面板 420 高、半高 210）：
+--   筛选行 y=175、分隔线 y=144、网格中心 y=-30（占 -30±144）
+--   底部按钮走 RectangleWindow actions（不是独立 ImageButton）。
+local FILTER_ICON = 39      -- 简存 button_size=39
+local FILTER_GAP = 48       -- 简存 pos_x 每格 +48
 local FILTER_SCALE_ON = 1.15 -- 选中时整个按钮放大
--- 头部只有一行：左侧筛选图标，右侧「n/N + 红色宝箱命中数」
--- 竖向（面板半高 454，总高固定 908）：
---   20(顶留白) + 76(图标) + 6 + 720(网格) + 8 + 64(按钮) + 14(底留白) = 908
-local FILTER_Y = 396  -- 图标 358~434，顶部留白 20
-local GRID_Y = -8     -- 网格 352~-368，与筛选底留 6
--- 按钮中心固定在 -408，只加高时上下各长一点：
--- 高 76 → -370~-446（与网格底 -368 留 2、离面板底 -454 留 8）
-local BOTTOM_Y = -408
-local BUTTON_W, BUTTON_H = 116, 76
-local SORT_X, CLOSE_X = -85, 85
-local EDGE = 2             -- 内容离面板左右边缘的距离
-local FILTER_X_OFFSET = 14 -- 筛选按钮整体再往右挪一点
+local FILTER_Y = 175        -- ⭐ 简存 filterpanel y=175
+local FILTER_X0 = -336      -- ⭐ 简存筛选按钮起始 x=-336
+local INFO_SIZE = 30        -- 简存 text_size 30
+local INFO_W = 160
+local NUM_X = 292           -- ⭐ 简存 numslots_text x=292
+-- 底部两个按钮（面板底部，RectangleWindow 下沿内侧）
+local BUTTON_W, BUTTON_H = 116, 46
+local BOTTOM_Y = -178       -- 面板半高 210，按钮区在底部
+local SORT_X, CLOSE_X = -70, 70
+local EDGE = 2
 -- 筛选按钮底衬（filterslot_bg.tex）：false = 透明，只留按钮边框和图标
 local FILTER_BG_VISIBLE = false
 
@@ -96,8 +90,8 @@ local DRAG_EXCLUDE_GRID = false
 local REFRESH_INTERVAL = 0.12
 local POLL_INTERVAL = 0.3
 
--- 面板由 modmain 挂到 controls.containerroot 下（MIDDLE 锚点 + SCALEMODE_PROPORTIONAL，
--- 缩放由 Controls:SetHUDSize 设成 GetHUDScale()），再乘上面的 PANEL_SCALE 补偿。
+-- 面板由 modmain 挂到 hslot_vault_root（controls 下，GetHUDScale 跟随）。
+-- 面板自身不缩放；只有 gridroot 缩 0.6，和简存的分层完全一致。
 
 -- ⚠️ 面板打开期间屏蔽相机缩放。
 -- 官方靠 playercontroller.lua:4463 的 HUD.controls.craftingmenu.focus 来阻止
@@ -301,46 +295,24 @@ local function StackOf(item)
     return st ~= nil and st:StackSize() or 1
 end
 
--- TrueScrollList 的每个 widget 对应一个数据项（不是一行），
--- 所以这里创建独立格子并自己摆成网格。
--- ⚠️ 要多建 EXTRA_ROWS 行：TrueScrollList 滚动时是把 list_root 整体上移
--- （truescrolllist.lua:472 `list_root:SetPosition(0, row_offset * row_height)`），
--- 只建可见行数的话，滚动过程中窗口底部会露白，最后一行像是"突然刷出来"。
--- 多建一行放在窗口下方，滑动时它正好从底部升上来。
--- 返回 (widgets, widgets_per_row, row_height, visible_rows, end_offset)
-local function CreateCells(context, list_root)
-    local widgets = {}
-    for i = 1, COLS * (ROWS + EXTRA_ROWS) do
-        local cell = Widget("vaultcell")
-        local col = (i - 1) % COLS
-        local row = math.floor((i - 1) / COLS)
-        cell:SetPosition(
-            -((COLS - 1) * CELL) / 2 + col * CELL,
-            ((ROWS - 1) * CELL) / 2 - row * CELL
-        )
-
-        -- 格子就是「普通月眼空间」同款的官方 inv_slot.tex
-        local slot = InvSlot(1, "images/hud.xml", "inv_slot.tex", context.owner, context.container)
-        -- 等比放大槽位（官方 containerwidget 的 slotscale 也是这么改 base_scale 的）
-        slot.highlight_scale = SLOT_SCALE * 1.15
-        slot.base_scale = SLOT_SCALE
-        slot:SetScale(SLOT_SCALE)
-        cell.slot = cell:AddChild(slot)
-
-        list_root:AddChild(cell)
-        widgets[i] = cell
-    end
-    -- ⚠️ 最后一个返回值 end_offset 必须等于 EXTRA_ROWS：
-    -- TrueScrollList 的 `end_pos = total_rows - visible_rows + end_offset`
-    -- （truescrolllist.lua:278）。多渲了几行却把 end_offset 传 0，
-    -- 滚动行程就会少一行 —— 最后一行永远滚不上来（用户实测 bug）。
-    return widgets, COLS, CELL, ROWS, EXTRA_ROWS
+-- ⭐ 官方 ScrollingGrid 的两个回调（templates.lua:1961）。
+-- 官方 Grid:FillGrid 会自动摆放格子，这里只建结构、不 SetPosition。
+-- item_ctor_fn(context, index) 返回单个格子 widget。
+local function VaultItemCtor(context, index)
+    local cell = Widget("vaultcell")
+    -- ⭐ 官方 InvSlot，**不碰 scale** —— invslot.lua:466-467 构造末尾自带
+    -- base_scale=1.5，这就是「真实格子」尺寸（和官方红/绿眼空间同款）。
+    -- ⚠️ 不要照抄简存的 SetTile(ItemTile())：简存用魔改 terminal_itemtile 支持
+    -- invitem=nil；官方 ItemTile 在 itemtile.lua:94 会索引 nil 直接崩。
+    -- 空格子不设 tile，等 VaultApply 拿到真实 item 再 SetTile(ItemTile(item))。
+    local slot = InvSlot(1, "images/hud.xml", "inv_slot.tex", context.owner, context.container)
+    cell.slot = cell:AddChild(slot)
+    return cell
 end
 
--- ⚠️ TrueScrollList:RefreshView（官方 truescrolllist.lua:453）传给 update_fn 的
--- 第二个参数是 self.widgets_to_update[i]，即**单个格子 widget**，不是 widgets 数组。
--- 曾写成 widgets[index] 恒为 nil，所有格子都不更新 → 图标全空白。
-local function UpdateCell(context, cell, data, index)
+-- apply_fn(context, widget, data, index) 给单个格子填数据。
+-- context 用 opts.scroll_context 传进来，带 owner/container。
+local function VaultApply(context, cell, data, index)
     if cell == nil then
         return
     end
@@ -423,22 +395,31 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
     active_list = self
     HookCameraZoom()
 
-    -- ⚠️ DST Widget 默认以屏幕左下角为原点，不设锚点会跑到左下角。
-    -- 父级（controls.containerroot）自带 MIDDLE 锚点，这里再设一次，
-    -- 保证「位置 0,0 = 屏幕正中」在所有机器上都成立。
-    self:SetHAnchor(ANCHOR_MIDDLE)
-    self:SetVAnchor(ANCHOR_MIDDLE)
-    -- 记录锚点：GetWorldPosition 返回的是相对锚点的坐标，
-    -- 换算成屏幕绝对坐标时要靠它（见 GetMouseLocalPos）
+    -- ⭐⭐ 关键修复：不设 SetHAnchor/SetVAnchor！
+    -- 3.10 的 hspace_panel 和简存 TerminalWidget 都不设锚点，UI 尺寸才正常。
+    -- 之前这里设了 ANCHOR_MIDDLE，子 widget 在带 SCALEMODE_PROPORTIONAL 的父层下
+    -- 再设 MIDDLE 锚点，会导致 4K 下缩放被按不同基准计算 → 面板/格子偏小一半。
+    -- 父层 containerroot 自带 MIDDLE 锚点，子 widget 位置 (0,0) 就是屏幕正中，
+    -- 不需要、也不应该自己再设锚点。
+    -- 保留 h_anchor/v_anchor 字段仅供其他代码读取（如某些 MOD 的 tooltip 定位），
+    -- 不调用 SetHAnchor/SetVAnchor。鼠标换算现在用 world_scale 动态测量，不看锚点。
     self.h_anchor = ANCHOR_MIDDLE
     self.v_anchor = ANCHOR_MIDDLE
-    -- 固定设计缩放（父级 PROPORTIONAL 已按分辨率缩过，这里不再自适应）
-    self:SetScale(PANEL_SCALE)
+    -- ⭐ 面板本身不缩放（照搬简存：TerminalWidget 无 SetScale）。
+    -- 分辨率自适应交给父级 hslot_vault_root（GetHUDScale 跟随）；
+    -- 只有下方的网格层 gridroot 单独缩 GRID_SCALE，和简存 gridroot 同款。
 
     -- 用户手动拖动留下的偏移（相对默认位置），(0,0) = 屏幕正中
     self._offset = Vector3(0, 0, 0)
-    -- 读上次的位置（按容器分开存；异步读盘，读到了会自己搬过去）
-    LoadSavedPos(self.container_key)
+    -- 读上次的位置（按容器分开存）。
+    -- ⚠️ BUG 修复：LoadSavedPos 命中缓存时会直接 return saved_pos[key]，
+    -- 但异步读盘的回调只在「首次打开」把值写进 active_list._offset；
+    -- 关掉再开时走缓存支路、回调不再触发，旧代码丢弃返回值 → _offset 回到 (0,0,0)
+    -- → 面板又弹回正中。这里必须显式接收返回值。
+    local cached_offset = LoadSavedPos(self.container_key)
+    if cached_offset ~= nil then
+        self._offset = cached_offset
+    end
 
     self.owner = owner
     self.container_inst = container_inst
@@ -450,14 +431,11 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
     -- from an environment other than the mod's main chunk"（新档直接报错）。
     -- 诊断日志统一在 modmain 的 Open hook 里打（那边有 config）。
 
-    -- 窗口外框：直接复用官方 9-slice 窗口（「简易存储 3383078008」
-    -- terminalwidget.lua:109 用的同一套 TEMPLATES.RectangleWindow），
-    -- 上下自带金色装饰冠。
-    -- ⚠️ 模板默认 SetScale(0.7) 且尺寸被 clamp 到 620 高，这里显式覆盖掉。
+    -- ⭐ 窗口外框：官方 TEMPLATES.RectangleWindow，**完全保留模板原生缩放**
+    -- （templates.lua:1813 自带 SetScale(0.7)）——简存 InitPanel:109 就是这么用的，
+    -- 从不覆盖。之前 SetScale(1,1,1) 覆盖了官方 0.7，破坏了官方缩放链。
     self.frame = self:AddChild(TEMPLATES.RectangleWindow(PANEL_W, PANEL_H, ""))
-    self.frame:SetScale(1, 1, 1)
-    self.frame:SetSize(PANEL_W, PANEL_H)
-    -- 金边里面整片染成绿底（之前是黑的，跟绿色对不上）
+    -- 金边里面整片染成主题色（蓝/紫/橙/黄）
     self.frame:SetBackgroundTint(self.bg_r, self.bg_g, self.bg_b, FRAME_BG_ALPHA)
 
     -- 悬停提示用的抓取层：铺满整块面板、几乎全透明（alpha 0.001，肉眼不可见）。
@@ -475,23 +453,37 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
     -- 字体用 NEWFONT_OUTLINE（官方黑描边版），在绿色底上更清楚。
     -- 全部时白字 n/N，筛选后整条变红 x/N。
     -- ⚠️ Text 的 region 以 position 为中心，右对齐要把 position 放在 region 中心。
-    local right_edge = PANEL_W / 2 - EDGE
-    local info_w = 400
-    self.info = self:AddChild(Text(NEWFONT_OUTLINE, 64, ""))
-    self.info:SetRegionSize(info_w, 80)
+    self.info = self:AddChild(Text(NEWFONT_OUTLINE, INFO_SIZE, ""))
+    self.info:SetRegionSize(INFO_W, 44)
     self.info:SetHAlign(ANCHOR_RIGHT)
-    self.info:SetPosition(right_edge - info_w / 2, FILTER_Y)
+    self.info:SetPosition(NUM_X, FILTER_Y)  -- ⭐ 简存 numslots_text x=292
     self.info:SetClickable(false)
+
+    -- ⭐ 分隔线：简存 InitPanel:133-136，y=144、700×5、白色 alpha0.4
+    self.line = self:AddChild(Image("images/ui.xml", "line_horizontal_white.tex"))
+    self.line:SetPosition(0, 144)
+    self.line:SetTint(1, 1, 1, 0.4)
+    self.line:ScaleToSize(700, 5)
+    self.line:SetClickable(false)
 
     -- 顶部一行分类图标：用官方制作栏的 filterslot_frame / filterslot_bg
     -- （craftingmenu_widget.lua:736 MakeFilterButton 同款），选中态用官方 select 贴图
-    self.filter_buttons = {}
+    self.filter_buttons = {}  -- button（Select/Unselect/tint 用）
+    self.filter_roots = {}    -- 外层 w（位置/整体缩放用）
     self.filter_icons = {}
     self.filter_glows = {}
-    -- 左对齐：从左边距开始排，右侧留给 n/N（FILTER_X_OFFSET 整体微调右移）
-    local x0 = -PANEL_W / 2 + EDGE + FILTER_X_OFFSET + FILTER_ICON / 2
+    -- ⭐ 简存 pos_x 从 -336 起、每格 +48（InitPanel:144-150）
+    local x0 = FILTER_X0
     for i, def in ipairs(FILTER_DEFS) do
-        local btn = self:AddChild(ImageButton(
+        -- ⭐ 逐行照抄简存 MakeFilterButton（terminalwidget.lua:184-226）：
+        -- 外层 w → scalingroot:SetScale(39/64) → ImageButton(原图不缩放)，
+        -- 图标 ScaleToSize(54,54) 再被 scalingroot 缩成 54×0.609≈33。
+        -- 之前用 ForceImageSize(40)+图标(16) 导致图标只有简存的一半。
+        local w = self:AddChild(Widget("filter_" .. def.id))
+        local scalingroot = w:AddChild(Widget("ScalingRoot"))
+        scalingroot:SetScale(FILTER_ICON / 64)
+
+        local btn = scalingroot:AddChild(ImageButton(
             CRAFTING_ATLAS,
             "filterslot_frame.tex",
             "filterslot_frame_highlight.tex",
@@ -499,49 +491,62 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
             nil,
             "filterslot_frame_select.tex"
         ))
-        -- ⚠️ 官方 ImageButton 在 image_focus == image_normal 时会 SetScale(1.2)，
-        -- 失去焦点时 SetScale(1,1,1) 会覆盖 ForceImageSize 的 ScaleToSize，
-        -- 图标被还原成贴图原始尺寸（巨大且不再缩小）。直接关掉焦点缩放。
-        btn.scale_on_focus = false
-        btn:ForceImageSize(FILTER_ICON, FILTER_ICON)
         btn:SetTooltip(def.label)
         btn:SetOnClick(function()
             self:SetFilter(def.id)
         end)
-        btn:SetPosition(x0 + (i - 1) * FILTER_GAP, FILTER_Y)
+        w:SetPosition(x0 + (i - 1) * FILTER_GAP, FILTER_Y)
 
         local bg = btn:AddChild(Image(CRAFTING_ATLAS, "filterslot_bg.tex"))
-        bg:ScaleToSize(FILTER_ICON - 8, FILTER_ICON - 8)
-        -- 底衬调透明（想恢复就把 FILTER_BG_VISIBLE 改成 true）
         bg:SetTint(1, 1, 1, FILTER_BG_VISIBLE and 1 or 0)
         bg:SetClickable(false)
 
         local icon = btn:AddChild(Image(CRAFTING_ICONS_ATLAS, def.icon))
-        icon:ScaleToSize(FILTER_ICON - 24, FILTER_ICON - 24)
+        icon:ScaleToSize(54, 54) -- 简存同款，再经 scalingroot 缩
 
         -- 白光叠加层：官方高亮框再复制一份，选中时做透明度呼吸
         local glow = btn:AddChild(Image(CRAFTING_ATLAS, "filterslot_frame_highlight.tex"))
-        glow:ScaleToSize(FILTER_ICON + 10, FILTER_ICON + 10)
+        glow:ScaleToSize(70, 70)
         glow:SetTint(1, 1, 1, 0)
         glow:SetClickable(false)
 
         self.filter_buttons[def.id] = btn
+        self.filter_roots[def.id] = w
         self.filter_icons[def.id] = icon
         self.filter_glows[def.id] = glow
     end
 
-    -- 下方滚动物品网格。第 9 参数是滚动条相对裁剪区右边的额外偏移，
-    -- 第 10 参数是滚动条高度增量（传 0，别传一整个 GRID_H 导致滚动条过高）
-    self.scrolllist = self:AddChild(TrueScrollList(
-        { owner = owner, container = self.container },
-        CreateCells,
-        UpdateCell,
-        -GRID_W / 2, -GRID_H / 2, GRID_W, GRID_H,
-        SCROLLBAR_GAP,
-        0,
-        1
-    ))
-    self.scrolllist:SetPosition(GRID_CX, GRID_Y)
+    -- ⭐ 网格专用缩放层（照搬简存 terminalwidget.lua:813-815）：
+    -- gridroot 只包住网格，SetScale(0.6)；面板边框/筛选/按钮都在 self 上不缩放。
+    self.gridroot = self:AddChild(Widget("GridRoot"))
+    self.gridroot:SetScale(GRID_SCALE)
+    self.gridroot:SetPosition(GRID_CX, GRID_Y)
+
+    -- ⭐ 官方 ScrollingGrid（templates.lua:1961）：和简存 TerminalScrolllist 同源，
+    -- 缩放链完全交给官方模板。scissor 由 widget_width×列数 自动算，不再手算。
+    -- 数据稍后由 RefreshData 用 SetItemsData 灌入。
+    self.scrolllist = self.gridroot:AddChild(TEMPLATES.ScrollingGrid({}, {
+        context = {},
+        scroll_context = { owner = owner, container = self.container },
+        widget_width = CELL,
+        widget_height = CELL,
+        -- ⭐ 2026-11-21 对齐简存 terminalwidget.lua:777-792 的 peek 参数：
+        -- 官方模板默认 peek_height = widget_height*0.25 = 20，会把整个网格往下推；
+        -- 简存显式 peek_percent=1 + peek_height=-5（负值往上收紧）。
+        -- 之前漏了这两个 → 格子区比简存低约 7.5 屏幕像素（截图里最后一行贴住底部按钮）。
+        -- templates.lua:1989 `grid:SetPosition(..., widget_height*(rows-1)/2 + peek_height/2)`，
+        -- peek_height 从 20 → -5 让网格上移 (25/2)×0.6 = 7.5px。
+        peek_percent = 1,
+        peek_height = -5,
+        num_visible_rows = ROWS,
+        num_columns = COLS,
+        item_ctor_fn = VaultItemCtor,
+        apply_fn = VaultApply,
+        scrollbar_offset = SCROLLBAR_GAP,
+        scrollbar_height_offset = -50,  -- 简存 :789 = -50
+        end_offset = 1,
+    }))
+    self.scrolllist:SetPosition(0, 0)
 
     -- 底部按钮：用官方 carny 系列贴图（简易存储/官方弹窗底部那套），
     -- 图标取自 DST 字体（背包 = 整理，黑洞 = 关闭），不再带任何文字。
@@ -607,10 +612,26 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
     self.onchanged = function()
         self:QueueRefresh()
     end
-    -- 放入物品后跳到对应格子（非堆叠物品时容器会带 data.slot）
+    -- ⚠️ 同步滚动坑：口袋容器是**世界单例**（一个 hslot_container 全服共用），
+    -- A 玩家放入物品 → 服务端 itemget 广播给所有打开者 → B 客户端也收到 itemget，
+    -- 于是 B 的界面也 ScrollToDataIndex 跟着跳。
+    -- 判据：只有「本地玩家背包刚失去物品」后短时间内收到的 itemget 才算我上传的，
+    -- 才滚动；别人上传只刷新数据、不滚。
+    -- 玩家物品栏失物 push 在 ThePlayer 上（inventory_classified.lua），
+    -- 别的玩家失物不会同步到我这里，所以能可靠区分操作者。
+    self._my_put_until = 0
+    self.onplayeritemlose = function()
+        self._my_put_until = GetTime() + 0.5
+    end
+    if ThePlayer ~= nil then
+        ThePlayer:ListenForEvent("itemlose", self.onplayeritemlose)
+    end
+
+    -- 放入物品后跳到对应格子（仅自己上传时；非堆叠物品时容器会带 data.slot）
     self.onitemget = function(_, data)
-        if data ~= nil and data.slot ~= nil then
+        if data ~= nil and data.slot ~= nil and GetTime() <= (self._my_put_until or 0) then
             self._pending_slot = data.slot
+            self._my_put_until = 0 -- 一次失物只对应一次滚动，避免连滚
         end
         self:QueueRefresh()
     end
@@ -666,12 +687,13 @@ end
 
 function HslotVaultList:UpdateFilterButtons()
     for id, btn in pairs(self.filter_buttons) do
+        local root = self.filter_roots[id]
         if id == self.filter then
             btn:Select()
-            btn:SetScale(FILTER_SCALE_ON) -- 选中整体放大
+            if root ~= nil then root:SetScale(FILTER_SCALE_ON) end -- 选中整体放大
         else
             btn:Unselect()
-            btn:SetScale(1)
+            if root ~= nil then root:SetScale(1) end
             -- 复位上一轮跑马灯留下的颜色和白光
             btn.image:SetTint(1, 1, 1, 1)
             local icon = self.filter_icons[id]
@@ -709,77 +731,81 @@ end
 -- ====================================================================
 -- 拖动 / 命中判定 / 复原位置
 -- ====================================================================
--- 全部复用「UI 拖拽缩放 2885137047」common.lua:52-80 的成熟实现
--- （原作者注明来自「蘑菇慕斯」），不再自己推坐标系。
+-- ⭐ 2026-11-21 重写：改用「简易存储 3383078008」terminalwidget.lua:967-993
+-- 的 world_scale 动态测量法，替代原先抄「UI拖拽缩放」的那套锚点换算。
 --
--- ⚠️ 关键坑：TheInput:GetScreenPosition() 返回的是**一个 Vector3**，
--- 不是 (x, y) 两个数字！写成 `local mx, my = TheInput:GetScreenPosition()`
--- 会得到 mx = Vector3、my = nil，随后 `mx - cx` 就在 vector3.lua:14 崩了
--- （attempt to index local 'rhs' (a number value)）。
-local function GetMouseLocalPos(ui, mouse_pos)
-    local g_s = ui:GetScale()
-    local l_s = Vector3(0, 0, 0)
-    l_s.x, l_s.y, l_s.z = ui:GetLooseScale()
-    local scale = Vector3(
-        (l_s.x ~= 0) and (g_s.x / l_s.x) or 1,
-        (l_s.y ~= 0) and (g_s.y / l_s.y) or 1,
-        (l_s.z ~= 0) and (g_s.z / l_s.z) or 1
+-- 原因：面板改挂 hslot_vault_root（containerroot.parent + SetScale(GetHUDScale)）
+-- 后，旧 GetMouseLocalPos 里按 ui.h_anchor/v_anchor 做的屏幕换算前提不成立，
+-- 算出的鼠标局部坐标整体偏移 → IsMouseOverPanel() 恒 false → 右键/中键被吞。
+-- 简存同款挂载结构下它的拖动一直正常，直接照搬它的坐标 scheme。
+--
+-- 做法：临时把 widget 挪 10 单位，看 GetWorldPosition 变化多少 → 得到
+-- world_scale（世界坐标 / 局部坐标 的比例），之后用它双向换算，不依赖锚点假设。
+
+-- 动态测量本 widget 的「世界坐标/局部坐标」比例（结果缓存）
+function HslotVaultList:RefreshWorldScale()
+    local old_local = self:GetPosition()
+    local old_world = self:GetWorldPosition()
+    self:SetPosition(old_local + Vector3(10, 10, 0))
+    local new_world = self:GetWorldPosition()
+    self:SetPosition(old_local)
+    local wx = new_world.x - old_world.x
+    local wy = new_world.y - old_world.y
+    self._world_scale = Vector3(
+        (wx ~= 0) and (10 / wx) or 1,   -- 局部 / 世界
+        (wy ~= 0) and (10 / wy) or 1,
+        1
     )
+end
 
-    local ui_local_pos = ui:GetPosition()
-    ui_local_pos = Vector3(ui_local_pos.x * scale.x, ui_local_pos.y * scale.y, ui_local_pos.z * scale.z)
-    local ui_world_pos = ui:GetWorldPosition()
-    -- 改过锚点后 GetWorldPosition 返回的是「相对锚点」的坐标，要先换算回屏幕绝对坐标
-    if not (not ui.v_anchor or ui.v_anchor == ANCHOR_BOTTOM)
-        or not (not ui.h_anchor or ui.h_anchor == ANCHOR_LEFT) then
-        local screen_w, screen_h = TheSim:GetScreenSize()
-        if ui.v_anchor and ui.v_anchor ~= ANCHOR_BOTTOM then
-            ui_world_pos.y = (ui.v_anchor == ANCHOR_MIDDLE)
-                and (screen_h / 2 + ui_world_pos.y) or (screen_h - ui_world_pos.y)
-        end
-        if ui.h_anchor and ui.h_anchor ~= ANCHOR_LEFT then
-            ui_world_pos.x = (ui.h_anchor == ANCHOR_MIDDLE)
-                and (screen_w / 2 + ui_world_pos.x) or (screen_w - ui_world_pos.x)
-        end
+-- 鼠标屏幕坐标 → 本 widget 局部坐标（和 GetPosition 同一坐标系）
+-- mouse_pos 可传入（MoveHandler 给的 x,y），不传则用 TheInput 当前位置
+function HslotVaultList:GetMouseLocal(mouse_pos)
+    if self._world_scale == nil then
+        self:RefreshWorldScale()
     end
-
-    local origin_point = ui_world_pos - ui_local_pos
-    mouse_pos = mouse_pos - origin_point
-    return Vector3(mouse_pos.x / scale.x, mouse_pos.y / scale.y, mouse_pos.z / scale.z)
-end
-
--- 鼠标在「面板父级局部坐标」里的位置（和 GetPosition 同一坐标系）
-function HslotVaultList:GetMouseLocal()
-    local m = TheInput:GetScreenPosition()
-    return GetMouseLocalPos(self, Vector3(m.x, m.y, 0))
+    local m = mouse_pos or TheInput:GetScreenPosition()   -- 一个 Vector3，不是两个数字
+    local w = self:GetWorldPosition()
+    local s = self._world_scale
+    return Vector3(
+        (m.x - w.x) * s.x,
+        (m.y - w.y) * s.y,
+        0
+    )
 end
 
 -- ====================================================================
--- 拖动（照搬参考 MOD 的 offset 模式）
+-- 拖动（照搬「能力勋章 1909182187」medal_globalfn.lua:540-568 的起始快照法）
 -- ====================================================================
+-- ⭐ 防抖关键：只记录「按下瞬间」的鼠标/面板坐标，之后每次 move 用
+--   newpos = p_start + (鼠标 - m_start) × world_scale
+--   全程**不再读实时 GetWorldPosition()**。旧版每次 move 都 GetMouseLocal →
+--   读 GetWorldPosition，而它基于刚 SetPosition 的值（同帧未必刷新），
+--   形成「读自己写的结果」的反馈环 → 面板抖动。
 function HslotVaultList:StartDrag(button)
     if self._draghandler ~= nil then
         return
     end
+    if self._world_scale == nil then
+        self:RefreshWorldScale()
+    end
     self._drag_button = button or MOUSEBUTTON_RIGHT
-    -- 记录「抓取瞬间 面板位置 - 鼠标位置」的偏移，拖动期间保持不变，
-    -- 这样面板不会跳到鼠标中心，手感自然
-    local loc = self:GetMouseLocal()
-    local pos = self:GetPosition()
-    self._grab_dx = pos.x - loc.x
-    self._grab_dy = pos.y - loc.y
-    self._grab_dz = pos.z - loc.z
+    -- 起始快照（勋章 m_startpos / p_startpos）
+    local m = TheInput:GetScreenPosition()
+    self._m_start = Vector3(m.x, m.y, 0)
+    local p = self:GetPosition()
+    self._p_start = Vector3(p.x, p.y, p.z)
 
     self._draghandler = TheInput:AddMoveHandler(function(x, y)
         if not TheInput:IsMouseDown(self._drag_button) then
             self:EndDrag()
             return
         end
-        local l = GetMouseLocalPos(self, Vector3(x, y, 0))
+        local s = self._world_scale
         self:SetPosition(
-            l.x + self._grab_dx,
-            l.y + self._grab_dy,
-            l.z + self._grab_dz
+            self._p_start.x + (x - self._m_start.x) * s.x,
+            self._p_start.y + (y - self._m_start.y) * s.y,
+            0
         )
     end)
 end
@@ -813,6 +839,27 @@ function HslotVaultList:ApplyPos(smooth)
     end
 end
 
+-- 面板中心是否已跑出画面（世界坐标 vs 屏幕尺寸）。
+-- 测试存档里旧偏移可能把面板拖到屏幕外，打开后完全看不到 → 用这个判定自动回中心。
+-- 只在「打开时 / 松手时」各查一次，不在 move 里查，避免反馈抖动。
+function HslotVaultList:IsCenterOffScreen()
+    local w = self:GetWorldPosition()
+    local sw, sh = TheSim:GetScreenSize()
+    -- 留一点容差：中心至少要在屏幕内（含 20px 边缘余量）
+    local margin = 20
+    return w.x < -margin or w.x > sw + margin
+        or w.y < -margin or w.y > sh + margin
+end
+
+-- 若中心出画面则回默认位置并清偏移；返回是否真的重置了
+function HslotVaultList:EnsureCenterOnScreen()
+    if self:IsCenterOffScreen() then
+        self:ResetToDefaultPos()
+        return true
+    end
+    return false
+end
+
 -- 中键复原：偏移清零 → 回默认位置（居中 / 制作栏右侧）并写盘
 function HslotVaultList:ResetToDefaultPos()
     self._offset = Vector3(0, 0, 0)
@@ -835,16 +882,16 @@ function HslotVaultList:IsMouseOverPanel()
         and math.abs(loc.y - pos.y) <= PANEL_H / 2 * ly
 end
 
--- 鼠标是否落在格子（滚动列表可视区）里
+-- 鼠标是否落在格子（滚动列表可视区）里。
+-- 网格现在在 gridroot 内（SetScale(GRID_SCALE) + 位置 GRID_CX/GRID_Y），
+-- 而 GetMouseLocal 返回的是 self 坐标系，所以要减掉 gridroot 偏移、再除以网格缩放。
 function HslotVaultList:IsMouseOverGrid()
     local loc = self:GetMouseLocal()
     local pos = self:GetPosition()
-    local lx, ly = self:GetLooseScale()
-    lx = (lx ~= nil and lx ~= 0) and lx or 1
-    ly = (ly ~= nil and ly ~= 0) and ly or 1
-    local dx = (loc.x - pos.x) / lx - GRID_CX
-    local dy = (loc.y - pos.y) / ly - GRID_Y
-    return math.abs(dx) <= GRID_W / 2 and math.abs(dy) <= GRID_H / 2
+    local dx = (loc.x - pos.x) - GRID_CX
+    local dy = (loc.y - pos.y) - GRID_Y
+    return math.abs(dx) <= (GRID_W / 2) * GRID_SCALE
+        and math.abs(dy) <= (GRID_H / 2) * GRID_SCALE
 end
 
 function HslotVaultList:EndDrag()
@@ -852,10 +899,13 @@ function HslotVaultList:EndDrag()
         self._draghandler:Remove()
         self._draghandler = nil
     end
-    self._grab_dx = nil
-    self._grab_dy = nil
-    self._grab_dz = nil
+    self._m_start = nil
+    self._p_start = nil
     self._drag_button = nil
+    -- 出画面则回中心（松手时查一次；拖到屏幕外不合法）
+    if self:EnsureCenterOnScreen() then
+        return
+    end
     -- 记住这次拖到哪了（存「相对默认位置的偏移」，按容器分开），下次打开还在原地
     local key = PosKeyOf(self.container_key)
     local base = self:DefaultPos()
@@ -917,6 +967,14 @@ function HslotVaultList:OnUpdate(dt)
         -- ctor 时父级可能还没挂上、锚点还没生效，这里再套一次位置兜底。
         -- 位置 = 默认位置（居中 / 制作栏右侧）+ 上次拖动留下的偏移。
         self:ApplyPos()
+        -- 存档里的旧偏移可能把面板拖出画面（测试存档就遇到过）→ 检测并回中心。
+        -- ⚠️ 延迟一帧：同一帧内 SetPosition 后 GetWorldPosition 可能还没刷新，
+        -- 下一帧世界矩阵更新后再读才准。
+        self.inst:DoTaskInTime(0, function()
+            if self.inst:IsValid() then
+                self:EnsureCenterOnScreen()
+            end
+        end)
     end
 
     -- 兜底：官方的底图/按钮/槽位被任何途径（refresh、暂停恢复、别的 MOD 调 Show）
@@ -1186,6 +1244,10 @@ function HslotVaultList:OnDestroy()
     if self._refreshtask ~= nil then
         self._refreshtask:Cancel()
         self._refreshtask = nil
+    end
+    if ThePlayer ~= nil and self.onplayeritemlose ~= nil then
+        ThePlayer:RemoveEventCallback("itemlose", self.onplayeritemlose)
+        self.onplayeritemlose = nil
     end
     if self.container_inst ~= nil and self.container_inst:IsValid() then
         self.container_inst:RemoveEventCallback("itemget", self.onitemget)

@@ -4,9 +4,12 @@
 
 ### 版本管理
 - 每次修改 `modinfo.lua` 必须更新 `version`，否则玩家不会自动同步
-- **开发/测试期间用三段式，只递增第三段**：`主.次.修订`（如 6.0.1 → 6.0.2 → 6.0.3），每次改动都进第三位
-- **测试完毕、准备上传时改成两段式**：`主.次`（如 6.0），由用户手动收尾，AI 不要在开发期擅自用两段式
-- 只有在功能层面整体升一档时才动第二段（开发期也很少用）
+- **【铁律】所有 AI 的改动一律用三段式、只递增第三段**：`主.次.修订`（如 6.0.1 → 6.0.2 → 6.0.3）。
+  不论改动来自哪个会话/哪个专家/是否是 bug 修复，只要是被 AI 修改，就进第三位。
+  遇到当前版本是两段式（如 `2.4`），AI 改动时补全为三段式第三段（`2.4.1`）。
+- **两段式只由用户手动收尾**：测试完毕、准备上传时由用户改成 `主.次`（如 6.0）。
+  AI 在任何情况下都不要写成两段式、也不要在收尾阶段帮用户改两段式。
+- 只有在功能层面整体升一档时才动第二段（开发期也很少用；真要动需用户明确指示）
 
 ### 目录联接
 - GitHub ↔ DST `mods/` 通过 `mklink /J` 联接，修改即同步
@@ -55,10 +58,41 @@
 - 已通过 validate_expert.py + register_expert.py 注册
 - 从左侧「专家」入口可进入对话
 
+### 技能三副本路径（2026-11-21 核对）
+- 用户级主库：`~/.workbuddy/skills/dst-mod-dev/`
+- 市场包（专家包源头）：`~/.workbuddy/plugins/marketplaces/my-experts/plugins/dst-mod-expert/skills/dst-mod-dev/`
+- 运行缓存：`~/.workbuddy/plugins/cache/my-experts/dst-mod-expert/1.0.0/skills/dst-mod-dev/`（⚠️ 带 `1.0.0` 版本层）
+- 三份 SKILL.md 内容不同（历史演进），但都有 `### scripts/log_triage.py` 段，可作同步锚点
+
+### 官方源码更新脚本（归入技能）
+- `scripts/update_official_source.py`（三份技能副本均已放入），也可从项目 `参考代码/` 运行
+- 用途：CRC 比对项目 `参考代码/官方源码/` 与游戏 `scripts.zip`，有变动才解压覆盖
+- 关键：内置绝对 DEST 路径（`DST-H-MOD/参考代码/官方源码`），从任意目录/技能目录运行都对
+- 只同步 `.lua`（保留本地 `fx/*.tex`），自动备份 + `.source_manifest.json` 基线 + 失败回滚
+- 用法：`python scripts/update_official_source.py`（检测）/ 加 `--update`（更新）
+
+### 创意工坊参考 MOD（2026-11-21）
+- 只读来源：`C:/Program Files (x86)/Steam/steamapps/workshop/content/322330/<ID>/`（124 目录 / 99 有效 / 5.15GB）
+- ID→名字表：`参考代码/MOD名单.md`，由 `scripts/sync_workshop_mods.py` 无参数生成（只读 modinfo，2 秒）
+- 默认**只读不复制**；需要长期持有时 `--id <ID> --copy` → `参考MOD_ID/<ID>/`；更新用 `--id <ID> --update` / `--update-all`
+- 旧 `参考代码/参考MOD/`（中文命名+嵌套分类+汉化）**保留不动**，非简单 workshop 副本
+- 详细工作流：`docs/workshop_mod_reference_workflow.md`
+
 ### 踩坑记录
-- 踩坑库主文件 `~/.workbuddy/skills/dst-mod-dev/references/pitfalls.md`（2026-11-15 已 47 条）
-- ⚠️ 技能有 **3 份副本、2 套编号**：用户级主库（47 条，`## #N`）、专家包内嵌（`plugins/marketplaces/my-experts/plugins/dst-mod-expert/...`，16 条）、运行缓存副本（`plugins/cache/my-experts/dst-mod-expert/...`，16 条）。新增坑要同步 3 份，标题编号按各自体系递增
+- 踩坑库主文件 `~/.workbuddy/skills/dst-mod-dev/references/pitfalls.md`（2026-11-21 已 65 条）
+- ⚠️ 技能有 **3 份副本、3 套编号**：用户级主库（65 条 `## #N`）、市场包（34 条 `## N.`）、cache（30 条）。新增坑要同步 3 份，各按自己体系递增
 - 核心坑概要：`Text` 需 `GLOBAL.require` | UI 图标用 `self.image:SetTint` | `GLOBAL.AddXxx` 会 strict 报错 | `finiteuses.Use` 无预检 | `globalmapicon._target` 客户端为 nil
+- 2026-11-21 新增 #63~#65：Widget 无 DoTaskInTime/IsValid（用 self.inst）| 改挂 containerroot.parent 后鼠标坐标必须锚点无关（world_scale 法）| 拖动抖动（move 里别读实时 GetWorldPosition，用起始快照差值）
+
+### 大容量容器 UI + 拖动（2026-11-21 定稿，hslot v3.8.x）
+- **完整流程已写入技能** `references/large_container_ui.md`（三份副本同步），含扩容三路线对比、挂载缩放链、peek 参数、拖动、回中心、刷新清理。遇同类需求先读它。
+- 扩容：抬 `containers.MAXITEMSLOTS`（两端文件顶层、SetPristine 前）；真容器 + 换 UI 是最稳路线
+- 挂载：`controls.containerroot.parent` → `hslot_vault_root`(SetScale GetHUDScale + hook SetHUDSize) → 面板(不设锚点不缩放) → gridroot(缩 0.6)
+- 换皮：劫持 ContainerWidget.Open，**绝不 Hide widget**（GetOpenContainers 靠 IsVisible，藏了 Shift转移/制作材料全失效），只藏内容；格子用官方 `InvSlot`（ItemTile 空格会崩），零 RPC
+- 布局对齐简存：ScrollingGrid 必须传 `peek_percent=1, peek_height=-5`（否则官方默认 peek=20 把网格下推 ~7.5px）；gridroot (0,-30)；scrollbar_height_offset=-50
+- 拖动两要件：①坐标用 world_scale 动态测量（临时挪 10 单位量 GetWorldPosition 变化，锚点无关）②防抖用起始快照差值（StartDrag 存鼠标/面板起点，move 只算 delta×world_scale，全程不读实时世界坐标）——分别抄简存 terminalwidget.lua:967-993 和能力勋章 medal_globalfn.lua:540-568
+- 出画面回中心：`IsCenterOffScreen()`（中心世界坐标超 [0,screen]±20）→ 打开首帧（延迟1帧）+ EndDrag 各查一次，**不在 move 里查**
+- 当前版本 3.8.8；改动必须三段式递增第三段
 
 ### UI 图标着色
 - 完整模板已迁移至技能 `references/code-templates.md`

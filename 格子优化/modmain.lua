@@ -1559,13 +1559,45 @@ if not GLOBAL.TheNet:IsDedicated() then
   --   而"手上的物品"（ActiveItem）就渲染在 mousefollow 下面
   --   （inventorybar.lua:1504 `mousefollow:AddChild(ItemTile(item))`）。
   --   末尾追加的 root 会盖住 mousefollow → 拿起物品往仓库里放时看不见手持图标。
-  -- ✅ 挂到 controls.containerroot：官方容器 UI 的家。
-  --   它自带 MIDDLE 锚点 + SCALEMODE_PROPORTIONAL（controls.lua:261-264），
-  --   缩放由 Controls:SetHUDSize 统一设为 GetHUDScale()（controls.lua:563），
-  --   层级又低于 mousefollow —— 尺寸自适应和 z 序一次都对。
+  -- ✅ 照搬「简易存储 3383078008」main/ui.lua:10-20 的挂载：
+  --   挂到 containerroot.parent（外层 containerroot），自己 SetScale(GetHUDScale())
+  --   并 hook SetHUDSize 实时跟随。和简存逐行一致 —— 面板布局既然照抄简存
+  --   （680×420 / 15列 / gridroot 0.6 / (0,-30)），挂载也必须同款才能像素级对齐。
+  --   外层在 mousefollow 之前建，z 序安全；面板自身不缩放，只有 gridroot 缩 0.6。
   AddClassPostConstruct("widgets/controls", function(self)
     local Widget = GLOBAL.require("widgets/widget")
-    self.hslot_vault_root = self.containerroot:AddChild(Widget("hslot_vault_root"))
+    local root = self.containerroot.parent -- 外层 containerroot（z 序在 mousefollow 之前）
+    self.hslot_vault_root = root:AddChild(Widget("hslot_vault_root"))
+    self.hslot_vault_root:SetScale(GLOBAL.TheFrontEnd:GetHUDScale())
+
+    local old_SetHUDSize = self.SetHUDSize
+    function self:SetHUDSize(...)
+      self.hslot_vault_root:SetScale(GLOBAL.TheFrontEnd:GetHUDScale())
+      return old_SetHUDSize(self, ...)
+    end
+
+    -- ===== 一次性 scale 诊断（定位 4K 格子偏小，抓完即可删）=====
+    -- 延迟 2 秒等简存 terminalrroot 建好，打印各层实际 scale 对比。
+    self.inst:DoTaskInTime(2, function()
+      if not self.inst:IsValid() then return end
+      local function S(w)
+        if w == nil or w.GetLooseScale == nil then return "nil" end
+        local ok, x, y, z = pcall(function() return w:GetLooseScale() end)
+        if not ok then return "err" end
+        return string.format("%.4f", x or 0)
+      end
+      local sw, sh = TheSim:GetScreenSize()
+      print(string.format("[hslot][scale] screen=%dx%d hudScale=%.4f propHUD=%.4f"
+        .. " hslotRoot=%s termRoot=%s outerCR=%s innerCR=%s",
+        sw, sh,
+        GLOBAL.TheFrontEnd:GetHUDScale(),
+        GLOBAL.TheFrontEnd:GetProportionalHUDScale(),
+        S(self.hslot_vault_root),
+        S(self.terminalrroot),
+        S(self.containerroot and self.containerroot.parent),
+        S(self.containerroot)))
+    end)
+    -- ===== 诊断结束 =====
   end)
 
   -- 打开/关闭官方制作栏时，月眼仓库面板跟着让位
@@ -1598,6 +1630,31 @@ if not GLOBAL.TheNet:IsDedicated() then
       local ret = old_CloseCrafting(self, ...)
       MoveVaultLists()
       return ret
+    end
+
+    -- ESC 关闭月眼仓库面板（照搬简存 main/ui.lua:106-118 的 OnControl hook）。
+    -- 面板自己不是 screen、吃不到 CONTROL_PAUSE，所以在 playerhud 层拦；
+    -- 只在有仓库面板打开时吞掉 ESC，否则交还原版（保留暂停菜单）。
+    local old_OnControl = self.OnControl
+    function self:OnControl(control, down)
+      if control == CONTROL_PAUSE and not down then
+        local controls = self.controls
+        if controls ~= nil and controls.containers ~= nil then
+          for _, w in pairs(controls.containers) do
+            local list = w ~= nil and w._hslot_list or nil
+            if list ~= nil and list.inst ~= nil and list.inst:IsValid() then
+              -- ⚠️ 旧面板叫 DoCloseButton，搬来的简易存储面板叫 DoCloseAction，
+              -- 直接写死一个名字会 attempt to call a nil value
+              local closefn = list.DoCloseButton or list.DoCloseAction
+              if closefn ~= nil then
+                closefn(list)
+                return true
+              end
+            end
+          end
+        end
+      end
+      return old_OnControl(self, control, down)
     end
   end)
 
@@ -1706,6 +1763,15 @@ if not GLOBAL.TheNet:IsDedicated() then
           list:MoveToFront()
         end
 
+        -- ⭐ 照搬简存 main/ui.lua:59：打开面板时把官方容器层整体右移 300，
+        -- 让面板不遮住同时打开的其它容器格子（锅等露在面板右侧）。
+        -- hslot 面板挂在 containerroot.parent 外层，移内层 containerroot 不会带动面板。
+        local hud = ThePlayer ~= nil and ThePlayer.HUD or nil
+        local ctr = hud ~= nil and hud.controls or nil
+        if ctr ~= nil and ctr.containerroot ~= nil then
+          ctr.containerroot:SetPosition(300, 0)
+        end
+
         -- 诊断（modinfo 里「月眼仓库诊断日志」开关打开时才输出）。
         -- ⚠️ 必须放在 modmain 里读 config：widget 模块不是 mod 的 main chunk，
         -- 在那边调 GetModConfigData 会抛 modutil 的报错。
@@ -1799,6 +1865,12 @@ if not GLOBAL.TheNet:IsDedicated() then
           HideContents(self)
         else
           self:Hide()
+        end
+        -- 官方容器层归位（对应打开时的右移 300，简存 ui.lua:83）
+        local hud = ThePlayer ~= nil and ThePlayer.HUD or nil
+        local ctr = hud ~= nil and hud.controls or nil
+        if ctr ~= nil and ctr.containerroot ~= nil then
+          ctr.containerroot:SetPosition(0, 0)
         end
       end
       return old_Close(self, ...)
