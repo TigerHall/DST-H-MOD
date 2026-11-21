@@ -12,6 +12,8 @@ local config = {
   pet_strong = GetModConfigData("pet_strong"),
   -- 月眼配置
   moonrockcrater_teleport = GetModConfigData("moonrockcrater_teleport"),
+  -- ⭐ 地图官方同款传送动效（标记+吸附+右键单击），与双击传送分离
+  map_teleport_fx = GetModConfigData("map_teleport_fx"),
   colormooneye_toggle = GetModConfigData("colormooneye_toggle"),
   mooneye_map_reveal = GetModConfigData("mooneye_map_reveal"),
   -- 眼骨/星空配置
@@ -98,8 +100,10 @@ PrefabFiles = {
 
 -- 注册动画资源（放在 modmain.lua 开头）
 Assets = {
-  -- 加载自定义UI动画包
-  -- Asset("ANIM", "anim/ui_boat_ancient_4x4.zip"),
+  -- 官方 vault_orb 地图旋转光环动画（鼠标悬停高亮用，见 MapScreen hook）
+  -- 官方 telebase.lua:6-7 也声明了这两个，重复声明引擎会去重，安全。
+  Asset("ANIM", "anim/vaultorbdestination.zip"),
+  Asset("MINIMAP_IMAGE", "vaultorbdestination_icon"),
 }
 
 
@@ -967,8 +971,13 @@ for prefab in pairs(landmark_set) do
   end)
 end
 
--- 服务端 RPC：搜月眼或玩家，直接传送并通知客户端渐显（纯净黑屏过场）
-AddModRPCHandler("hslot_mooneye", "teleport_to_eye", function(player, x, z)
+-- ⭐ 2026-11-21 简化：不再 spawn globalmapicon / 注入 staticdecorations / 注册 map action。
+-- 那套深度 hook 官方内部（GlobalMapIconsDB / staticdecorations / ACTIONS）太脆、易报错。
+-- 现在只做「鼠标悬停时目标上显示一个旋转光效环」——纯客户端自绘，见 MapScreen hook。
+-- 目标自己的地图小图标（MiniMapEntity）照常显示，双击传送照常工作。
+
+-- 服务端传送核心：搜月眼/地标/房间，黑屏过场 + 传送。RPC 和地图动作共用。
+local function DoMapTeleport(player, x, z)
   if not TheWorld.ismastersim then return end
   if not player or not player:IsValid() then return end
 
@@ -1080,9 +1089,24 @@ AddModRPCHandler("hslot_mooneye", "teleport_to_eye", function(player, x, z)
       player.Physics:Teleport(landx, 0, landz)
     end
     player:SnapCamera()
+    -- ⭐ 复用官方 vault_orb 的落点动效：vault_portal_fx 动画 + teleport_arrive_FX 音效。
+    -- 两者都是官方通用资源（fx.lua:3960 / vault_orb_refined.lua:17-29），所有客户端自带，零资源依赖。
+    local fx = GLOBAL.SpawnPrefab("vault_portal_fx")
+    if fx ~= nil then
+      fx.Transform:SetPosition(landx, 0, landz)
+    end
+    if player.SoundEmitter then
+      player.SoundEmitter:PlaySound("rifts6/vault_portal/teleport_arrive_FX")
+    end
     player:ScreenFade(true, 0.4)
   end)
+end
+
+-- RPC：兼容原有地图双击
+AddModRPCHandler("hslot_mooneye", "teleport_to_eye", function(player, x, z)
+  DoMapTeleport(player, x, z)
 end)
+
 
 -- 客户端：左键双击触发传送（防拖拽误触）
 if not GLOBAL.TheNet:IsDedicated() then
@@ -1132,11 +1156,9 @@ if not GLOBAL.TheNet:IsDedicated() then
         -- 黑屏过场由服务端收到 RPC 后通过 player:ScreenFade 驱动，客户端无需也不应调用 ScreenFade
         -- （ThePlayer 在客户端无 ScreenFade 方法）。这里只发 RPC + 关地图。
         GLOBAL.SendModRPCToServer(GLOBAL.MOD_RPC["hslot_mooneye"]["teleport_to_eye"], targetX, targetZ)
-        -- 立即关闭地图，让玩家看到过场动画
-        local active_screen = GLOBAL.TheFrontEnd:GetActiveScreen()
-        if active_screen and active_screen.name == "MapScreen" then
-          GLOBAL.TheFrontEnd:PopScreen()
-        end
+        -- ⭐ 2026-11-21：不再主动关地图。参考官方 wortox 的 BLINK_MAP（actions.lua:458，
+        -- 无 closes_map）——传送成功地图也保持打开；黑屏过场由服务端 ScreenFade 驱动，
+        -- 与地图层互不干扰。原版左键点地图本就不关，我们也不该关。
         _last_click_time = 0
         _last_click_pos = nil
         return
@@ -1155,6 +1177,88 @@ if not GLOBAL.TheNet:IsDedicated() then
     inst:DoTaskInTime(0.1, function()
       GLOBAL.TheInput:AddMouseButtonHandler(MouseCallBack)
     end)
+  end)
+
+  -- ═══════════════════════════════════════════════════════
+  -- ⭐ 地图悬停旋转光环（纯自绘，极简）：
+  -- 不碰官方 staticdecorations / GlobalMapIconsDB / map action（那套深度 hook 易报错）。
+  -- 只做一件事：鼠标悬停到可传送实体附近时，在它头上显示一个官方 vault 同款旋转光环，
+  -- 移开就隐藏。目标自己的地图小图标（MiniMapEntity）照常显示，双击传送照常工作。
+  -- ═══════════════════════════════════════════════════════
+  local UIAnim = GLOBAL.require("widgets/uianim")
+  local TELEPORT_FX_PREFABS = {
+    purplemooneye=true, bluemooneye=true, redmooneye=true, orangemooneye=true,
+    yellowmooneye=true, greenmooneye=true, sentryward=true, moondial=true, townportal=true,
+    chester_eyebone=true, hutch_fishbowl=true, pigking=true, statueglommer=true,
+    statuemaxwell=true, moonbase=true, oasislake=true, beequeenhive=true, antlion=true,
+    crabking=true, walrus_camp=true, monkeyqueen=true, cave_entrance=true,
+    multiplayer_portal=true, lunarrift_portal=true, wormhole=true,
+  }
+
+  AddClassPostConstruct("screens/mapscreen", function(self)
+    if not config.map_teleport_fx then return end
+
+    -- 自绘旋转光环（复用官方 vault 地图高亮动画：proximity_pre → proximity_loop）
+    -- ⚠️ 必须挂到 self.decorationrootstatic（官方 decoration 的父级），它的父级 decorationroot
+    -- 挂在 self.minimap 且 H/V 锚点都是 MIDDLE。挂 self（屏幕中心锚点）会偏到左下角。
+    local ring = self.decorationrootstatic:AddChild(UIAnim())
+    ring:GetAnimState():SetBank("vaultorbdestination")
+    ring:GetAnimState():SetBuild("vaultorbdestination")
+    -- ⚠️ UIAnim 没有 SetAlpha 方法（Widget 无此方法）——用 Hide/Show 控制显隐即可。
+    -- 曾因 ring:SetAlpha(0) 导致打开地图即崩（modmain.lua:1205）。
+    ring:Hide()
+
+    local old_Update = self.OnUpdate
+    local fx_timer = 0
+    local cur_target = nil
+    function self:OnUpdate(dt)
+      if old_Update ~= nil then old_Update(self, dt) end
+      fx_timer = fx_timer + dt
+      if fx_timer < 0.05 then return end  -- 20Hz 跟手
+      fx_timer = 0
+
+      -- 鼠标屏幕坐标 → 地图坐标 → 世界坐标（照官方 mapscreen 注释示例）
+      local sp = GLOBAL.TheInput:GetScreenPosition()
+      local wp = self:ScreenPosToWidgetPos(sp)
+      local mp = self:WidgetPosToMapPos(wp)
+      local wx, wz = self.minimap:MapPosToWorldPos(mp.x, mp.y, 0)
+
+      -- 找鼠标附近的可传送实体（按 prefab 名，不依赖自定义 tag 同步）
+      local best, best_d = nil, math.huge
+      for _, ent in ipairs(GLOBAL.TheSim:FindEntities(wx, 0, wz, 18, nil, { "FX", "NOCLICK" })) do
+        if ent:IsValid() and TELEPORT_FX_PREFABS[ent.prefab] then
+          local ex, _, ez = ent.Transform:GetWorldPosition()
+          local d = (ex - wx)^2 + (ez - wz)^2
+          if d < best_d then best_d, best = d, ent end
+        end
+      end
+
+      -- 目标判定：必须已探索（CanSeePointOnMiniMap）
+      if best ~= nil and self.owner ~= nil and self.owner.CanSeePointOnMiniMap then
+        local ex, ey, ez = best.Transform:GetWorldPosition()
+        if not self.owner:CanSeePointOnMiniMap(ex, ey, ez) then best = nil end
+      end
+
+      if best == nil then
+        if cur_target ~= nil then ring:Hide(); cur_target = nil end
+        return
+      end
+
+      -- 换目标才重播动画（同一目标只更新位置，不打断旋转循环）
+      if best ~= cur_target then
+        ring:GetAnimState():PlayAnimation("proximity_pre", false)
+        ring:GetAnimState():PushAnimation("proximity_loop", true)
+        cur_target = best
+      end
+      -- 光环跟随目标地图位置（官方同款：w,h 取半屏，SetPosition(mx*w, my*h)）
+      local ex, _, ez = best.Transform:GetWorldPosition()
+      local mx, my = self.minimap:WorldPosToMapPos(ex, ez, 0)
+      local w, h = GLOBAL.TheSim:GetScreenSize()
+      w, h = w * 0.5, h * 0.5
+      ring:SetPosition(mx * w, my * h, 0)
+      ring:SetScale(0.9, 0.9, 1)
+      ring:Show()
+    end
   end)
 end
 

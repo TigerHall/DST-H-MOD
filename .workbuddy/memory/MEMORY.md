@@ -2,6 +2,14 @@
 
 ## 项目约定
 
+### ⭐ DST API 调用铁律（2026-11-21 用户明确要求，时常执行）
+- **调用前**：写任何 DST API 前，先查技能 `references/verified-api-calls.md`（实战验证清单，12 节）
+  有没有记录；命中直接抄，不要凭记忆另写。查不到再翻 `api-quick-reference.md`（官方源码索引）。
+- **调用后**：每验证成功一个新 API、每发现文档写法有误或踩新坑，**当场回写**
+  `verified-api-calls.md` / `pitfalls.md`（技能三副本同步），并更新踩坑条数。
+- 这条规则已写入：专家 agent 定义 `dst-mod-expert.md` 工作流程 + 三份 SKILL.md，专家启动时必读。
+- 目的：积累"调用成功/踩坑确认"的可靠写法，避免重复踩坑（如 UIAnim SetAlpha、peek_percent 覆盖等）。
+
 ### 版本管理
 - 每次修改 `modinfo.lua` 必须更新 `version`，否则玩家不会自动同步
 - **【铁律】所有 AI 的改动一律用三段式、只递增第三段**：`主.次.修订`（如 6.0.1 → 6.0.2 → 6.0.3）。
@@ -42,7 +50,7 @@
 
 ### 已创建技能
 - `dst-mod-dev`（用户级 `~/.workbuddy/skills/dst-mod-dev/`）
-- 包含：踩坑库 `references/pitfalls.md`、代码模板 `references/code-templates.md`、API 速查 `references/api-quick-reference.md`、MOD 模式索引 `references/mod-patterns.md`
+- 包含：踩坑库 `references/pitfalls.md`、代码模板 `references/code-templates.md`、API 速查 `references/api-quick-reference.md`、MOD 模式索引 `references/mod-patterns.md`、⭐实战验证 API `references/verified-api-calls.md`（2026-11-21 新增，只记调用成功/踩坑确认的写法，12 节）
 - **崩溃日志排查能力**（2026-11-15 新增）：`references/client-log-triage.md`（先按 `Loading mod: ... Version:` 锚点切到最近一轮会话，再找报错；用版本号+堆栈行号交叉验证磁盘代码）+ `scripts/log_triage.py`（自动切最近一轮、去重 Insight 重复输出、报错最新在前）
   - 用法：`python scripts/log_triage.py [--mod hslot] [--pattern BODYDEPTH] [--all] [--log <path>]`
   - 触发：用户报崩溃/贴堆栈时，**先跑这个**再动手修，避免修一个已修复的旧 bug

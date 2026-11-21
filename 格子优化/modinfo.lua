@@ -47,7 +47,7 @@ end
 
 --  基础信息
 name = en_zh("H-SLOT", "H-无限格子")
-version = "3.8.14"
+version = "3.9"
 description = en_zh("V" .. version .. [[
 󰀏 Your backpack wants a bigger home!
 
@@ -139,6 +139,19 @@ configuration_options = {
     "Click moonrockcrater to teleport; map double-left-click moons, pig king, statueglommer, wormholes, players to teleport",
     "不改变带孔月岩，禁用地图传送",
     "No change to moonrockcrater, disable map teleport"
+  ),
+  -- ⭐ 官方同款地图动效（独立开关，与双击传送分离）
+  addConfig(
+    "map_teleport_fx",
+    "地图传送指示动效",
+    "Map Teleport FX",
+    true,
+    "打开地图后，鼠标移到可传送点上显示官方同款旋转光环；传送仍用左键双击。两者独立",
+    "Official-style rotating ring on hover over map teleport points; teleport via double-click. Independent",
+    "开启：鼠标放到可传送点上显示旋转光圈（移开消失，平时只显示目标原图标）",
+    "On: rotating ring appears on hover over teleport points (fades on leave, target icons stay normal)",
+    "关闭：只用左键双击传送，地图无额外动效",
+    "Off: double-click only, no extra map effects"
   ),
   -- 各色月眼开关宠物格子功能配置
   addConfig(
