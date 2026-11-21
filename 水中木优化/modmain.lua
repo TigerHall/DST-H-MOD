@@ -341,6 +341,69 @@ if config.farming_utility then
       end
     end)
   end
+
+  ---------------------------------------------------------------------------------------------------------
+  -- 客户端：屏蔽护目镜黑边（goggle_over.tex 四角黑边 + nutrients_over.tex 营养目镜覆盖）
+  --
+  -- 官方机制：ForceGoggleVision(true) → PushEvent("gogglevision") → 多个消费者同时响应：
+  --   · GogglesOver:ToggleGoggles(true)  → 显示 goggle_over.tex【四角黑边，要去掉】
+  --   · NutrientsOver（由 nutrientsvision 事件驱动）→ nutrients_over.tex【营养覆盖，一并去掉】
+  --   · SandOver/MiasmaOver/MoonstormOver:BlindTo(0) → 沙暴/毒气/月暴不致盲【防风沙，必须保留】
+  --   · SGwilson 护目镜动画 → 保留
+  -- 官方没有"只关黑边"的设置（config.lua 的 hide_vignette 只关 PlayerHud 常驻暗角）。
+  -- 滤镜RR 的 "过滤沙漠风沙" hook 的是 sandover 沙尘粒子，不碰 goggle_over；其
+  -- Hooker_Specific_Goggles_Disable 定义了却没调用（死代码），所以没有现成开关可抄。
+  --
+  -- 判断依据：直接读 net_bool _htree_nv —— 它精准表示"本 MOD 帽子激活了强制护目镜视觉"，
+  --   比运行时反查 head prefab 可靠，也不会误伤官方护目镜/别人的帽子。
+  -- 时序：AddClassPostConstruct 在构造末尾才装 hook，构造内首次 ToggleGoggles(true) 走的是原方法，
+  --   所以末尾按当前状态补一次强制隐藏；之后 _htree_nvdirty → ForceGoggleVision 再触发时已被 hook 拦住。
+  -- 注意：只压 show=false 走原方法收起（保证 storm_overlays 归位），不 return 跳过，
+  --   否则 show=false 时也会跳过原方法导致 storm_overlays 卡在 gogglesover 里。
+  ---------------------------------------------------------------------------------------------------------
+  if not GLOBAL.TheNet:IsDedicated() then
+    local FARMING_HAT_PREFABS = { plantregistryhat = true, nutrientsgoggleshat = true }
+    local function IsOurHatGoggle(owner)
+      if owner == nil then return false end
+      -- 首选：net_bool，与 ForceGoggleVision 同源，天然同步
+      if owner._htree_nv ~= nil and owner._htree_nv:value() then
+        return true
+      end
+      -- 兜底：反查头部装备名（net_bool 比 equip 事件慢一帧时仍能命中）
+      local inv = (owner.replica ~= nil and owner.replica.inventory)
+        or (owner.components ~= nil and owner.components.inventory)
+      local head = inv ~= nil and inv.GetEquippedItem ~= nil
+        and inv:GetEquippedItem(GLOBAL.EQUIPSLOTS.HEAD) or nil
+      return head ~= nil and FARMING_HAT_PREFABS[head.prefab] == true
+    end
+
+    AddClassPostConstruct("widgets/gogglesover", function(self)
+      local _ToggleGoggles = self.ToggleGoggles
+      self.ToggleGoggles = function(self, show, ...)
+        if show and IsOurHatGoggle(self.owner) then
+          show = false  -- 本 MOD 帽子：压成隐藏，走原方法正常收起（含 storm_overlays 归位）
+        end
+        return _ToggleGoggles(self, show, ...)
+      end
+      -- 构造内可能已显示一次（hook 装上前来不及拦），按当前状态补隐藏
+      if self.shown and IsOurHatGoggle(self.owner) then
+        _ToggleGoggles(self, false)
+      end
+    end)
+
+    AddClassPostConstruct("widgets/nutrientsover", function(self)
+      local _ToggleNutrients = self.ToggleNutrients
+      self.ToggleNutrients = function(self, show, ...)
+        if show and IsOurHatGoggle(self.owner) then
+          show = false
+        end
+        return _ToggleNutrients(self, show, ...)
+      end
+      if self.shown and IsOurHatGoggle(self.owner) then
+        _ToggleNutrients(self, false)
+      end
+    end)
+  end
 end
 
 ---------------------------------------------------------------------------------------------------------
@@ -529,67 +592,4 @@ if config.farming_mount then
     end
   end)
 
-  ---------------------------------------------------------------------------------------------------------
-  -- 客户端：去掉本 MOD 农作帽的四角黑边（有两种来源，分别 hook 两个 widget）
-  --
-  -- 来源① NutrientOverlay（营养目镜护目镜边框，仅 nutrientsgoggleshat）
-  --   根因：nutrientsgoggleshat 官方自带 "nutrientsvision" tag（hats.lua:3123）→ playervision 据此
-  --         PushEvent("nutrientsvision")（playervision.lua:59）→ widgets/nutrientsover.lua:20 监听后
-  --         显示 images/fx4.xml 的 nutrients_over.tex 全屏边框。
-  --
-  -- 来源② GogglesOver（防风沙护目镜边框，两顶帽子都中招，这才是真正的"四角黑边"）
-  --   根因：本 MOD 夜视 SetHatNightVision 里调了 playervision:ForceGoggleVision(true)（modmain.lua:266），
-  --         它是从勋章 ommateum_certificate 照搬的（medal_hook.lua:756 同样 ForceGoggleVision(true)）。
-  --         ForceGoggleVision(true) 会 PushEvent("gogglevision",{enabled=true})（playervision.lua:289）
-  --         → widgets/gogglesover.lua:22 监听 → ToggleGoggles(true) → 显示 images/fx3.xml 的
-  --           goggle_over.tex 四角黑边。这就是玩家实际看到的黑边。
-  --   注意：ForceGoggleVision(true) 同时是"防风沙"的来源（HasGoggleVision() 返回 true → 免疫沙暴致盲），
-  --         所以【绝不能删这行】，只能隐藏边框视觉，功能照常保留。
-  --
-  -- 做法：Hook 两个 widget 的显示方法，装备本 MOD 农作帽（直接比对 prefab 名）时 show 直接 return 跳过。
-  --       直接比对头部装备 prefab 名（prefab 名客户端永远已知，最稳）；不依赖 EquipHasTag 对自定义 tag
-  --       的客户端同步——replica.inventory:EquipHasTag 在客户端走 classified:GetEquips() 分支，自定义 tag
-  --       经此同步到客户端副本时不可靠，会导致 hook 失效。
-  ---------------------------------------------------------------------------------------------------------
-  if not GLOBAL.TheNet:IsDedicated() then
-    -- Hook 营养目镜边框 widget：装备本 MOD 农作帽时跳过黑边显示
-    -- 直接比对装备的头部 prefab 名（prefab 名客户端永远已知，最稳）；
-    -- 不依赖 EquipHasTag 对自定义 tag 的客户端同步——replica.inventory:EquipHasTag 在客户端走
-    -- classified:GetEquips() 分支，自定义 tag 经此同步到客户端副本时不可靠，会导致 hook 失效
-    local COWBOY_PREFABS = {}
-    for _, v in ipairs(COWBOY_HATS) do
-      COWBOY_PREFABS[v] = true
-    end
-    AddClassPostConstruct("widgets/nutrientsover", function(self)
-      local _ToggleNutrients = self.ToggleNutrients
-      self.ToggleNutrients = function(self, show)
-        if show and self.owner ~= nil then
-          local inv = self.owner.replica.inventory or self.owner.components.inventory
-          local head = inv ~= nil and inv:GetEquippedItem(GLOBAL.EQUIPSLOTS.HEAD) or nil
-          if head ~= nil and COWBOY_PREFABS[head.prefab] then
-            return  -- 本 MOD 农作帽：不显示四角黑边（其他来源的营养视觉不受影响）
-          end
-        end
-        return _ToggleNutrients(self, show)
-      end
-    end)
-
-    -- Hook 防风沙护目镜边框 widget：装备本 MOD 农作帽时跳过四角黑边
-    -- 来源：ForceGoggleVision(true)（modmain.lua:266，照搬 ommateum_certificate medal_hook.lua:756）
-    --       → gogglevision 事件 → GogglesOver:ToggleGoggles(true) 显示 goggle_over.tex
-    -- 仅隐藏视觉，不动 HasGoggleVision() → 防风沙能力照常保留
-    AddClassPostConstruct("widgets/gogglesover", function(self)
-      local _ToggleGoggles = self.ToggleGoggles
-      self.ToggleGoggles = function(self, show)
-        if show and self.owner ~= nil then
-          local inv = self.owner.replica.inventory or self.owner.components.inventory
-          local head = inv ~= nil and inv:GetEquippedItem(GLOBAL.EQUIPSLOTS.HEAD) or nil
-          if head ~= nil and COWBOY_PREFABS[head.prefab] then
-            return  -- 本 MOD 农作帽：跳过防风沙护目镜四角黑边
-          end
-        end
-        return _ToggleGoggles(self, show)
-      end
-    end)
-  end
 end

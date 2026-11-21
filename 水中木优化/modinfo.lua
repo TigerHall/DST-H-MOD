@@ -48,7 +48,7 @@ local function addTitle(title)
 end
 
 name = L and "H-Enhanced Waterlogged Tree" or "H-水中木强化"
-version = "2.4"
+version = "2.5"
 description = L
     and
     ("V" .. version .. "\n\nAllows transplanted Waterlogged Trees to glow, reduces the visual size of large trees, shrinks moss vines, increases the shade range of the fig Tree, and adjusts the number of figs obtained per harvest.Modify the production speed and consumption effect of Glommer's Goop, and modify the fertilizer effect of tree jam and Glommer's Goop. When fertilizing with Glommer's Goop, the transplant marker of the crop can be removed (after becoming a native plant, there is no need to fertilize again), and it should no longer wither. The ambient temperature under the tree is 16 degrees. Farming hat enhancements: night vision+storm proof+waterproof+thermal / armor+planar defense+faction immunity+fireproof / mount perks: ride ignoring obedience, knockback immunity, no buck when domesticated, immune to heat-beefalo, electric-proof.")
@@ -125,7 +125,7 @@ configuration_options = {
       { description = "0.16x", data = 0.16, hover = L and "16% of original size, smaller than regular trees" or "缩小到原来的20%，比普通树小点" },
       { description = "0.1x", data = 0.1, hover = L and "10% of original size, same height as a person" or "缩小到原来的10%，和人一样高了" },
     },
-    default = 0.26
+    default = 0
   },
   -- 新增：水中木不阻碍码头铺设开关
   addConfig(
@@ -153,7 +153,7 @@ configuration_options = {
       { description = "0.6x", data = 0.6, hover = L and "Shrunk to 0.6" or "缩小近一半" },
       { description = "0.2x", data = 0.2, hover = L and "Shrunk to 0.2" or "缩小到0.2" },
     },
-    default = 0.6
+    default = 0
   },
   -- 无花果收获数量
   {
