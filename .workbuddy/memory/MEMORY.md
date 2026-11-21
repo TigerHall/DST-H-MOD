@@ -77,6 +77,9 @@
 - 默认**只读不复制**；需要长期持有时 `--id <ID> --copy` → `参考MOD_ID/<ID>/`；更新用 `--id <ID> --update` / `--update-all`
 - 旧 `参考代码/参考MOD/`（中文命名+嵌套分类+汉化）**保留不动**，非简单 workshop 副本
 - 详细工作流：`docs/workshop_mod_reference_workflow.md`
+- ⭐ **地标/传送跳转清单优先查** workshop `3638290455`（新版T键）：
+  `scripts/TMIR/debug_commands/debug_commands_teleport_landmark.lua` 有全套森林/洞穴地标
+  （DEFAULT_FOREST_ORDER / DEFAULT_CAVE_ORDER / TELEPORT_LANDMARK）；已记入技能 mod-patterns.md 三副本
 
 ### 踩坑记录
 - 踩坑库主文件 `~/.workbuddy/skills/dst-mod-dev/references/pitfalls.md`（2026-11-21 已 67 条）

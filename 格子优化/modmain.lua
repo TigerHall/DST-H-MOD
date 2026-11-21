@@ -927,12 +927,41 @@ local MOONEYE_PREFABS = { "purplemooneye", "bluemooneye", "redmooneye",
 local LANDMARK_TAG = "hslot_landmark"
 local EXTRA_LANDMARK_PREFABS = { "chester_eyebone", "hutch_fishbowl" }
 
+-- ⭐ 2026-11-21 扩展常用地标（参考新版T键 3638290455 的 TELEPORT_LANDMARK 列表）。
+-- 【筛选原则】只给「地图上真正显示图标」的地标加跳转——地图上不显示的一律不加，
+-- 否则玩家在地图上根本看不到可点击目标，加了也没用。
+-- 判定标准：prefab 里有 MiniMapEntity:SetIcon / maprevealable / globalmapicon（已逐个核对官方源码）。
+-- 猪王/格罗姆雕像走 MiniMapEntity:SetIcon（pigking.png / statueglommer.png），探索后在地图显示图标。
+local LANDMARK_PREFABS = {
+  "pigking",              -- 猪王（MiniMapEntity:SetIcon ✓）
+  "statueglommer",        -- 格罗姆雕像（✓）
+  "statuemaxwell",        -- 麦克斯韦雕像（✓）
+  "moonbase",             -- 月台（✓）
+  "oasislake",            -- 绿洲湖（✓）
+  "beequeenhive",         -- 蜂后巢穴（✓；beequeen 本体无图标，不列）
+  "antlion",              -- 蚁狮（✓；antlion_spawner 无图标，不列）
+  "crabking",             -- 蟹王（✓）
+  "walrus_camp",          -- 海象营地（✓）
+  "monkeyqueen",          -- 猴子女王（✓）
+  "cave_entrance",        -- 洞穴入口（✓）
+  "multiplayer_portal",   -- 绚丽之门 / 传送机（✓）
+  "lunarrift_portal",     -- 天体裂隙门（✓ MiniMapEntity + globalmapicon）
+  "wormhole",             -- ⭐ 虫洞（globalmapiconseeable ✓）：点地图虫洞图标 → 跳到该虫洞位置
+}
+-- 已排除（无地图图标，用户要求不跳转）：moon_fissure / beequeen / dragonfly /
+-- dragonfly_spawner / antlion_spawner / hermitcrab
+-- 注： Chester/Hutch（眼骨/星空）已在 EXTRA_LANDMARK_PREFABS；哨塔/月晷/传送门
+--     已在 MOONEYE_PREFABS（它们有 globalmapicon）。
+
 for _, prefab in ipairs(MOONEYE_PREFABS) do
   AddPrefabPostInit(prefab, function(inst)
     inst:AddTag("mooneye")
   end)
 end
-for _, prefab in ipairs(EXTRA_LANDMARK_PREFABS) do
+local landmark_set = {}
+for _, prefab in ipairs(EXTRA_LANDMARK_PREFABS) do landmark_set[prefab] = true end
+for _, prefab in ipairs(LANDMARK_PREFABS) do landmark_set[prefab] = true end
+for prefab in pairs(landmark_set) do
   AddPrefabPostInit(prefab, function(inst)
     inst:AddTag(LANDMARK_TAG)
   end)
@@ -980,33 +1009,64 @@ AddModRPCHandler("hslot_mooneye", "teleport_to_eye", function(player, x, z)
     return best
   end
 
+  -- 搜索优先级：月眼 > 地标（猪王/格罗姆/虫洞等）> 制作站 > 放宽的月眼。
+  -- 地标放在 prototyper 之前：避免点击猪王/格罗姆时被附近基地制作站抢走目标。
   local target = FindNearest(PRECISE_RANGE, "mooneye")
-      or FindNearest(PRECISE_RANGE, "prototyper")
       or FindNearest(PRECISE_RANGE, LANDMARK_TAG)
+      or FindNearest(PRECISE_RANGE, "prototyper")
       or FindNearest(LOOSE_RANGE, "mooneye")
 
-  if not target then return end
+  local landx, landz
 
-  local tx, _, tz = target.Transform:GetWorldPosition()
-
-  -- 落点微调：月眼之类是物品（可直接站上去），但制作站/神龛有碰撞体积，
-  -- 直接传送到中心会卡在建筑里。这里沿"玩家 → 目标"方向退到目标物理半径之外，
-  -- 退出的点若不可通行就退回中心点
-  local landx, landz = tx, tz
-  if target.components.inventoryitem == nil and target.Physics ~= nil then
-    local px, _, pz = player.Transform:GetWorldPosition()
-    local dx, dz = px - tx, pz - tz
-    local len = math.sqrt(dx * dx + dz * dz)
-    if len > 0.01 then
-      local r = target:GetPhysicsRadius(0) + player:GetPhysicsRadius(0) + 0.3
-      if r > 0.6 then
-        local ox, oz = tx + dx / len * r, tz + dz / len * r
-        if TheWorld.Map:IsPassableAtPoint(ox, 0, oz) then
-          landx, landz = ox, oz
+  if target then
+    local tx, _, tz = target.Transform:GetWorldPosition()
+    landx, landz = tx, tz
+    -- 落点微调：月眼之类是物品（可直接站上去），但制作站/神龛有碰撞体积，
+    -- 直接传送到中心会卡在建筑里。这里沿"玩家 → 目标"方向退到目标物理半径之外，
+    -- 退出的点若不可通行就退回中心点
+    if target.components.inventoryitem == nil and target.Physics ~= nil then
+      local px, _, pz = player.Transform:GetWorldPosition()
+      local dx, dz = px - tx, pz - tz
+      local len = math.sqrt(dx * dx + dz * dz)
+      if len > 0.01 then
+        local r = target:GetPhysicsRadius(0) + player:GetPhysicsRadius(0) + 0.3
+        if r > 0.6 then
+          local ox, oz = tx + dx / len * r, tz + dz / len * r
+          if TheWorld.Map:IsPassableAtPoint(ox, 0, oz) then
+            landx, landz = ox, oz
+          end
+        end
+      end
+    end
+  else
+    -- ⭐ 2026-11-21 布景/房间中心跳转：实体没命中时，看点击点落在哪个 topology 房间，
+    -- 房间名命中「地图上有图标的常用布景」清单就跳到该房间中心 node.cent。
+    -- 用官方 Map:FindNodeAtPoint(x,0,z)（components/map.lua:902）——按多边形精确判定，
+    -- 不会「点哪都吸附」。清单只列用户要求、且地图上有图标的布景。
+    local ROOM_KEYWORDS = {
+      "DefaultStart", "CaveStart", "Charlie1", "Balatro", "WormholeGrass",
+      "CaveExit", "ToadstoolArena", "WalledGarden", "AltarRoom", "MooseNest",
+      "AntlionSpawningGround", "MoonbaseOne", "Oasis", "OceanWhirlBigPortal",
+      "DefaultPigking", "DeciduousPond",
+    }
+    -- 注：绚丽之门(multiplayer_portal)、天体裂隙门(lunarrift_portal)走实体跳转（见上方 LANDMARK_PREFABS），
+    -- 它们带 MiniMapEntity 图标，实体位置比房间中心更精确，不需要房间兜底。
+    local map = TheWorld.Map
+    if map ~= nil and TheWorld.topology ~= nil and TheWorld.topology.nodes ~= nil then
+      local node, node_index = map:FindNodeAtPoint(x, 0, z)
+      if node ~= nil and node_index ~= nil and node.cent ~= nil then
+        local room_id = TheWorld.topology.ids[node_index] or ""
+        for _, kw in ipairs(ROOM_KEYWORDS) do
+          if string.find(string.lower(room_id), string.lower(kw), 1, true) then
+            landx, landz = node.cent[1], node.cent[2]
+            break
+          end
         end
       end
     end
   end
+
+  if landx == nil then return end
 
   -- 纯净黑屏过场（关键）：ScreenFade 是 player_common 在【服务端】绑定到玩家实体的方法，
   -- 客户端玩家实体（ThePlayer）根本没有这个方法（之前在客户端调 ThePlayer:ScreenFade 直接崩）。

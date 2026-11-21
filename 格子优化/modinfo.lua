@@ -47,29 +47,31 @@ end
 
 --  基础信息
 name = en_zh("H-SLOT", "H-无限格子")
-version = "3.8.11"
+version = "3.8.14"
 description = en_zh("V" .. version .. [[
+󰀏 Your backpack wants a bigger home!
 
-Items in Chester's and Hutch's grids do not spoil. Items in Shadow Chester's grid spoil at an accelerated rate, while items in Ice Chester's grid are preserved (remain fresh).
-Items in Chester's and Hutch's grids can be stacked infinitely.
-The red moon eye can open the shadow space, and the green moon eye can open the poaching rabbit space. Eyebone and Fishbowl can also open the rabbit space by inspecting.
-The shadow space and the poaching rabbit space can be set with infinite stacking, corruption acceleration, and anti-fresh acceleration.
-Trading feature added -- try trading various items with eyebone/fishbowl to discover hidden recipes!
-Blue / purple / orange / yellow moon eyes each open a 160-slot scrollable vault; press H to toggle the blue one!
-Purple, orange, yellow moon eyes each open a pocket space (5x4 slots)!
-Yellow/Orange/Purple moon eyes can reveal set piece locations on the map!
-Open map and double-left-click moon eyes/sentry/moondial/townportal/players to teleport with fade transition!
+󰀞 Chester & Hutch: never spoil
+󰀂 Stacking? No limits here
+󰀒 4 moon eyes = 160-slot vaults
+󰀏 Right-drag, middle-click, H key
+󰀀 Red = shadow, green = rabbit
+󰀐 Pig King, Glommer, wormholes
+󰀰 Eyebone trades & fetches drops
+󰀄 Green repairs, red ages gear
+Every feature has a switch 󰀏
 ]], "V" .. version .. [[
+󰀏 你的背包想要更大的房子！
 
-切斯特、哈奇格子内物品不腐败，暗影切斯特格子腐败加速，冰雪切斯特反鲜。
-切斯特、哈奇格子可无限堆叠。
-带孔月岩可传送到眼骨或星空处；打开地图左键双击月眼/哨塔/月晷/传送门/玩家可传送（有过场动画）。
-黄色、橙色、紫色月眼可在地图揭示重要布景位置。
-红色月眼可打开暗影空间，绿色月眼可打开挖角兔空间。眼骨和星空右键检查也可打开挖角兔空间。
-暗影空间和挖角兔空间可设置无限堆叠，腐败加速和反鲜加速。
-新增交易功能——尝试向眼骨或星空提交各种物品，发现隐藏配方彩蛋吧！
-蓝/紫/橙/黄四色月眼各打开一个 160 格滚动仓库（底色按宝石色区分），按 H 键快捷开关蓝色空间！
-紫色、橙色、黄色月眼可各打开一个格子空间（5x4 格子）！
+󰀞 切斯特/哈奇：永不腐败
+󰀂 堆叠？没有上限
+󰀒 四色月眼：160 格滚动仓库
+󰀏 右键拖动/中键归位/H 秒开
+󰀀 红眼暗影，绿眼兔子窝
+󰀐 猪王/格罗姆/虫洞地图跳
+󰀰 眼骨星空：兑换+捡漏
+󰀄 绿眼修复，红眼做旧
+功能都能单独开关 󰀏
 ]])
 author = "hehu"
 api_version = 10
@@ -131,10 +133,10 @@ configuration_options = {
     "带孔月岩传送功能",
     "Moonrockcrater Teleport Function",
     true,
-    "带孔月岩点击检查触发传送 + 地图左键双击月眼/玩家传送（有过场动画）",
-    "Moonrockcrater click teleport + map double-left-click teleport to moon eyes/players (with fade transition)",
-    "点击带孔月岩传送到眼骨/星空；打开地图左键双击月眼/哨塔/月晷/传送门/玩家可直接传送",
-    "Click moonrockcrater to teleport to eyebone/hutch; open map and double-left-click moon eyes or players to teleport",
+    "带孔月岩点击传送 + 地图左键双击月眼/地标/虫洞/玩家跳转（有过场动画）",
+    "Moonrockcrater click teleport + map double-click teleport to moons/landmarks/wormholes/players (with fade)",
+    "点击带孔月岩传送到眼骨/星空；地图上左键双击月眼/哨塔/月晷/制作站/猪王/格罗姆雕像/虫洞/玩家可直接跳转",
+    "Click moonrockcrater to teleport; map double-left-click moons, pig king, statueglommer, wormholes, players to teleport",
     "不改变带孔月岩，禁用地图传送",
     "No change to moonrockcrater, disable map teleport"
   ),
