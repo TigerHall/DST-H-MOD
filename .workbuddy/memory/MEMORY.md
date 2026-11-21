@@ -89,7 +89,7 @@
 - 扩容：抬 `containers.MAXITEMSLOTS`（两端顶层、SetPristine 前）；真容器 + 换 UI 最稳
 - 挂载链：`containerroot.parent` → `hslot_vault_root`(SetScale GetHUDScale + hook SetHUDSize) → 面板(不设锚点不缩放) → gridroot(缩 0.6)
 - 换皮：劫持 ContainerWidget.Open，**绝不 Hide widget**（GetOpenContainers 靠 IsVisible，藏了 Shift转移/制作材料全失效），只藏内容；格子用官方 `InvSlot`（ItemTile 空格会崩），零 RPC
-- 布局对齐简存：ScrollingGrid 传 `peek_percent=1, peek_height=-5`（官方默认 peek=20 会下推 ~7.5px）；gridroot (0,-30)；scrollbar_height_offset=-50
+- 布局：面板 440×420（10列×6行，原 680/15列×7行）；严格 6 行用 `peek_height=0` 且**绝不传 peek_percent**（它会覆盖 peek_height，peek_percent=1→peek=80 露出第7行）；gridroot (0,-6)（peek 80→0 上移24px，GRID_Y 补偿 +24）；scrollbar_height_offset=-50；面板收窄时筛选 x/数量 x/分隔线宽同步内收
 - **拖动稳定三件套（缺一不可）**：
   ① world_scale 动态测量（临时挪 10 单位量 GetWorldPosition 变化，锚点无关）——抄简存 terminalwidget.lua:967-993
   ② 防抖用起始快照差值（StartDrag 存鼠标/面板起点，move 只算 delta×world_scale，全程不读实时世界坐标）——抄能力勋章 medal_globalfn.lua:540-568

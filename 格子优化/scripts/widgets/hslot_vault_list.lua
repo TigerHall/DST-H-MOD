@@ -25,23 +25,28 @@ local TEMPLATES = require("widgets/redux/templates")
 --   · 筛选行 y=175，分隔线 y=144（134/142）
 --   · 搜索框 186×40，数量文字 x=292（153/159）
 -- 面板自身不缩放；只有 gridroot 缩 0.6。这样格子屏幕尺寸/排布和简存逐像素一致。
-local COLS = 15
-local ROWS = 6       -- 可视行数（简存 num_visible_rows=6）
+-- ⭐ 2026-11-21 调整：15列×7行 → 10列×6行。
+-- 原来的「7行」= 6 行可见 + peek 露出的第 7 行（peek_percent=1 覆盖了 peek_height=-5，
+-- 实际 peek=80 整整一行）。现在去掉 peek，严格 6 行；第一行位置保持不变。
+local COLS = 10
+local ROWS = 6       -- 可视行数（严格 6 行，无 peek）
 local EXTRA_ROWS = 1 -- 额外渲染的行数（滚动时从底部滑上来，不会突现）
 local CELL = 80      -- 格子设计间距（gridroot 内部坐标 = 简存 row_w64+spacing16）
 local GRID_SCALE = 0.6 -- ⭐ 网格层缩放，和简存 gridroot 的 0.6 同值
-local GRID_W = COLS * CELL       -- gridroot 内部尺寸 1200
+local GRID_W = COLS * CELL       -- gridroot 内部尺寸 800（原 1200）
 local GRID_H = ROWS * CELL       --                  480
 local SCR_W, SCR_H = GRID_W, GRID_H -- TrueScrollList 裁剪区（gridroot 内部坐标）
 local SCROLLBAR_GAP = 8 -- 简存 scrollbar_offset=8
 
--- 面板设计尺寸：直接照抄简存 680×420。
--- 网格屏幕尺寸 = GRID_W×0.6=720 宽（比面板略宽，两侧各溢出 20，简存原样）、
---               GRID_H×0.6=288 高。gridroot 位置 (0,-30)，见 GRID_CX/GRID_Y。
-local PANEL_W = 680
+-- 面板设计尺寸：宽度按 10 列收窄 680→440（少 5 格 ×80×0.6=240），高度 420 不变。
+-- 网格屏幕尺寸 = GRID_W×0.6=480 宽（仍比面板宽 40，两侧各溢出 20，和原比例一致）、
+--               GRID_H×0.6=288 高。
+local PANEL_W = 440
 local PANEL_H = 420
 local GRID_CX = 0
-local GRID_Y = -30    -- ⭐ 简存 gridroot:SetPosition(0,-30)
+-- GRID_Y：原 -30（peek=80 时第一行位置）。去掉 peek 后 grid 整体上移 (80/2)×0.6=24px，
+-- 为保持第一行不动，这里补偿 +24 → -6。
+local GRID_Y = -6
 -- 默认位置恒为屏幕正中（0,0 = 屏幕中心，父级自带 MIDDLE 锚点）。
 -- 曾照简存做「制作栏打开右移 260 让位」，但该让位与中键复位互相打断，
 -- 2026-11-21 已去掉：位置只由用户拖动偏移 _offset 决定，中键永远回正中。
@@ -52,14 +57,15 @@ local GRID_Y = -30    -- ⭐ 简存 gridroot:SetPosition(0,-30)
 local FILTER_ICON = 39      -- 简存 button_size=39
 local FILTER_GAP = 48       -- 简存 pos_x 每格 +48
 local FILTER_SCALE_ON = 1.15 -- 选中时整个按钮放大
-local FILTER_Y = 175        -- ⭐ 简存 filterpanel y=175
-local FILTER_X0 = -336      -- ⭐ 简存筛选按钮起始 x=-336
+local FILTER_Y = 175        -- ⭐ 简存 filterpanel y=175（垂直不变）
+-- 横向按面板收窄 240 各内收 120：筛选起始 -336→-216，数量文字 292→172
+local FILTER_X0 = -216
 local INFO_SIZE = 30        -- 简存 text_size 30
 local INFO_W = 160
-local NUM_X = 292           -- ⭐ 简存 numslots_text x=292
+local NUM_X = 172
 -- 底部两个按钮（面板底部，RectangleWindow 下沿内侧）
 local BUTTON_W, BUTTON_H = 116, 46
-local BOTTOM_Y = -178       -- 面板半高 210，按钮区在底部
+local BOTTOM_Y = -178       -- 面板半高 210，按钮区在底部（第7行位置，保持不变）
 local SORT_X, CLOSE_X = -70, 70
 local EDGE = 2
 -- 筛选按钮底衬（filterslot_bg.tex）：false = 透明，只留按钮边框和图标
@@ -462,7 +468,7 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
     self.line = self:AddChild(Image("images/ui.xml", "line_horizontal_white.tex"))
     self.line:SetPosition(0, 144)
     self.line:SetTint(1, 1, 1, 0.4)
-    self.line:ScaleToSize(700, 5)
+    self.line:ScaleToSize(PANEL_W - 20, 5)  -- 原 700（面板680）；随面板收窄到 420
     self.line:SetClickable(false)
 
     -- 顶部一行分类图标：用官方制作栏的 filterslot_frame / filterslot_bg
@@ -529,14 +535,14 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
         scroll_context = { owner = owner, container = self.container },
         widget_width = CELL,
         widget_height = CELL,
-        -- ⭐ 2026-11-21 对齐简存 terminalwidget.lua:777-792 的 peek 参数：
-        -- 官方模板默认 peek_height = widget_height*0.25 = 20，会把整个网格往下推；
-        -- 简存显式 peek_percent=1 + peek_height=-5（负值往上收紧）。
-        -- 之前漏了这两个 → 格子区比简存低约 7.5 屏幕像素（截图里最后一行贴住底部按钮）。
-        -- templates.lua:1989 `grid:SetPosition(..., widget_height*(rows-1)/2 + peek_height/2)`，
-        -- peek_height 从 20 → -5 让网格上移 (25/2)×0.6 = 7.5px。
-        peek_percent = 1,
-        peek_height = -5,
+        -- ⭐ 2026-11-21 去掉第 7 行：严格 6 行，不留 peek。
+        -- 原抄简存写了 peek_percent=1 + peek_height=-5，但官方 templates.lua:1970
+        -- `if opts.peek_percent then peek_height = widget_height * peek_percent` —— 
+        -- peek_percent 覆盖 peek_height，-5 根本没生效，实际 peek=80（整整一行），
+        -- 所以视觉上 6 行 + 1 行 peek = 7 行。
+        -- 现在两个都不传：peek_height 取默认 widget_height*0.25=20？——不行，
+        -- 显式 peek_height=0 保证严格 6 行（0 是真值，or 短路不会取默认）。
+        peek_height = 0,
         num_visible_rows = ROWS,
         num_columns = COLS,
         item_ctor_fn = VaultItemCtor,
