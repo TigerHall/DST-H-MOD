@@ -47,7 +47,7 @@ end
 
 --  基础信息
 name = en_zh("H-SLOT", "H-无限格子")
-version = "3.9"
+version = "4.0"
 description = en_zh("V" .. version .. [[
 󰀏 Your backpack wants a bigger home!
 
@@ -234,15 +234,27 @@ configuration_options = {
   addTitle("Hotkey", "快捷键"),
   addConfig(
     "pocket_hotkey",
-    "快捷键 H 开关蓝月眼空间",
-    "Hotkey H toggles blue moon eye space",
+    "快捷键 H 开关切斯特轮盘 UI",
+    "Hotkey H toggles Chester dial UI",
     true,
-    "按键盘 H 直接开关蓝色月眼的口袋空间（不用再右键检查月眼）",
-    "Press H to toggle the blue moon eye pocket space",
-    "开启（默认）：按 H 开关蓝月眼空间",
-    "On (default): press H to toggle the space",
-    "关闭：只能右键检查蓝月眼打开",
-    "Off: only right-click inspecting the moon eye works"
+    "按 H 显示/隐藏切斯特月眼轮盘（整个图标 UI）。与「切斯特月眼轮盘图标」组合：都关则 UI 不显示也无法唤出；图标关但 H 开，可按 H 唤出。",
+    "Press H to show/hide the Chester moon-eye dial (whole icon UI). Combined with the dial option: both off means no UI and no way to open; dial off + H on lets H summon it.",
+    "开启（默认）：H 可开关轮盘 UI 显示",
+    "On (default): H toggles dial UI visibility",
+    "关闭：H 不响应轮盘 UI",
+    "Off: H does not affect the dial UI"
+  ),
+  addConfig(
+    "chester_dial",
+    "切斯特月眼轮盘图标",
+    "Chester moon-eye dial icon",
+    true,
+    "画面右下角常驻切斯特小图标，点击张嘴后插入宝石开关六色月眼空间",
+    "A small Chester icon at bottom-right; click to open its mouth and pick a gem to toggle six moon-eye spaces",
+    "开启（默认）：显示切斯特图标，点击弹出六色宝石轮盘",
+    "On (default): show Chester icon, click to open the six-gem dial",
+    "关闭：图标默认隐藏；若「H 快捷键」开启可按 H 唤出，两者都关则完全不显示",
+    "Off: icon hidden by default; if H hotkey is on, press H to summon it; both off means no UI at all"
   ),
   addTitle("Debug", "调试"),
   addConfig(

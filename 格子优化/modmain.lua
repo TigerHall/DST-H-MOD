@@ -25,6 +25,8 @@ local config = {
   auto_sort_repair = GetModConfigData("auto_sort_repair"),
   -- 快捷键：H 开关蓝月眼空间
   pocket_hotkey = GetModConfigData("pocket_hotkey"),
+  -- 切斯特轮盘：HUD 小图标点开六色月眼空间开关
+  chester_dial = GetModConfigData("chester_dial"),
   -- 兼容排查用的诊断日志
   vault_debug = GetModConfigData("vault_debug"),
 }
@@ -104,6 +106,9 @@ Assets = {
   -- 官方 telebase.lua:6-7 也声明了这两个，重复声明引擎会去重，安全。
   Asset("ANIM", "anim/vaultorbdestination.zip"),
   Asset("MINIMAP_IMAGE", "vaultorbdestination_icon"),
+  -- 切斯特月眼轮盘：复用官方切斯特【实体】动画（prefabs/chester.lua:7-8 同款，重复声明安全）
+  Asset("ANIM", "anim/chester.zip"),
+  Asset("ANIM", "anim/chester_build.zip"),
 }
 
 
@@ -1696,24 +1701,29 @@ if not GLOBAL.TheNet:IsDedicated() then
   --   true = 保持 widget 可见、只藏内容（底图/按钮/槽位），上面两条功能恢复。
   local VAULT_KEEP_WIDGET_VISIBLE = true
 
-  -- 快捷键 H：开关蓝月眼空间（默认开启，可在 mod 设置里关掉）
-  -- 参考「简易宠物增强 3587643283」modmain.lua:661：AddKeyDownHandler + SendModRPCToServer
+  -- 快捷键 H：开关切斯特月眼轮盘 UI 的显示（整个图标 Show/Hide，不改变张嘴状态）
+  -- 与 chester_dial 配置组合：都关则不创建 UI；dial 关 + H 开则创建但初始隐藏，H 可唤出。
+  -- 参考「简易宠物增强 3587643283」modmain.lua:661：AddKeyDownHandler
   if config.pocket_hotkey then
     TheInput:AddKeyDownHandler(KEY_H, function()
-      if ThePlayer == nil or not ThePlayer:IsValid() then
-        return
-      end
+      if ThePlayer == nil or not ThePlayer:IsValid() then return end
       local hud = ThePlayer.HUD
-      -- 打字 / 聊天 / 暂停 / 地图 / 打开其他界面时不要抢键
       if hud == nil or hud:IsChatInputScreenOpen() or hud:IsPauseScreenOpen()
-          or hud:IsConsoleScreenOpen() then
-        return
-      end
+          or hud:IsConsoleScreenOpen() then return end
       local active = TheFrontEnd:GetActiveScreen()
-      if active ~= nil and active.name ~= "HUD" then
-        return
+      if active ~= nil and active.name ~= "HUD" then return end
+      -- ⚠️ dial 挂在 Controls 实例（AddClassPostConstruct 的 self），
+      --    而 ThePlayer.HUD 是 PlayerHud，Controls 在 hud.controls 下（不是 hud 本身）。
+      local dial = hud.controls ~= nil and hud.controls.hslot_chester_dial or nil
+      if dial == nil then return end
+      if dial:IsVisible() then
+        dial:Hide()
+        dial._user_visible = false
+        if dial.is_open then dial:Close() end
+      else
+        dial:Show()
+        dial._user_visible = true
       end
-      SendModRPCToServer(MOD_RPC["hslot_pocket"]["toggle_blue"])
     end)
   end
 
@@ -1727,7 +1737,49 @@ if not GLOBAL.TheNet:IsDedicated() then
   --   挂到 containerroot.parent（外层 containerroot），自己 SetScale(GetHUDScale())
   --   并 hook SetHUDSize 实时跟随。和简存逐行一致 —— 面板布局既然照抄简存
   --   （680×420 / 15列 / gridroot 0.6 / (0,-30)），挂载也必须同款才能像素级对齐。
-  --   外层在 mousefollow 之前建，z 序安全；面板自身不缩放，只有 gridroot 缩 0.6。
+
+  -- ===== 切斯特月眼轮盘（A 版）=====
+  -- ⚠️ 必须挂 bottomright_root（Insight 同款 HUD 交互层），自建 root 拿不到鼠标焦点
+  --    → ImageButton 不响应点击、像静态 UI。bottomright_root 自带 HUD 缩放（controls.lua:563）。
+  -- 创建条件：dial 开 或 H 快捷键开（H 开时即使 dial 关也要创建，才能按 H 唤出）。
+  -- 两个都关 → 完全不创建（UI 不显示也没法打开）。
+  -- 注意 ~= false：本地测试时配置缓存可能没有新键，GetModConfigData 返回 nil 视为开。
+  local create_dial = (config.chester_dial ~= false) or (config.pocket_hotkey ~= false)
+  if create_dial then
+    local ChesterDial = require("widgets/hslot_chester_dial")
+    AddClassPostConstruct("widgets/controls", function(self)
+      self.hslot_chester_dial = self.bottomright_root:AddChild(ChesterDial(function(key)
+        -- 复用现有通用 RPC：服务端 TogglePocketDimensionChest(player, key)
+        SendModRPCToServer(MOD_RPC["hslot_pocket"]["toggle"], key)
+      end))
+      local dial = self.hslot_chester_dial
+      -- Insight 菜单按钮在 bottomright_root 的 (-154,40)；对齐其 x、放上方（y=110）
+      dial:SetPosition(-154, 110)
+
+      -- 初始显示：dial 配置开才显示；dial 关（但 H 开）时初始隐藏，等 H 唤出。
+      dial._user_visible = (config.chester_dial ~= false)
+      if dial._user_visible then dial:Show() else dial:Hide() end
+
+      -- 周期任务只管「鬼魂强制隐藏」，不再每帧 Show（否则覆盖 H 的隐藏意图）。
+      -- 复活时恢复到 _user_visible（用户/H 决定的显示状态）。
+      local task = self.inst:DoPeriodicTask(0.25, function()
+        if not self.inst:IsValid() then return end
+        local player = GLOBAL.ThePlayer
+        local is_ghost = player ~= nil and player:IsValid() and player:HasTag("playerghost")
+        if is_ghost then
+          if dial:IsVisible() then dial:Hide() end
+        else
+          -- 复活：若用户意图是显示但当前隐藏，恢复（但不主动打开已关的轮盘）
+          if dial._user_visible and not dial:IsVisible() then dial:Show() end
+        end
+      end)
+      self.inst:ListenForEvent("onremove", function()
+        task:Cancel()
+      end)
+    end)
+  end
+
+  -- 外层在 mousefollow 之前建，z 序安全；面板自身不缩放，只有 gridroot 缩 0.6。
   AddClassPostConstruct("widgets/controls", function(self)
     local Widget = GLOBAL.require("widgets/widget")
     local root = self.containerroot.parent -- 外层 containerroot（z 序在 mousefollow 之前）
@@ -1740,28 +1792,6 @@ if not GLOBAL.TheNet:IsDedicated() then
       return old_SetHUDSize(self, ...)
     end
 
-    -- ===== 一次性 scale 诊断（定位 4K 格子偏小，抓完即可删）=====
-    -- 延迟 2 秒等简存 terminalrroot 建好，打印各层实际 scale 对比。
-    self.inst:DoTaskInTime(2, function()
-      if not self.inst:IsValid() then return end
-      local function S(w)
-        if w == nil or w.GetLooseScale == nil then return "nil" end
-        local ok, x, y, z = pcall(function() return w:GetLooseScale() end)
-        if not ok then return "err" end
-        return string.format("%.4f", x or 0)
-      end
-      local sw, sh = TheSim:GetScreenSize()
-      print(string.format("[hslot][scale] screen=%dx%d hudScale=%.4f propHUD=%.4f"
-        .. " hslotRoot=%s termRoot=%s outerCR=%s innerCR=%s",
-        sw, sh,
-        GLOBAL.TheFrontEnd:GetHUDScale(),
-        GLOBAL.TheFrontEnd:GetProportionalHUDScale(),
-        S(self.hslot_vault_root),
-        S(self.terminalrroot),
-        S(self.containerroot and self.containerroot.parent),
-        S(self.containerroot)))
-    end)
-    -- ===== 诊断结束 =====
   end)
 
   AddClassPostConstruct("screens/playerhud", function(self)
