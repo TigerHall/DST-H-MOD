@@ -719,6 +719,21 @@ local function TogglePocketDimensionChest(viewer, container_key)
   end
 end
 
+-- 右键检查【实物】（各色月眼/眼骨/星空等）打开空间：
+-- 玩家右键检查的就是月眼本体，实物即凭证 → 未解锁时自动解锁（等同扫描）+ 打开。
+-- 这样解锁机制不会误伤原本"右键月眼开空间"的老功能，且顺带点亮 UI。
+local function TogglePocketDimensionChestFromItem(viewer, container_key)
+  if config.moon_eye_unlock and viewer ~= nil and viewer.userid ~= nil
+      and not IsUnlocked(viewer.userid, container_key) then
+    UNLOCK_DATA[viewer.userid] = UNLOCK_DATA[viewer.userid] or {}
+    UNLOCK_DATA[viewer.userid][container_key] = true
+    SaveUnlockData()
+    SyncUnlockToClient(viewer)
+    SayUnlockSuccess(viewer, container_key)   -- 说话：月眼名 + 三个灯泡
+  end
+  TogglePocketDimensionChest(viewer, container_key)
+end
+
 -- 快捷键 H 开关蓝月眼空间（客户端发 RPC，服务端真正开关）。
 -- 参考「简易宠物增强 3587643283」modmain.lua:661 的
 -- `TheInput:AddKeyDownHandler(key, fn)` + `SendModRPCToServer` 写法。
@@ -789,7 +804,7 @@ AddPrefabPostInit("chester_eyebone", function(inst)
   local old_EyeboneGetDesc = inst.components.inspectable.GetDescription
   inst.components.inspectable.GetDescription = function(self, viewer)
     if config.colormooneye_toggle then
-      TogglePocketDimensionChest(viewer, "rabbitkinghorn")
+      TogglePocketDimensionChestFromItem(viewer, "rabbitkinghorn")
     end
     return old_EyeboneGetDesc(self, viewer)
   end
@@ -813,7 +828,7 @@ AddPrefabPostInit("hutch_fishbowl", function(inst)
   local old_FishbowlGetDesc = inst.components.inspectable.GetDescription
   inst.components.inspectable.GetDescription = function(self, viewer)
     if config.colormooneye_toggle then
-      TogglePocketDimensionChest(viewer, "rabbitkinghorn")
+      TogglePocketDimensionChestFromItem(viewer, "rabbitkinghorn")
     end
     return old_FishbowlGetDesc(self, viewer)
   end
@@ -1509,7 +1524,7 @@ AddPrefabPostInit("yellowmooneye", function(inst)
         })
       end
       if config.colormooneye_toggle then
-        TogglePocketDimensionChest(viewer, "yellow_fish")
+        TogglePocketDimensionChestFromItem(viewer, "yellow_fish")
       end
     end
     return old_GetDescription(self, viewer)
@@ -1533,7 +1548,7 @@ AddPrefabPostInit("orangemooneye", function(inst)
         })
       end
       if config.colormooneye_toggle then
-        TogglePocketDimensionChest(viewer, "orange_fish")
+        TogglePocketDimensionChestFromItem(viewer, "orange_fish")
       end
     end
     return old_GetDescription(self, viewer)
@@ -1559,7 +1574,7 @@ AddPrefabPostInit("purplemooneye", function(inst)
         })
       end
       if config.colormooneye_toggle then
-        TogglePocketDimensionChest(viewer, "purple_fish")
+        TogglePocketDimensionChestFromItem(viewer, "purple_fish")
       end
     end
     return old_GetDescription(self, viewer)
@@ -1633,7 +1648,7 @@ AddPrefabPostInit("greenmooneye", function(inst)
   local old_GetDescription = inst.components.inspectable.GetDescription
   inst.components.inspectable.GetDescription = function(self, viewer)
     if config.colormooneye_toggle then
-      TogglePocketDimensionChest(viewer, "rabbitkinghorn")
+      TogglePocketDimensionChestFromItem(viewer, "rabbitkinghorn")
     end
     return old_GetDescription(self, viewer)
   end
@@ -1648,7 +1663,7 @@ AddPrefabPostInit("redmooneye", function(inst)
   local old_GetDescription = inst.components.inspectable.GetDescription
   inst.components.inspectable.GetDescription = function(self, viewer)
     if config.colormooneye_toggle then
-      TogglePocketDimensionChest(viewer, "shadow")
+      TogglePocketDimensionChestFromItem(viewer, "shadow")
     end
     return old_GetDescription(self, viewer)
   end
@@ -1662,7 +1677,7 @@ AddPrefabPostInit("bluemooneye", function(inst)
   local old_GetDescription = inst.components.inspectable.GetDescription
   inst.components.inspectable.GetDescription = function(self, viewer)
     if config.colormooneye_toggle then
-      TogglePocketDimensionChest(viewer, "hslot")
+      TogglePocketDimensionChestFromItem(viewer, "hslot")
     end
     return old_GetDescription(self, viewer)
   end
