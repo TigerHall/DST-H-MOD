@@ -250,6 +250,22 @@ AddPrefabPostInit("player_classified", function(inst)
   --    （见 hslot_chester_dial.lua BindUnlockListener），不再经过 ThePlayer 中转——
   --    中转的 me.player_classified ~= inst 判断在客户端引用不一致时会永远跳过，导致 UI 不刷新。
   inst._hslot_unlock = GLOBAL.net_string(inst.GUID, "_hslot_unlock", "hslotUnlockDirty")
+
+  -- 地图传送成功信号（one-shot）：服务端传送成功后 push，客户端收到后关地图。
+  -- net_event 专用于一次性触发（netvars.lua:75-99），每次 push 都会触发（内部 set_local+set）。
+  inst._hslot_teleport_ok = GLOBAL.net_event(inst.GUID, "hslotTeleportSuccess")
+
+  -- ⚠️ 监听必须两端都注册（对齐官方 RegisterNetListeners_common）：
+  --    listen server（自己开房）ismastersim=true，若放在 not ismastersim 分支会漏掉主机 → 传送成功地图不关。
+  --    专用服服务端 ThePlayer==nil，下面的判空会自然跳过，无害。
+  inst:ListenForEvent("hslotTeleportSuccess", function()
+    -- 所有玩家的 classified 都复制到本地，只处理【本地玩家】的（别人传送不该关自己地图）
+    local owner = ThePlayer
+    if owner == nil or owner.player_classified ~= inst then return end
+    if owner.HUD ~= nil and owner.HUD:IsMapScreenOpen() then
+      owner.HUD.controls:HideMap()   -- 官方 playerhud.lua:547 / controls.lua:990
+    end
+  end)
 end)
 
 -- 玩家进入世界时（服务端）推送一次已解锁记录
@@ -1319,16 +1335,19 @@ local function DoMapTeleport(player, x, z)
       player.Physics:Teleport(landx, 0, landz)
     end
     player:SnapCamera()
-    -- ⭐ 复用官方 vault_orb 的落点动效：vault_portal_fx 动画 + teleport_arrive_FX 音效。
-    -- 两者都是官方通用资源（fx.lua:3960 / vault_orb_refined.lua:17-29），所有客户端自带，零资源依赖。
+    -- ⭐ 复用官方 vault_orb 的落点动画 vault_portal_fx（fx.lua:3960，纯视觉无音效）。
+    -- 音效已按用户要求去掉（之前的 PlaySound teleport_arrive_FX 不好听）。
     local fx = GLOBAL.SpawnPrefab("vault_portal_fx")
     if fx ~= nil then
       fx.Transform:SetPosition(landx, 0, landz)
     end
-    if player.SoundEmitter then
-      player.SoundEmitter:PlaySound("rifts6/vault_portal/teleport_arrive_FX")
-    end
     player:ScreenFade(true, 0.4)
+    -- ⭐ 传送成功 → 通知客户端关地图（失败在 landx==nil 处已 return，不会触发）。
+    -- 用 net_event one-shot：客户端收到才关，没传送成功时地图保持打开供用户继续浏览。
+    local classified = player.player_classified
+    if classified ~= nil and classified._hslot_teleport_ok ~= nil then
+      classified._hslot_teleport_ok:push()
+    end
   end)
 end
 
@@ -1386,9 +1405,9 @@ if not GLOBAL.TheNet:IsDedicated() then
         -- 黑屏过场由服务端收到 RPC 后通过 player:ScreenFade 驱动，客户端无需也不应调用 ScreenFade
         -- （ThePlayer 在客户端无 ScreenFade 方法）。这里只发 RPC + 关地图。
         GLOBAL.SendModRPCToServer(GLOBAL.MOD_RPC["hslot_mooneye"]["teleport_to_eye"], targetX, targetZ)
-        -- ⭐ 2026-11-21：不再主动关地图。参考官方 wortox 的 BLINK_MAP（actions.lua:458，
-        -- 无 closes_map）——传送成功地图也保持打开；黑屏过场由服务端 ScreenFade 驱动，
-        -- 与地图层互不干扰。原版左键点地图本就不关，我们也不该关。
+        -- ⭐ 不在这里直接关地图：客户端不知道传送成败。改由服务端传送成功后 push net_event
+        -- （player_classified 的 hslotTeleportSuccess）→ 客户端监听才 HideMap。
+        -- 没传送成功（找不到目标）时地图保持打开，用户可继续浏览。
         _last_click_time = 0
         _last_click_pos = nil
         return
@@ -1908,8 +1927,8 @@ if not GLOBAL.TheNet:IsDedicated() then
   --   r,g,b   : 9-slice 底色的 RGB —— 取对应**宝石**的色调
   --             （蓝宝石 / 紫宝石 / 橙宝石 / 黄宝石），半透明后正好是同一系的不同色
   --   key     : TheWorld:GetPocketDimensionContainer 的世界 key
-  -- 位置不再需要参数：面板默认就是屏幕正中（打开制作栏时自动右移让位），
-  -- 之后拖动的位置按容器分开记忆。
+  -- 位置不再需要参数：面板默认就是屏幕正中，之后拖动的位置按容器分开记忆。
+  -- 已删除任何"右移让位"（面板自身 260 + 官方容器层 300）——会挤到别的格子 UI。
   local VAULT_THEMES = {
     hslot_container = { r = 0.28, g = 0.52, b = 0.95, key = "hslot" },       -- 蓝宝石
     purple_fish_box = { r = 0.68, g = 0.34, b = 0.92, key = "purple_fish" }, -- 紫宝石
@@ -2163,15 +2182,6 @@ if not GLOBAL.TheNet:IsDedicated() then
           list:MoveToFront()
         end
 
-        -- ⭐ 照搬简存 main/ui.lua:59：打开面板时把官方容器层整体右移 300，
-        -- 让面板不遮住同时打开的其它容器格子（锅等露在面板右侧）。
-        -- hslot 面板挂在 containerroot.parent 外层，移内层 containerroot 不会带动面板。
-        local hud = ThePlayer ~= nil and ThePlayer.HUD or nil
-        local ctr = hud ~= nil and hud.controls or nil
-        if ctr ~= nil and ctr.containerroot ~= nil then
-          ctr.containerroot:SetPosition(300, 0)
-        end
-
         -- 诊断（modinfo 里「月眼仓库诊断日志」开关打开时才输出）。
         -- ⚠️ 必须放在 modmain 里读 config：widget 模块不是 mod 的 main chunk，
         -- 在那边调 GetModConfigData 会抛 modutil 的报错。
@@ -2265,12 +2275,6 @@ if not GLOBAL.TheNet:IsDedicated() then
           HideContents(self)
         else
           self:Hide()
-        end
-        -- 官方容器层归位（对应打开时的右移 300，简存 ui.lua:83）
-        local hud = ThePlayer ~= nil and ThePlayer.HUD or nil
-        local ctr = hud ~= nil and hud.controls or nil
-        if ctr ~= nil and ctr.containerroot ~= nil then
-          ctr.containerroot:SetPosition(0, 0)
         end
       end
       return old_Close(self, ...)

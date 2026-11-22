@@ -39,7 +39,7 @@ local params = containers.params
 containers.MAXITEMSLOTS = math.max(containers.MAXITEMSLOTS, HSLOT_VAULT_SLOTS)
 
 -- ====================================================================
--- 互斥类型：四个月眼仓库共用同一个 type
+-- 容器 type：四个月眼仓库【各自独立】，可同时打开
 -- ====================================================================
 -- components/container.lua:504 的 Container:Open 里：
 --     for k in pairs(inventory.opencontainers) do
@@ -48,13 +48,11 @@ containers.MAXITEMSLOTS = math.max(containers.MAXITEMSLOTS, HSLOT_VAULT_SLOTS)
 --             k.components.container:Close(doer)
 --         end
 --     end
--- 也就是说「同 prefab 或同 type」的容器会被自动关掉。
--- 四个仓库的 prefab 各不相同，所以只能靠 type 来互斥：
--- type 一致 = 开一个自动关掉另一个，面板不会叠在一起
--- （官方红/绿眼 shadow_container / rabbitkinghorn_container 就是这么互斥的，
---  它们都是 deepcopy(params.shadowchester)，type 相同）。
+-- 即「同 prefab 或同 type」的容器会被自动关掉（互斥）。
+-- ⭐ 2026-11-23 改：蓝/紫/橙/黄四个仓库改成四个不同 type → 不再互斥，可四个同时打开；
+--   代价是面板会叠在一起，所以用「四象限默认位置」错开（见 hslot_vault_list.DefaultPos）。
+--   红/绿眼（shadow/rabbitkinghorn_container）仍用官方 type 互斥，不在此列，保持原样。
 -- ⚠️ 不要用 "chest"，inventory.lua:1921 CloseAllChestContainers 会连带关掉它们。
-local HSLOT_TYPE = "hslot_type"
 
 -- ====================================================================
 -- hslot：古董船 4x4（蓝色月眼）
@@ -74,7 +72,7 @@ params.hslot_container = {
       position = Vector3(0, -190, 0),
     },
   },
-  type = HSLOT_TYPE,
+  type = "hslot_type",   -- 蓝色：独立 type（四色可同时开，不再互斥）
   itemtestfn = function(inst, item, slot)
     return not item:HasTag("irreplaceable")
   end
@@ -116,8 +114,8 @@ for _, colour in ipairs(MOONEYE_FISH_COLOURS) do
         position = Vector3(0, -190, 0),
       },
     },
-    -- 和蓝月眼共用 HSLOT_TYPE → 四色仓库互斥，开一个自动关另一个
-    type = HSLOT_TYPE,
+    -- ⭐ 每色独立 type → 四色仓库可同时打开（不再互斥）；面板用四象限默认位置错开
+    type = "hslot_" .. colour .. "_type",
     itemtestfn = function(inst, item, slot)
       return not item:HasTag("irreplaceable")
     end,

@@ -101,13 +101,17 @@ local POLL_INTERVAL = 0.3
 -- ⚠️ 面板打开期间屏蔽相机缩放。
 -- 官方靠 playercontroller.lua:4463 的 HUD.controls.craftingmenu.focus 来阻止
 -- 滚轮同时缩放镜头，我们的自定义面板不在那套机制里，只能直接在相机层拦。
-local active_list = nil
+local active_list = nil            -- 最后打开的面板（中键复位只作用于它）
+local active_lists = {}            -- ⭐ 四色可同时打开：所有存活面板（按打开顺序的数组）
+local dragging_list = nil          -- ⭐ 四开时全局只允许一个面板在拖（防重叠区多面板同拖）
 local hooked_camera = nil
 
 local function IsVaultOpen()
-    return active_list ~= nil
-        and active_list.inst ~= nil
-        and active_list.inst:IsValid()
+    -- 任意一个面板还活着就算开着（四开时关掉最后一个，其余还在 → 仍需屏蔽滚轮）
+    for _, list in pairs(active_lists) do
+        if list.inst ~= nil and list.inst:IsValid() then return true end
+    end
+    return false
 end
 
 local function HookCameraZoom()
@@ -350,7 +354,7 @@ end
 -- ⚠️ 还要**按容器分开存**：四个月眼空间各有自己的默认位，
 --   共用一个 key 的话，把蓝月眼拖到某处后紫月眼也会跑过去。
 -- key 带 v2：v1 存的是屏幕绝对坐标，语义完全不同，换名让它自然作废。
-local SAVE_KEY = "hslot_vault_pos2"
+local SAVE_KEY = "hslot_vault_pos3"  -- pos3：四色改成象限基准位置，老的相对偏移作废
 local saved_pos = {} -- [container_key] = Vector3 偏移（相对默认位置）
 local saved_pos_loaded = {}
 
@@ -374,10 +378,13 @@ local function LoadSavedPos(key)
         end
         saved_pos[key] = Vector3(tonumber(sx), tonumber(sy), 0)
         -- 面板已经开着、而且是同一个容器的话，直接把位置搬过去
-        if active_list ~= nil and active_list.inst ~= nil and active_list.inst:IsValid()
-            and PosKeyOf(active_list.container_key) == key then
-            active_list._offset = saved_pos[key]
-            active_list:ApplyPos()
+        -- ⭐ 四开时可能多个面板同时首次读盘：给所有匹配 key 的实例都应用
+        for _, list in pairs(active_lists) do
+            if list.inst ~= nil and list.inst:IsValid()
+                and PosKeyOf(list.container_key) == key then
+                list._offset = saved_pos[key]
+                list:ApplyPos()
+            end
         end
     end)
     return saved_pos[key]
@@ -397,7 +404,8 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
     self.bg_b = theme.b or BG_B
     self.container_key = theme.key
 
-    active_list = self
+    active_list = self                       -- 最后打开的（中键复位用）
+    table.insert(active_lists, self)         -- ⭐ 按打开顺序加入存活数组（四开共存）
     HookCameraZoom()
 
     -- ⭐⭐ 关键修复：不设 SetHAnchor/SetVAnchor！
@@ -597,10 +605,12 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
             return
         end
         if down then
-            -- ⭐ 中键复位不需要命中判定：面板开着时 anywhere 按中键都回中心。
-            -- 之前中键和右键共用 IsMouseOverPanel() 门禁，命中判定一偏中键就跟着失效。
+            -- ⭐ 中键复位：只作用于【最后打开的面板】，不再四个一起复位。
+            -- 不加命中判定（之前共用门禁会因判定偏移失效），用 active_list 限定唯一实例。
             if button == MOUSEBUTTON_MIDDLE then
-                self:ResetToDefaultPos()
+                if active_list == self then
+                    self:ResetToDefaultPos()
+                end
                 return
             end
             -- 右键拖动才要求鼠标在面板内（避免抢占别处的右键查看物品）
@@ -620,13 +630,11 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
     self.onchanged = function()
         self:QueueRefresh()
     end
-    -- ⚠️ 同步滚动坑：口袋容器是**世界单例**（一个 hslot_container 全服共用），
-    -- A 玩家放入物品 → 服务端 itemget 广播给所有打开者 → B 客户端也收到 itemget，
-    -- 于是 B 的界面也 ScrollToDataIndex 跟着跳。
-    -- 判据：只有「本地玩家背包刚失去物品」后短时间内收到的 itemget 才算我上传的，
-    -- 才滚动；别人上传只刷新数据、不滚。
-    -- 玩家物品栏失物 push 在 ThePlayer 上（inventory_classified.lua），
-    -- 别的玩家失物不会同步到我这里，所以能可靠区分操作者。
+    -- ⚠️ 世界单例坑：口袋容器全服共用，A 放入物品 → itemget 广播给所有打开者，
+    -- B 客户端也会收到。之前靠"快照对比 added"做自动滚动/闪烁，导致 B 的界面跟着跳。
+    -- 已取消自动滚动；闪烁只认【本地玩家自己上传】：
+    -- 判据 = "本地玩家背包刚失去物品"后短时间内收到的 itemget（itemlose 只 push 给本人，
+    -- 别的玩家失物不会同步过来，可靠区分操作者）。别人上传只刷新数据、不闪不滚。
     self._my_put_until = 0
     self.onplayeritemlose = function()
         self._my_put_until = GetTime() + 0.5
@@ -635,11 +643,11 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
         ThePlayer:ListenForEvent("itemlose", self.onplayeritemlose)
     end
 
-    -- 放入物品后跳到对应格子（仅自己上传时；非堆叠物品时容器会带 data.slot）
+    -- 记录自己上传的槽位（仅自己上传时；非堆叠物品时容器会带 data.slot）→ 用于闪烁提示
     self.onitemget = function(_, data)
         if data ~= nil and data.slot ~= nil and GetTime() <= (self._my_put_until or 0) then
             self._pending_slot = data.slot
-            self._my_put_until = 0 -- 一次失物只对应一次滚动，避免连滚
+            self._my_put_until = 0 -- 一次失物只对应一次闪烁，避免连闪
         end
         self:QueueRefresh()
     end
@@ -647,7 +655,7 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
     container_inst:ListenForEvent("itemlose", self.onchanged)
     container_inst:ListenForEvent("refresh", self.onchanged)
 
-    -- 位置：默认居中（制作栏开着就右移让位），有记忆偏移时叠上去
+    -- 位置：四色各归自己象限（DefaultPos），有记忆偏移时叠上去
     self:ApplyPos()
     self:UpdateFilterButtons()
     self:RefreshData()
@@ -731,7 +739,11 @@ function HslotVaultList:HandleDragControl(control, down)
         end
         self:StartDrag(MOUSEBUTTON_RIGHT)
     else
-        self:EndDrag()
+        -- ⭐ 只在自己真正在拖时才收尾（四开时别的面板松手事件也会到这里，
+        --    无条件 EndDrag 会在 MoveTo 动画中间读到假位置写进存档）
+        if self._drag_button == MOUSEBUTTON_RIGHT then
+            self:EndDrag()
+        end
     end
     return true
 end
@@ -794,6 +806,11 @@ function HslotVaultList:StartDrag(button)
     if self._draghandler ~= nil then
         return
     end
+    -- ⭐ 四开防干扰：已有别的面板在拖就不再启动（重叠区右键只拖最先命中的那个）
+    if dragging_list ~= nil and dragging_list ~= self then
+        return
+    end
+    dragging_list = self
     if self._world_scale == nil then
         self:RefreshWorldScale()
     end
@@ -819,20 +836,26 @@ function HslotVaultList:StartDrag(button)
 end
 
 -- ====================================================================
--- 位置：默认屏幕正中，打开制作栏时右移让位
+-- 位置：四色默认各归一个象限（小幅偏移），其它情况回屏幕正中
 -- ====================================================================
 -- 父级 controls.containerroot 自带 MIDDLE 锚点 + SCALEMODE_PROPORTIONAL
--- （controls.lua:261-264），所以位置 (0,0) 就是屏幕正中，不需要自己按
--- 屏幕比例去推算 —— 这正是「简易存储」能「一开出来就在画面中心」的原因
+-- （controls.lua:261-264），所以位置 (0,0) 就是屏幕正中，不需要自己按屏幕比例去推算。
+-- 四色另外加象限基准偏移（见 DEFAULT_QUADRANTS），避免同时打开时叠在一起。
 -- （main/ui.lua:10-13：挂到 containerroot 同级，只套一个 GetHUDScale，
 --  面板自己永远 SetPosition(0,0)）。之前那套 MeasureScale / FitPanelSize
 -- 是「先按屏幕比例硬算一遍」，屏幕一变就整体走形，已删除。
+-- ⭐ 2026-11-23：四色容器改成独立 type 可同时打开 → 默认位置按象限错开，
+-- 免得四个面板叠在一起看不出开了几个。面板可见约 308x294，偏移取略大于半尺寸，
+-- 四色基本分开又不至于跑出屏幕；用户拖动过的仍叠自己的 _offset（存 pos3）。
+local DEFAULT_QUADRANTS = {
+    hslot        = Vector3(-190,  170, 0),  -- 蓝：左上
+    purple_fish  = Vector3( 190,  170, 0),  -- 紫：右上
+    orange_fish  = Vector3(-190, -170, 0),  -- 橙：左下
+    yellow_fish  = Vector3( 190, -170, 0),  -- 黄：右下
+}
 function HslotVaultList:DefaultPos()
-    -- ⭐ 2026-11-21 简化：默认位置恒为屏幕正中，不再随制作栏开/关右移。
-    -- 旧逻辑按 IsCraftingOpen 在 0↔260 间跳，且制作栏 hook 的 ApplyPos(true)
-    -- 与中键复位的 ApplyPos(true) 互相打断 → 中键"复位"到 260 而非中心，效果像失效。
-    -- 现在位置只有一个变量：_offset（用户拖动偏移），中键永远回 (0,0)。
-    return Vector3(0, 0, 0)
+    -- 基准位置：按容器 key 分到四象限；未知 key（红/绿眼等复用本面板）仍回正中
+    return DEFAULT_QUADRANTS[self.container_key] or Vector3(0, 0, 0)
 end
 
 -- 实际位置 = 默认位置(0,0) + 用户拖动留下的偏移
@@ -869,7 +892,7 @@ function HslotVaultList:EnsureCenterOnScreen()
     return false
 end
 
--- 中键复原：偏移清零 → 回默认位置（居中 / 制作栏右侧）并写盘
+-- 中键复原：偏移清零 → 回默认位置（四色各归自己象限 / 其它回正中）并写盘
 function HslotVaultList:ResetToDefaultPos()
     self._offset = Vector3(0, 0, 0)
     self:ApplyPos(true)
@@ -907,6 +930,7 @@ function HslotVaultList:IsMouseOverGrid()
 end
 
 function HslotVaultList:EndDrag()
+    if dragging_list == self then dragging_list = nil end   -- ⭐ 释放全局拖动锁
     if self._draghandler ~= nil then
         self._draghandler:Remove()
         self._draghandler = nil
@@ -1062,23 +1086,9 @@ function HslotVaultList:RefreshData()
     local used = 0
     local shown = 0
 
-    -- 前后快照对比：实体从无到有、换了个实体、或堆叠变大 = 「刚放进来」
-    local added = nil
-    local snap = {}
-    for slot = 1, numslots do
-        local item = items[slot]
-        local stack = StackOf(item)
-        snap[slot] = { item = item, stack = stack }
-        if self._snap ~= nil then
-            local p = self._snap[slot]
-            if item ~= nil
-                and (p == nil or p.item == nil or p.item ~= item or stack > p.stack)
-            then
-                added = added or slot
-            end
-        end
-    end
-    self._snap = snap
+    -- ⚠️ 已删除"快照对比 added → 自动滚动/闪烁"：口袋容器是世界单例，别人放入物品时
+    --    这里也会算出 added，导致自己的界面跟着滚（实测同步影响另一个玩家）。
+    --    现在只有【本地玩家自己上传】（_pending_slot，由 itemlose 判据确认）才做视觉提示。
 
     -- 统计：已用槽位 / 当前筛选命中数
     for slot = 1, numslots do
@@ -1134,22 +1144,19 @@ function HslotVaultList:RefreshData()
     self.scrolllist:SetItemsData(data)
 
     if self._scroll_top_until ~= nil and GetTime() <= self._scroll_top_until then
-        -- 点了整理 / 切了筛选：直接回顶，不要跟着被移动的物品乱跳
+        -- 点了整理 / 切了筛选：直接回顶（本地操作，保留）
         self._pending_slot = nil
         self.scrolllist:ResetScroll()
     else
-        -- 跳到刚放进去的那一格：优先用 itemget 给的槽位，其次用快照对比出来的
-        local target_slot = self._pending_slot or added
+        -- ⭐ 取消"上传后自动滚动到该物品"（ScrollToDataIndex）：世界单例容器下会同步影响别的玩家。
+        --    只保留闪烁提示，且仅当【本地玩家自己上传】（_pending_slot 由 itemlose 判据确认）时触发。
+        local target_slot = self._pending_slot
         self._pending_slot = nil
         if target_slot ~= nil then
-            -- 列表是压缩过的，index ≠ slot，得按 slot 反查
+            -- 列表是压缩过的，index ≠ slot，按 slot 反查；只闪当前可见格，不滚列表
             for i = 1, #data do
                 if data[i].slot == target_slot then
-                    if not self.scrolllist:IsItemFullyVisible(i) then
-                        self.scrolllist:ScrollToDataIndex(i)
-                        -- 跳过去之后给那一格一个「放大 + 跑马灯」的示意
-                        self:FlashDataIndex(i)
-                    end
+                    self:FlashDataIndex(i)
                     break
                 end
             end
@@ -1243,8 +1250,13 @@ function HslotVaultList:StopCellFlash()
 end
 
 function HslotVaultList:OnDestroy()
+    -- ⭐ 从有序数组移除自己
+    for i, list in ipairs(active_lists) do
+        if list == self then table.remove(active_lists, i) break end
+    end
     if active_list == self then
-        active_list = nil
+        -- 最后打开的关了 → 回退到「次新打开的」（数组最后一个），符合直觉
+        active_list = active_lists[#active_lists]
     end
     self:StopFlash()
     self:StopCellFlash()
