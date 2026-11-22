@@ -27,6 +27,7 @@ local config = {
   pocket_hotkey = GetModConfigData("pocket_hotkey"),
   -- 切斯特轮盘：HUD 小图标点开六色月眼空间开关
   chester_dial = GetModConfigData("chester_dial"),
+  moon_eye_unlock = GetModConfigData("moon_eye_unlock"),
   -- 兼容排查用的诊断日志
   vault_debug = GetModConfigData("vault_debug"),
 }
@@ -90,6 +91,175 @@ end
 AddPrefabPostInit("world", function(inst)
   if not TheWorld.ismastersim then return end
   inst:DoTaskInTime(0, LoadRevealedData)
+end)
+
+-- ═══════════════════════════════════════════════════════════════
+-- 月眼解锁存档（服务端权威）：[userid][container_key] = true
+-- 跟世界存档走（照搬上面 REVEALED_DATA 范式）；配置关时不读写、不删记录。
+-- ═══════════════════════════════════════════════════════════════
+local UNLOCK_DATA = {} -- [userid][key] = true
+local UNLOCK_SAVE_KEY = "hslot_mooneye_unlocked"
+
+-- container_key → 月眼 prefab（tex 名即 prefab 名，官方 scrapbookdata 确认）
+local KEY_TO_PREFAB = {
+  hslot = "bluemooneye",
+  rabbitkinghorn = "greenmooneye",
+  orange_fish = "orangemooneye",
+  yellow_fish = "yellowmooneye",
+  purple_fish = "purplemooneye",
+  shadow = "redmooneye",
+}
+
+local function SerializeUnlock(t)
+  local parts = {}
+  for uid, keys in pairs(t) do
+    local kp = {}
+    for k in pairs(keys) do table.insert(kp, k) end
+    table.insert(parts, uid .. "=" .. table.concat(kp, ","))
+  end
+  return table.concat(parts, "|")
+end
+
+local function DeserializeUnlock(str)
+  local t = {}
+  for entry in str:gmatch("([^|]+)") do
+    local uid, keys_str = entry:match("([^=]+)=(.+)")
+    if uid and keys_str then
+      t[uid] = {}
+      for k in keys_str:gmatch("([^,]+)") do t[uid][k] = true end
+    end
+  end
+  return t
+end
+
+local function SaveUnlockData()
+  if not TheWorld then return end
+  TheSim:SetPersistentString(UNLOCK_SAVE_KEY, SerializeUnlock(UNLOCK_DATA), true)
+end
+
+local UnlockedKeysString  -- 前置声明：LoadUnlockData 回调里要用（定义在下方）
+
+local function LoadUnlockData()
+  TheSim:GetPersistentString(UNLOCK_SAVE_KEY, function(success, str)
+    if success and str and #str > 0 then
+      local loaded = DeserializeUnlock(str)
+      for uid, keys in pairs(loaded) do
+        UNLOCK_DATA[uid] = UNLOCK_DATA[uid] or {}
+        for k in pairs(keys) do UNLOCK_DATA[uid][k] = true end
+      end
+    end
+    -- 存档加载完，给在线玩家重新同步（玩家 postinit 的同步可能早于这里）
+    -- ⚠️ TheNet 没有 GetAllPlayers（审查确认）；服务端用全局 AllPlayers 遍历玩家实体
+    if AllPlayers ~= nil then
+      for _, player in pairs(AllPlayers) do
+        if player ~= nil and player:IsValid() then
+          local classified = player.player_classified
+          if classified ~= nil and classified._hslot_unlock ~= nil then
+            classified._hslot_unlock:set(UnlockedKeysString(player.userid))
+          end
+        end
+      end
+    end
+  end)
+end
+
+local function IsUnlocked(uid, key)
+  if not config.moon_eye_unlock then return true end  -- 配置关=全解锁（但存档记录保留）
+  return uid ~= nil and UNLOCK_DATA[uid] ~= nil and UNLOCK_DATA[uid][key] == true
+end
+
+-- 序列化某玩家已解锁的 key 串（给 netvar 同步用，格式 "key1,key2"）
+UnlockedKeysString = function(uid)
+  local keys = UNLOCK_DATA[uid]
+  if keys == nil then return "" end
+  local list = {}
+  for k in pairs(keys) do table.insert(list, k) end
+  return table.concat(list, ",")
+end
+
+-- 世界初始化后加载解锁存档（放在本模块定义之后，避免前置引用）
+AddPrefabPostInit("world", function(inst)
+  if not TheWorld.ismastersim then return end
+  inst:DoTaskInTime(0, LoadUnlockData)  -- 始终加载（配置关时也不删记录）
+end)
+
+-- 服务端：把某玩家解锁状态推送到其 player_classified netvar
+local function SyncUnlockToClient(player)
+  -- 始终同步存档记录（即使配置关），客户端按 config 决定显示；
+  -- 这样配置关→开时无需重开也能拿到之前的解锁记录。
+  local classified = player ~= nil and player.player_classified or nil
+  if classified == nil or classified._hslot_unlock == nil then return end
+  classified._hslot_unlock:set(UnlockedKeysString(player.userid))
+end
+
+-- ===== 控制台命令：清空月眼解锁存档（测试/重置用）=====
+-- 用法：打开控制台（~键），输入 c_hslot_reset_unlock()
+-- 作用：删存档 + 清内存 + 立即同步给所有在线玩家（月眼马上变灰，无需重开）
+GLOBAL.c_hslot_reset_unlock = function()
+  if not TheWorld.ismastersim then
+    print("[hslot][unlock] reset: not host/server, ignore")
+    return
+  end
+  TheSim:SetPersistentString(UNLOCK_SAVE_KEY, "", false)
+  for uid in pairs(UNLOCK_DATA) do UNLOCK_DATA[uid] = nil end
+  if AllPlayers ~= nil then
+    for _, player in pairs(AllPlayers) do
+      if player ~= nil and player:IsValid() then SyncUnlockToClient(player) end
+    end
+  end
+  print("[hslot][unlock] RESET DONE - all moon eyes locked again")
+end
+
+-- 说话提示：背包图标 + 物品显示名（自动中英文）+ 灯泡图标
+local ICON_BACKPACK = "\243\176\128\158"
+local ICON_BULB = "\243\176\128\143"
+
+-- 取月眼显示名（临时 SpawnPrefab，自动适配语言）
+local function MoonEyeDisplayName(prefab)
+  local tmp = SpawnPrefab(prefab)
+  if tmp == nil then return prefab end
+  local name = tmp:GetDisplayName() or prefab
+  tmp:Remove()
+  return name
+end
+
+-- 解锁成功：玩家说「月眼名 + 三个灯泡」
+local function SayUnlockSuccess(player, key)
+  if player == nil or not player:IsValid() then return end
+  local prefab = KEY_TO_PREFAB[key]
+  if prefab == nil then return end
+  local name = MoonEyeDisplayName(prefab)
+  if player.components.talker ~= nil then
+    player.components.talker:Say(name .. " " .. ICON_BULB .. ICON_BULB .. ICON_BULB)
+  end
+end
+
+local function SayNeedMoonEye(player, key)
+  if player == nil or not player:IsValid() then return end
+  local prefab = KEY_TO_PREFAB[key]
+  if prefab == nil then return end
+  local name = MoonEyeDisplayName(prefab)
+  if player.components.talker ~= nil then
+    player.components.talker:Say(ICON_BACKPACK .. " " .. name .. " " .. ICON_BULB)
+  end
+end
+
+-- netvar 挂载：player_classified 两端都要建，否则 netvar 不存在
+AddPrefabPostInit("player_classified", function(inst)
+  -- ⚠️ 只在这里建 netvar；客户端的 dirty 监听改由 widget 直接挂在【自己的 classified】上
+  --    （见 hslot_chester_dial.lua BindUnlockListener），不再经过 ThePlayer 中转——
+  --    中转的 me.player_classified ~= inst 判断在客户端引用不一致时会永远跳过，导致 UI 不刷新。
+  inst._hslot_unlock = GLOBAL.net_string(inst.GUID, "_hslot_unlock", "hslotUnlockDirty")
+end)
+
+-- 玩家进入世界时（服务端）推送一次已解锁记录
+-- ⚠️ playeractivated 事件是推给 world 的（官方 clock/caveweather 都从 world 监听），
+--    所以直接在 player postinit 里延迟同步，不走事件。
+AddPrefabPostInit("player", function(inst)
+  if not TheWorld.ismastersim then return end
+  inst:DoTaskInTime(0, function()
+    if inst:IsValid() then SyncUnlockToClient(inst) end
+  end)
 end)
 
 -- 月眼地图传送的 UI 字符串
@@ -535,9 +705,15 @@ local function TogglePocketDimensionChest(viewer, container_key)
       .. " hastag_container=" .. tostring(target_chest:HasTag("container")))
   end
   if container:IsOpen() and container:IsOpenedBy(viewer) then
-    -- 仅关闭当前玩家的界面（传入viewer作为参数）
+    -- 仅关闭当前玩家的界面（关闭不受解锁锁影响，否则异常状态下关不掉）
     container:Close(viewer)
   else
+    -- ⭐ 月眼解锁功能锁：只拦【打开】——未解锁不能开对应空间（所有路径走这个总入口）
+    --    配置关时 IsUnlocked 恒 true（全解锁，不拦）
+    if not IsUnlocked(viewer.userid, container_key) then
+      SayNeedMoonEye(viewer, container_key)   -- 背包图标 + 物品名 + 灯泡图标
+      return
+    end
     -- 打开容器，让当前查看者成为打开者
     container:Open(viewer)
   end
@@ -559,6 +735,40 @@ AddModRPCHandler("hslot_pocket", "toggle", function(player, key)
     return
   end
   TogglePocketDimensionChest(player, key)
+end)
+
+-- ===== 月眼解锁 RPC：服务端一次验证持有 → 解锁+存盘+同步 =====
+-- 持有检测只做一次（服务端权威）：手持 activeitem + 背包槽位
+local function PlayerHasMoonEye(player, prefab)
+  if player == nil or prefab == nil then return false end
+  local inv = player.components.inventory
+  if inv == nil then return false end
+  -- FindItem 覆盖 物品栏 + 手持 + 已装备背包(overflow)（inventory.lua:623-636）；
+  -- 手写槽位遍历会漏掉背包里的月眼。
+  return inv:FindItem(function(item)
+    return item ~= nil and item.prefab == prefab
+  end) ~= nil
+end
+
+AddModRPCHandler("hslot_pocket", "unlock", function(player, key)
+  if not config.moon_eye_unlock then return end
+  if type(key) ~= "string" or KEY_TO_PREFAB[key] == nil then return end
+  if player == nil or not player:IsValid() then return end
+  local uid = player.userid
+  if IsUnlocked(uid, key) then return end  -- 已解锁，忽略
+
+  -- 一次检测：手持或背包里有对应月眼
+  if not PlayerHasMoonEye(player, KEY_TO_PREFAB[key]) then
+    SayNeedMoonEye(player, key)   -- 没带对应月眼 → 说话提示
+    return
+  end
+
+  -- 解锁：存盘 + 同步客户端
+  UNLOCK_DATA[uid] = UNLOCK_DATA[uid] or {}
+  UNLOCK_DATA[uid][key] = true
+  SaveUnlockData()
+  SyncUnlockToClient(player)
+  SayUnlockSuccess(player, key)   -- 说话提示：月眼名 + 三个灯泡
 end)
 
 -- 眼骨
@@ -1748,13 +1958,20 @@ if not GLOBAL.TheNet:IsDedicated() then
   if create_dial then
     local ChesterDial = require("widgets/hslot_chester_dial")
     AddClassPostConstruct("widgets/controls", function(self)
-      self.hslot_chester_dial = self.bottomright_root:AddChild(ChesterDial(function(key)
-        -- 复用现有通用 RPC：服务端 TogglePocketDimensionChest(player, key)
-        SendModRPCToServer(MOD_RPC["hslot_pocket"]["toggle"], key)
-      end))
+      self.hslot_chester_dial = self.bottomright_root:AddChild(ChesterDial(
+        function(key)
+          -- 复用现有通用 RPC：服务端 TogglePocketDimensionChest(player, key)
+          SendModRPCToServer(MOD_RPC["hslot_pocket"]["toggle"], key)
+        end,
+        config.moon_eye_unlock,   -- 解锁机制是否启用
+        function(key)
+          -- 未解锁月眼点击 → 请求服务端扫描解锁（服务端验证持有）
+          SendModRPCToServer(MOD_RPC["hslot_pocket"]["unlock"], key)
+        end
+      ))
       local dial = self.hslot_chester_dial
-      -- Insight 菜单按钮在 bottomright_root 的 (-154,40)；对齐其 x、放上方（y=110）
-      dial:SetPosition(-154, 110)
+      -- ⚠️ 位置由 widget 构造里统一处理（存档位置优先，默认 -154,110）——
+      --    这里绝不能再 SetPosition，否则覆盖存档位置导致记忆失效。
 
       -- 初始显示：dial 配置开才显示；dial 关（但 H 开）时初始隐藏，等 H 唤出。
       dial._user_visible = (config.chester_dial ~= false)

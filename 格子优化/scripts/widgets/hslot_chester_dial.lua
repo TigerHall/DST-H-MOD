@@ -14,6 +14,36 @@ local CHESTER_BANK = "chester"
 local CHESTER_BUILD = "chester_build"
 local MOD_NAME = "hslot_chester_dial"
 
+-- ===== 位置记忆（客户端本地存盘，照搬 hslot_vault_list）=====
+local DIAL_POS_SAVE_KEY = "hslot_chester_dial_pos"
+local saved_dial_pos = nil
+local saved_dial_pos_loaded = false
+local active_dial = nil   -- 当前 dial 实例（异步读盘回来时应用位置）
+
+local function LoadDialPos()
+    if saved_dial_pos_loaded then return saved_dial_pos end
+    saved_dial_pos_loaded = true
+    TheSim:GetPersistentString(DIAL_POS_SAVE_KEY, function(ok, data)
+        if not ok or data == nil or data == "" then return end
+        local sx, sy = string.match(data, "([%-%d%.]+),([%-%d%.]+)")
+        if sx == nil or sy == nil then return end
+        saved_dial_pos = Vector3(tonumber(sx), tonumber(sy), 0)
+        -- 读盘回调时才把值应用上去（widget 可能已经建好）
+        if active_dial ~= nil and active_dial.inst ~= nil and active_dial.inst:IsValid() then
+            active_dial:SetPosition(saved_dial_pos)
+            active_dial:UpdateFacing()
+        end
+    end)
+    return saved_dial_pos
+end
+
+local function SaveDialPos(self)
+    local p = self:GetPosition()
+    saved_dial_pos = Vector3(p.x, p.y, 0)
+    TheSim:SetPersistentString(DIAL_POS_SAVE_KEY,
+        string.format("%.2f,%.2f", p.x, p.y), false)
+end
+
 local GEMS = {
     { key = "hslot",          tex = "bluemooneye.tex",   label = "蓝月眼空间" },
     { key = "rabbitkinghorn", tex = "greenmooneye.tex",  label = "绿月眼（兔洞）空间" },
@@ -74,9 +104,12 @@ local function refresh_world_scale(widget)
     )
 end
 
-local ChesterDial = Class(Widget, function(self, on_gem_click)
+local ChesterDial = Class(Widget, function(self, on_gem_click, unlock_enabled, on_gem_unlock)
     Widget._ctor(self, "hslot_chester_dial")
     self.on_gem_click = on_gem_click
+    self.on_gem_unlock = on_gem_unlock        -- 未解锁点击 → 发 unlock RPC
+    self.unlock_enabled = (unlock_enabled == true)
+    self._unlocked = {}                        -- [key]=true，服务端 netvar 同步过来
     self.is_open = false
     self._gem_buttons = {}
     self._gem_base_pos = {}
@@ -185,14 +218,15 @@ local ChesterDial = Class(Widget, function(self, on_gem_click)
         if was_hovering ~= self._hovering then self:SyncAnim() end
         -- 切斯特 hover 放大（含朝向镜像）
         self:ApplyChesterScale()
-        -- 宝石：全部复位，悬停的那个放大 + 外弹 + 呼吸灯
+        -- 宝石：全部复位；只有【已解锁】的悬停项才放大+外弹+呼吸（未解锁保持灰黑静止）
         for i, img in ipairs(self._gem_buttons) do
             local base = self._gem_base_pos[i]
-            if kind == "gem" and i == idx then
+            local unlocked = self:IsGemUnlocked(i)
+            if kind == "gem" and i == idx and unlocked then
                 img:SetScale(GEM_SCALE * HOVER_GEM_SCALE)
                 img:SetPosition(base.x + base.dx * GEM_FOCUS_OUT,
                                 base.y + base.dy * GEM_FOCUS_OUT)
-                self:StartGemBreath(img)   -- 选中月眼：呼吸灯
+                self:StartGemBreath(img)   -- 已解锁月眼：呼吸灯
             else
                 img:SetScale(GEM_SCALE)
                 img:SetPosition(base.x, base.y)
@@ -254,11 +288,24 @@ local ChesterDial = Class(Widget, function(self, on_gem_click)
         end
     end)
 
+    -- ⭐ 解锁状态刷新：widget 直接监听【自己 classified】的 netvar dirty，链路最短最可靠。
+    --    不再经 modmain 的 ThePlayer 中转（那个判断在客户端引用不一致时会永远跳过）。
+    if self.unlock_enabled then
+        self:_BindUnlockListener()
+    end
+
+    -- 位置记忆：注册实例 + 应用已存位置（GetPersistentString 回调同步）。
+    -- ⚠️ 默认定位也放这里统一处理——modmain 不能再 SetPosition，否则会覆盖存档位置！
+    active_dial = self
+    local cached_pos = LoadDialPos()
+    self:SetPosition(cached_pos ~= nil and cached_pos or self:DefaultPos())
+
     -- ⚠️ 不要在构造里调 UpdateFacing：此时 dial 还没 AddChild/SetPosition，
     --    GetWorldPosition 是错的。朝向改到 OnShow 里判断（每次显示都重新算）。
     self:StartRainbow()   -- 初始睡眠态也跑马灯（用户要求睡眠也有炫彩）
 
     self.inst:ListenForEvent("onremove", function()
+        if active_dial == self then active_dial = nil end
         set_modfocus(false)
         self:StopRainbow()
         self:StopGemBreath()
@@ -277,6 +324,7 @@ function ChesterDial:ResetToDefaultPos()
     local p = self:DefaultPos()
     self:SetPosition(p)
     self:UpdateFacing()
+    SaveDialPos(self)   -- 复位后也记住（下次进来还是复位位置）
 end
 
 function ChesterDial:IsCenterOffScreen()
@@ -308,6 +356,80 @@ end
 function ChesterDial:OnShow(was_hidden)
     self._base.OnShow(self, was_hidden)   -- 官方写法（pethungerbadge.lua:19）
     self:UpdateFacing()
+    self:RefreshGemVisual()               -- 每次显示刷新解锁外观（存档可能刚同步到）
+end
+
+-- ===== 月眼解锁状态（服务端 netvar → 本地 _unlocked）=====
+local GEM_LOCKED_TINT = 0.35   -- 未解锁灰黑
+
+function ChesterDial:IsGemUnlocked(i)
+    if not self.unlock_enabled then return true end   -- 配置关=全解锁
+    return self._unlocked[GEMS[i].key] == true
+end
+
+function ChesterDial:SetUnlockState(unlocked_table)
+    self._unlocked = unlocked_table or {}
+    self:RefreshGemVisual()
+end
+
+-- 从本地 player_classified 的 netvar 主动重读解锁状态。
+-- 用途：构造时读一次 + 每次点击月眼前兜底重读（防事件监听时序遗漏导致的状态不同步死循环）。
+function ChesterDial:RefreshUnlockFromNetvar()
+    if not self.unlock_enabled then return end
+    local owner = ThePlayer
+    local classified = owner ~= nil and owner.player_classified or nil
+    if classified == nil or classified._hslot_unlock == nil then return end
+    local s = classified._hslot_unlock:value()
+    local unlocked = {}
+    if s ~= nil and s ~= "" then
+        for k in s:gmatch("([^,]+)") do unlocked[k] = true end
+    end
+    self:SetUnlockState(unlocked)
+end
+
+-- 直接监听本地玩家 classified 的 netvar dirty（不经 ThePlayer 事件中转）。
+-- classified 可能在 widget 构造时还没关联 → 延迟重试。
+function ChesterDial:_BindUnlockListener()
+    local owner = ThePlayer
+    local classified = owner ~= nil and owner.player_classified or nil
+    if classified == nil or classified._hslot_unlock == nil then
+        self.inst:DoTaskInTime(0.2, function()
+            if self.inst ~= nil and self.inst:IsValid() then self:_BindUnlockListener() end
+        end)
+        return
+    end
+    if self._unlock_listener_bound then return end
+    self._unlock_listener_bound = true
+    -- 只监听本地玩家的 classified（天然不串号），dirty 时直接重读 netvar 刷新
+    self.inst:ListenForEvent("hslotUnlockDirty", function()
+        self:RefreshUnlockFromNetvar()
+    end, classified)
+    self:RefreshUnlockFromNetvar()   -- 绑定后立即读一次（存档可能已同步好）
+end
+
+-- 统一刷新 6 个月眼外观：未解锁=灰黑+隐藏发光+不放大；已解锁=原色+正常
+function ChesterDial:RefreshGemVisual()
+    for i, img in ipairs(self._gem_buttons) do
+        local unlocked = self:IsGemUnlocked(i)
+        local base = self._gem_base_pos[i]
+        if unlocked then
+            img:SetTint(1, 1, 1, 1)
+        else
+            img:SetTint(GEM_LOCKED_TINT, GEM_LOCKED_TINT, GEM_LOCKED_TINT, 1)
+            -- 未解锁：清掉可能的 hover 发光/放大/位移
+            if img._glow ~= nil then img._glow:Hide() end
+            if img._whiteglow ~= nil then img._whiteglow:Hide() end
+            img:SetScale(GEM_SCALE)
+            img:SetPosition(base.x, base.y)
+        end
+    end
+    if self._gem_breath_img ~= nil then
+        local idx = nil
+        for i, img in ipairs(self._gem_buttons) do
+            if img == self._gem_breath_img then idx = i break end
+        end
+        if idx ~= nil and not self:IsGemUnlocked(idx) then self:StopGemBreath() end
+    end
 end
 
 -- ===== 动画状态机：根据 睡眠/清醒/打开/拖动 切动画 =====
@@ -424,15 +546,29 @@ function ChesterDial:EndDrag()
     if self._drag_button ~= nil then
         self._drag_button = nil
         -- 出画面回默认位置（拖到屏幕外不合法）
-        if self:IsCenterOffScreen() then self:ResetToDefaultPos() end
+        if self:IsCenterOffScreen() then
+            self:ResetToDefaultPos()   -- 内部会保存位置
+        else
+            SaveDialPos(self)          -- 记住这次拖到的位置
+        end
         -- 松手按当前状态回动画（打开→张嘴待机 / hover→清醒 / 否则→睡眠）
         self:SyncAnim()
     end
 end
 
 function ChesterDial:_OnGem(idx)
+    local key = GEMS[idx].key
+    -- ⭐ 兜底：点击前主动重读 netvar，纠正可能的状态不同步（服务端已解锁但本地还以为没解锁
+    --    → 会一直发 unlock RPC 死循环，既不打开格子也不提示）
+    self:RefreshUnlockFromNetvar()
+    if not self:IsGemUnlocked(idx) then
+        -- 未解锁：发 RPC 请求扫描解锁（服务端验证持有 → 说话提示或点亮）
+        if self.on_gem_unlock then self.on_gem_unlock(key) end
+        return
+    end
+    -- 已解锁：张嘴反馈 + 打开空间（服务端功能锁会再确认一次解锁状态）
     self:PlayOpen()
-    if self.on_gem_click then self.on_gem_click(GEMS[idx].key) end
+    if self.on_gem_click then self.on_gem_click(key) end
 end
 
 function ChesterDial:PlayOpen()

@@ -47,7 +47,7 @@ end
 
 --  基础信息
 name = en_zh("H-SLOT", "H-无限格子")
-version = "4.0"
+version = "4.1"
 description = en_zh("V" .. version .. [[
 󰀏 Your backpack wants a bigger home!
 
@@ -255,6 +255,18 @@ configuration_options = {
     "On (default): show Chester icon, click to open the six-gem dial",
     "关闭：图标默认隐藏；若「H 快捷键」开启可按 H 唤出，两者都关则完全不显示",
     "Off: icon hidden by default; if H hotkey is on, press H to summon it; both off means no UI at all"
+  ),
+  addConfig(
+    "moon_eye_unlock",
+    "月眼需解锁才能使用",
+    "Moon eyes require unlock",
+    true,
+    "开启后：六个月眼初始灰黑不可用，需手持或携带对应月眼点击扫描点亮才能打开该空间；解锁进度按角色存档。关闭后：全部月眼直接可用（解锁记录会保留，重新开启后继续生效）。",
+    "When on: all six moon eyes start locked (grey) and must be scanned by holding/carrying the matching moon eye; unlock progress is saved. When off: all moon eyes are usable directly (unlock records are kept and reused if turned back on).",
+    "开启（默认）：月眼需扫描解锁，未解锁时会提示所需月眼",
+    "On (default): moon eyes must be unlocked by scanning",
+    "关闭：全部月眼直接可用，无灰黑无扫描",
+    "Off: all moon eyes usable directly, no locked state"
   ),
   addTitle("Debug", "调试"),
   addConfig(
