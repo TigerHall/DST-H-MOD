@@ -44,13 +44,16 @@ local function SaveDialPos(self)
         string.format("%.2f,%.2f", p.x, p.y), false)
 end
 
+-- ⭐ 2026-11-23 顺序=角度：ang = 90° - (i-1)*60°
+--   i=1 正上=绿 / i=2 右上=紫 / i=3 右下=黄 / i=4 正下=红 / i=5 左下=橙 / i=6 左上=蓝
+--   绿上红下，四色按四象限（与 hslot_vault_list 的面板象限一致：蓝左上/紫右上/橙左下/黄右下）。
 local GEMS = {
-    { key = "hslot",          tex = "bluemooneye.tex",   label = "蓝月眼空间" },
-    { key = "rabbitkinghorn", tex = "greenmooneye.tex",  label = "绿月眼（兔洞）空间" },
-    { key = "orange_fish",    tex = "orangemooneye.tex", label = "橙月眼空间" },
-    { key = "yellow_fish",    tex = "yellowmooneye.tex", label = "黄月眼空间" },
-    { key = "purple_fish",    tex = "purplemooneye.tex", label = "紫月眼空间" },
-    { key = "shadow",         tex = "redmooneye.tex",    label = "红月眼（暗影）空间" },
+    { key = "rabbitkinghorn", tex = "greenmooneye.tex",  label = "绿月眼（兔洞）空间" }, -- 正上
+    { key = "purple_fish",    tex = "purplemooneye.tex", label = "紫月眼空间" },          -- 右上
+    { key = "yellow_fish",    tex = "yellowmooneye.tex", label = "黄月眼空间" },          -- 右下
+    { key = "shadow",         tex = "redmooneye.tex",    label = "红月眼（暗影）空间" },  -- 正下
+    { key = "orange_fish",    tex = "orangemooneye.tex", label = "橙月眼空间" },          -- 左下
+    { key = "hslot",          tex = "bluemooneye.tex",   label = "蓝月眼空间" },          -- 左上
 }
 
 local CHESTER_SCALE = 0.28

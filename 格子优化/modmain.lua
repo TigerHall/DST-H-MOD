@@ -1808,6 +1808,123 @@ local function hslot_btn_fn(inst, doer)
     SendRPCToServer(RPC.DoWidgetButtonAction, nil, inst, nil)
   end
 end
+
+-- ====================================================================
+-- 紫/橙/黄月眼空间的专属增强按钮（各来一个不同玩法，2026-11-23）
+-- 统一模式：先排序 → 容器内彩虹宝石达到门槛 → 执行效果 → 消耗 1 颗 → 说话反馈
+-- ⚠️ 蓝眼是"堆叠+16 + 复制bundle"，这里三个功能互不重复、也不和蓝眼重复。
+-- ====================================================================
+local function ConsumeOneGem(container, gem_slot)
+  local gem = container:GetItemInSlot(gem_slot)
+  if gem == nil then return end
+  local st = gem.components.stackable
+  if st ~= nil and st:StackSize() > 1 then
+    -- ⚠️ 不能整堆 RemoveItemBySlot 再 SetStackSize：宝石原上限 40（STACK_SIZE_SMALLITEM），
+    --    堆 >40 时移除会触发 DropOverstackedExcess 把超出的丢地上（隐藏容器位置拿不到）。
+    --    stackable:Get(1) 只分离一颗，原堆减 1，不经过容器移除逻辑。
+    local one = st:Get(1)
+    if one ~= nil then one:Remove() end
+  else
+    -- 单颗不涉及超堆，安全移除
+    local one = container:RemoveItemBySlot(gem_slot)
+    if one ~= nil then one:Remove() end
+  end
+end
+
+-- ⭐ 2026-11-23：紫/橙/黄三色增强的说话提示暂时关闭（用户要统一给六个空间分配文案）。
+--    功能照常执行，只是不说话。后面统一分配时把这里改成 true 即可全部恢复。
+local SHOW_GEM_POWER_SAY = false
+local function SayGemPower(doer, text)
+  if not SHOW_GEM_POWER_SAY then return end
+  if doer and doer.components.talker then doer.components.talker:Say(text) end
+end
+
+local function MakeGemPowerBtn(min_gems, effect_fn, say_text)
+  return function(inst, doer)
+    if inst.components.container ~= nil then
+      ArrangeContainerItems(inst)   -- 先排序（和蓝眼一致）
+      local container = inst.components.container
+      local gem_total, gem_slot = 0, nil
+      for slot = 1, container:GetNumSlots() do
+        local item = container:GetItemInSlot(slot)
+        if item and item.prefab == "opalpreciousgem" then
+          gem_total = gem_total + (item.components.stackable and item.components.stackable:StackSize() or 1)
+          if gem_slot == nil then gem_slot = slot end
+        end
+      end
+      if gem_total >= min_gems then
+        local ok = effect_fn(container)
+        if ok then
+          ConsumeOneGem(container, gem_slot)
+          SayGemPower(doer, say_text)
+        else
+          SayGemPower(doer, "没有需要处理的物品 󰀐")
+        end
+      else
+        SayGemPower(doer, "需要至少 " .. min_gems .. " 颗彩虹宝石 󰀐")
+      end
+    elseif inst.replica.container ~= nil and not inst.replica.container:IsBusy() then
+      SendRPCToServer(RPC.DoWidgetButtonAction, nil, inst, nil)
+    end
+  end
+end
+
+-- 紫：消耗 5 颗 → 容器内装备耐久/燃料/护甲修满（食物不在紫的范畴，归黄）
+local purple_power_fn = MakeGemPowerBtn(5, function(container)
+  local did = false
+  for slot = 1, container:GetNumSlots() do
+    local item = container:GetItemInSlot(slot)
+    if item and item:IsValid() then
+      local fixed = false   -- ⚠️ 每件物品独立判定（不能用函数级 did，否则没修的也 push repaired）
+      if item.components.finiteuses and item.components.finiteuses:GetPercent() < 0.9999 then
+        item.components.finiteuses:SetPercent(1.0); fixed = true
+      elseif item.components.fueled and item.components.fueled:GetPercent() < 0.9999 then
+        item.components.fueled:SetPercent(1.0); fixed = true
+      elseif item.components.armor and item.components.armor:GetPercent() < 0.9999 then
+        item.components.armor:SetPercent(1.0); fixed = true
+      end
+      -- ⭐ 只修未满的：已满的跳过，避免"什么都没变还扣宝石"
+      if fixed then item:PushEvent("repaired"); did = true end
+    end
+  end
+  return did
+end, "装备焕然一新 󰀏󰀏󰀏")
+
+-- 橙：消耗 15 颗 → 容器内所有可堆叠物 ×2（比蓝眼 +16 强，但要更多宝石）
+local orange_power_fn = MakeGemPowerBtn(15, function(container)
+  local did = false
+  for slot = 1, container:GetNumSlots() do
+    local item = container:GetItemInSlot(slot)
+    if item and item:IsValid() and item.prefab ~= "opalpreciousgem"
+        and item.components.stackable then
+      local old = item.components.stackable:StackSize()
+      item.components.stackable:SetStackSize(old * 2)
+      did = true
+    end
+  end
+  return did
+end, "堆塔翻倍！ 󰀏󰀏󰀏")
+
+-- 黄：消耗 5 颗 → 容器内所有食物新鲜度拉满（趣味台词）
+local yellow_power_fn = MakeGemPowerBtn(5, function(container)
+  local did = false
+  for slot = 1, container:GetNumSlots() do
+    local item = container:GetItemInSlot(slot)
+    if item and item:IsValid() and item.components.perishable
+        and item.components.perishable:GetPercent() < 0.9999 then
+      item.components.perishable:SetPercent(1.0)
+      item:PushEvent("repaired")
+      did = true
+    end
+  end
+  return did
+end, "新鲜出炉，吃嘛嘛香！ 󰀏󰀏󰀏")
+
+local GEM_POWER_BTN_FN = {
+  purple_fish_box = purple_power_fn,
+  orange_fish_box = orange_power_fn,
+  yellow_fish_box = yellow_power_fn,
+}
 for prefab_name, world_key in pairs(POCKET_MAP) do
   AddPrefabPostInit(prefab_name, function(inst)
     if not TheWorld.ismastersim then return end
@@ -1820,6 +1937,8 @@ for prefab_name, world_key in pairs(POCKET_MAP) do
       inst.components.container.widget.buttoninfo = inst.components.container.widget.buttoninfo or {}
       if prefab_name == "hslot_container" then
         inst.components.container.widget.buttoninfo.fn = hslot_btn_fn
+      elseif GEM_POWER_BTN_FN[prefab_name] ~= nil then
+        inst.components.container.widget.buttoninfo.fn = GEM_POWER_BTN_FN[prefab_name]  -- 紫/橙/黄专属增强
       else
         inst.components.container.widget.buttoninfo.fn = sortonly_btn_fn
       end

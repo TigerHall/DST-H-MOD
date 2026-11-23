@@ -29,14 +29,14 @@ local TEMPLATES = require("widgets/redux/templates")
 -- 原来的「7行」= 6 行可见 + peek 露出的第 7 行（peek_percent=1 覆盖了 peek_height=-5，
 -- 实际 peek=80 整整一行）。现在去掉 peek，严格 6 行；第一行位置保持不变。
 local COLS = 10
-local ROWS = 6       -- 可视行数（严格 6 行，无 peek）
-local EXTRA_ROWS = 1 -- 额外渲染的行数（滚动时从底部滑上来，不会突现）
-local CELL = 80      -- 格子设计间距（gridroot 内部坐标 = 简存 row_w64+spacing16）
-local GRID_SCALE = 0.6 -- ⭐ 网格层缩放，和简存 gridroot 的 0.6 同值
-local GRID_W = COLS * CELL       -- gridroot 内部尺寸 800（原 1200）
-local GRID_H = ROWS * CELL       --                  480
+local ROWS = 6                      -- 可视行数（严格 6 行，无 peek）
+local EXTRA_ROWS = 1                -- 额外渲染的行数（滚动时从底部滑上来，不会突现）
+local CELL = 80                     -- 格子设计间距（gridroot 内部坐标 = 简存 row_w64+spacing16）
+local GRID_SCALE = 0.6              -- ⭐ 网格层缩放，和简存 gridroot 的 0.6 同值
+local GRID_W = COLS * CELL          -- gridroot 内部尺寸 800（原 1200）
+local GRID_H = ROWS * CELL          --                  480
 local SCR_W, SCR_H = GRID_W, GRID_H -- TrueScrollList 裁剪区（gridroot 内部坐标）
-local SCROLLBAR_GAP = 8 -- 简存 scrollbar_offset=8
+local SCROLLBAR_GAP = 8             -- 简存 scrollbar_offset=8
 
 -- 面板设计尺寸：宽度按 10 列收窄 680→440（少 5 格 ×80×0.6=240），高度 420 不变。
 -- 网格屏幕尺寸 = GRID_W×0.6=480 宽（仍比面板宽 40，两侧各溢出 20，和原比例一致）、
@@ -54,18 +54,18 @@ local GRID_Y = -6
 -- 垂直排布（照抄简存，面板 420 高、半高 210）：
 --   筛选行 y=175、分隔线 y=144、网格中心 y=-30（占 -30±144）
 --   底部按钮走 RectangleWindow actions（不是独立 ImageButton）。
-local FILTER_ICON = 39      -- 简存 button_size=39
-local FILTER_GAP = 48       -- 简存 pos_x 每格 +48
+local FILTER_ICON = 39       -- 简存 button_size=39
+local FILTER_GAP = 48        -- 简存 pos_x 每格 +48
 local FILTER_SCALE_ON = 1.15 -- 选中时整个按钮放大
-local FILTER_Y = 175        -- ⭐ 简存 filterpanel y=175（垂直不变）
+local FILTER_Y = 175         -- ⭐ 简存 filterpanel y=175（垂直不变）
 -- 横向按面板收窄 240 各内收 120：筛选起始 -336→-216，数量文字 292→172
 local FILTER_X0 = -216
-local INFO_SIZE = 30        -- 简存 text_size 30
+local INFO_SIZE = 30 -- 简存 text_size 30
 local INFO_W = 160
 local NUM_X = 172
 -- 底部两个按钮（面板底部，RectangleWindow 下沿内侧）
 local BUTTON_W, BUTTON_H = 116, 46
-local BOTTOM_Y = -178       -- 面板半高 210，按钮区在底部（第7行位置，保持不变）
+local BOTTOM_Y = -178 -- 面板半高 210，按钮区在底部（第7行位置，保持不变）
 local SORT_X, CLOSE_X = -70, 70
 local EDGE = 2
 -- 筛选按钮底衬（filterslot_bg.tex）：false = 透明，只留按钮边框和图标
@@ -101,9 +101,9 @@ local POLL_INTERVAL = 0.3
 -- ⚠️ 面板打开期间屏蔽相机缩放。
 -- 官方靠 playercontroller.lua:4463 的 HUD.controls.craftingmenu.focus 来阻止
 -- 滚轮同时缩放镜头，我们的自定义面板不在那套机制里，只能直接在相机层拦。
-local active_list = nil            -- 最后打开的面板（中键复位只作用于它）
-local active_lists = {}            -- ⭐ 四色可同时打开：所有存活面板（按打开顺序的数组）
-local dragging_list = nil          -- ⭐ 四开时全局只允许一个面板在拖（防重叠区多面板同拖）
+local active_list = nil   -- 最后打开的面板（中键复位只作用于它）
+local active_lists = {}   -- ⭐ 四色可同时打开：所有存活面板（按打开顺序的数组）
+local dragging_list = nil -- ⭐ 四开时全局只允许一个面板在拖（防重叠区多面板同拖）
 local hooked_camera = nil
 
 local function IsVaultOpen()
@@ -354,8 +354,8 @@ end
 -- ⚠️ 还要**按容器分开存**：四个月眼空间各有自己的默认位，
 --   共用一个 key 的话，把蓝月眼拖到某处后紫月眼也会跑过去。
 -- key 带 v2：v1 存的是屏幕绝对坐标，语义完全不同，换名让它自然作废。
-local SAVE_KEY = "hslot_vault_pos3"  -- pos3：四色改成象限基准位置，老的相对偏移作废
-local saved_pos = {} -- [container_key] = Vector3 偏移（相对默认位置）
+local SAVE_KEY = "hslot_vault_pos4" -- pos4：象限偏移按用户手动拖的截图调整（横向拉开，中间留绿眼空间），老偏移作废
+local saved_pos = {}                -- [container_key] = Vector3 偏移（相对默认位置）
 local saved_pos_loaded = {}
 
 local function PosKeyOf(key)
@@ -404,8 +404,8 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
     self.bg_b = theme.b or BG_B
     self.container_key = theme.key
 
-    active_list = self                       -- 最后打开的（中键复位用）
-    table.insert(active_lists, self)         -- ⭐ 按打开顺序加入存活数组（四开共存）
+    active_list = self               -- 最后打开的（中键复位用）
+    table.insert(active_lists, self) -- ⭐ 按打开顺序加入存活数组（四开共存）
     HookCameraZoom()
 
     -- ⭐⭐ 关键修复：不设 SetHAnchor/SetVAnchor！
@@ -469,20 +469,20 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
     self.info = self:AddChild(Text(NEWFONT_OUTLINE, INFO_SIZE, ""))
     self.info:SetRegionSize(INFO_W, 44)
     self.info:SetHAlign(ANCHOR_RIGHT)
-    self.info:SetPosition(NUM_X, FILTER_Y)  -- ⭐ 简存 numslots_text x=292
+    self.info:SetPosition(NUM_X, FILTER_Y) -- ⭐ 简存 numslots_text x=292
     self.info:SetClickable(false)
 
     -- ⭐ 分隔线：简存 InitPanel:133-136，y=144、700×5、白色 alpha0.4
     self.line = self:AddChild(Image("images/ui.xml", "line_horizontal_white.tex"))
     self.line:SetPosition(0, 144)
     self.line:SetTint(1, 1, 1, 0.4)
-    self.line:ScaleToSize(PANEL_W - 20, 5)  -- 原 700（面板680）；随面板收窄到 420
+    self.line:ScaleToSize(PANEL_W - 20, 5) -- 原 700（面板680）；随面板收窄到 420
     self.line:SetClickable(false)
 
     -- 顶部一行分类图标：用官方制作栏的 filterslot_frame / filterslot_bg
     -- （craftingmenu_widget.lua:736 MakeFilterButton 同款），选中态用官方 select 贴图
-    self.filter_buttons = {}  -- button（Select/Unselect/tint 用）
-    self.filter_roots = {}    -- 外层 w（位置/整体缩放用）
+    self.filter_buttons = {} -- button（Select/Unselect/tint 用）
+    self.filter_roots = {}   -- 外层 w（位置/整体缩放用）
     self.filter_icons = {}
     self.filter_glows = {}
     -- ⭐ 简存 pos_x 从 -336 起、每格 +48（InitPanel:144-150）
@@ -545,7 +545,7 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
         widget_height = CELL,
         -- ⭐ 2026-11-21 去掉第 7 行：严格 6 行，不留 peek。
         -- 原抄简存写了 peek_percent=1 + peek_height=-5，但官方 templates.lua:1970
-        -- `if opts.peek_percent then peek_height = widget_height * peek_percent` —— 
+        -- `if opts.peek_percent then peek_height = widget_height * peek_percent` ——
         -- peek_percent 覆盖 peek_height，-5 根本没生效，实际 peek=80（整整一行），
         -- 所以视觉上 6 行 + 1 行 peek = 7 行。
         -- 现在两个都不传：peek_height 取默认 widget_height*0.25=20？——不行，
@@ -556,7 +556,7 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
         item_ctor_fn = VaultItemCtor,
         apply_fn = VaultApply,
         scrollbar_offset = SCROLLBAR_GAP,
-        scrollbar_height_offset = -50,  -- 简存 :789 = -50
+        scrollbar_height_offset = -50, -- 简存 :789 = -50
         end_offset = 1,
     }))
     self.scrolllist:SetPosition(0, 0)
@@ -605,10 +605,11 @@ local HslotVaultList = Class(Widget, function(self, owner, container_inst, theme
             return
         end
         if down then
-            -- ⭐ 中键复位：只作用于【最后打开的面板】，不再四个一起复位。
-            -- 不加命中判定（之前共用门禁会因判定偏移失效），用 active_list 限定唯一实例。
+            -- ⭐ 中键复位：鼠标在哪个面板上就复位哪个（命中判定），四色象限不重叠 → 只有命中的那个响应。
+            --    ⚠️ 别用 active_list==self 门禁：那只认"最后打开的面板"，鼠标停在别的面板上按中键会没反应，
+            --       四开时表现为"中键失效"。命中判定在 2026-11-21 已修好（GetMouseLocal 直接比 abs），可靠。
             if button == MOUSEBUTTON_MIDDLE then
-                if active_list == self then
+                if self:IsMouseOverPanel() then
                     self:ResetToDefaultPos()
                 end
                 return
@@ -772,7 +773,7 @@ function HslotVaultList:RefreshWorldScale()
     local wx = new_world.x - old_world.x
     local wy = new_world.y - old_world.y
     self._world_scale = Vector3(
-        (wx ~= 0) and (10 / wx) or 1,   -- 局部 / 世界
+        (wx ~= 0) and (10 / wx) or 1, -- 局部 / 世界
         (wy ~= 0) and (10 / wy) or 1,
         1
     )
@@ -784,7 +785,7 @@ function HslotVaultList:GetMouseLocal(mouse_pos)
     if self._world_scale == nil then
         self:RefreshWorldScale()
     end
-    local m = mouse_pos or TheInput:GetScreenPosition()   -- 一个 Vector3，不是两个数字
+    local m = mouse_pos or TheInput:GetScreenPosition() -- 一个 Vector3，不是两个数字
     local w = self:GetWorldPosition()
     local s = self._world_scale
     return Vector3(
@@ -844,14 +845,16 @@ end
 -- （main/ui.lua:10-13：挂到 containerroot 同级，只套一个 GetHUDScale，
 --  面板自己永远 SetPosition(0,0)）。之前那套 MeasureScale / FitPanelSize
 -- 是「先按屏幕比例硬算一遍」，屏幕一变就整体走形，已删除。
--- ⭐ 2026-11-23：四色容器改成独立 type 可同时打开 → 默认位置按象限错开，
--- 免得四个面板叠在一起看不出开了几个。面板可见约 308x294，偏移取略大于半尺寸，
--- 四色基本分开又不至于跑出屏幕；用户拖动过的仍叠自己的 _offset（存 pos3）。
+-- ⭐ 2026-11-23：四色容器改成独立 type 可同时打开 → 默认位置按象限错开。
+--    偏移按用户手动拖好的截图反推（widget 单位）：横向 ±230、纵向 ±164。
+--    四色面板可见约 308 宽 → 左右内侧边缘 ±76 → 中间空隙约 152，正好放绿眼/切斯特面板（约 123 宽）。
+--    纵向面板高约 294，±164 时上下边缘接近屏幕顶/底但不越界（与截图一致）。
+--    用户日后拖动过的仍叠自己的 _offset（存 pos4）。
 local DEFAULT_QUADRANTS = {
-    hslot        = Vector3(-190,  170, 0),  -- 蓝：左上
-    purple_fish  = Vector3( 190,  170, 0),  -- 紫：右上
-    orange_fish  = Vector3(-190, -170, 0),  -- 橙：左下
-    yellow_fish  = Vector3( 190, -170, 0),  -- 黄：右下
+    hslot       = Vector3(-386, 260, 0),  -- 蓝：左上
+    purple_fish = Vector3(386, 260, 0),   -- 紫：右上
+    orange_fish = Vector3(-386, -230, 0), -- 橙：左下
+    yellow_fish = Vector3(386, -230, 0),  -- 黄：右下
 }
 function HslotVaultList:DefaultPos()
     -- 基准位置：按容器 key 分到四象限；未知 key（红/绿眼等复用本面板）仍回正中
@@ -883,10 +886,19 @@ function HslotVaultList:IsCenterOffScreen()
         or w.y < -margin or w.y > sh + margin
 end
 
--- 若中心出画面则回默认位置并清偏移；返回是否真的重置了
+-- 若中心出画面则【直接回屏幕正中 (0,0)】并清偏移；返回是否真的重置了。
+-- ⚠️ 不回 DefaultPos()（四象限基准）：基准位置在某些分辨率/缩放下也可能看不到，
+--    出屏兜底必须回真正的屏幕中心，保证面板一定能看见。
+--    存盘偏移 = 0 - DefaultPos()，使下次打开 ApplyPos(base+offset) 仍落在 (0,0)。
 function HslotVaultList:EnsureCenterOnScreen()
     if self:IsCenterOffScreen() then
-        self:ResetToDefaultPos()
+        local base = self:DefaultPos()
+        self._offset = Vector3(-base.x, -base.y, 0)
+        self:ApplyPos(true)
+        local key = PosKeyOf(self.container_key)
+        saved_pos[key] = self._offset
+        TheSim:SetPersistentString(SAVE_KEY .. "_" .. key,
+            string.format("%.2f,%.2f", self._offset.x, self._offset.y), false)
         return true
     end
     return false
@@ -930,7 +942,7 @@ function HslotVaultList:IsMouseOverGrid()
 end
 
 function HslotVaultList:EndDrag()
-    if dragging_list == self then dragging_list = nil end   -- ⭐ 释放全局拖动锁
+    if dragging_list == self then dragging_list = nil end -- ⭐ 释放全局拖动锁
     if self._draghandler ~= nil then
         self._draghandler:Remove()
         self._draghandler = nil
@@ -1252,7 +1264,10 @@ end
 function HslotVaultList:OnDestroy()
     -- ⭐ 从有序数组移除自己
     for i, list in ipairs(active_lists) do
-        if list == self then table.remove(active_lists, i) break end
+        if list == self then
+            table.remove(active_lists, i)
+            break
+        end
     end
     if active_list == self then
         -- 最后打开的关了 → 回退到「次新打开的」（数组最后一个），符合直觉

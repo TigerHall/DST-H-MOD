@@ -38,7 +38,8 @@
 - 换皮：劫持 `ContainerWidget.Open`，**绝不 Hide widget**（否则 Shift 转移/制作材料失效），只藏内容；格子用官方 `InvSlot`（ItemTile 空格会崩）
 - 布局：面板 440×420（10列×6行）；`peek_height=0` 且**绝不传 `peek_percent`**；gridroot (0,-6)；`scrollbar_height_offset=-50`
 - **拖动三件套**：① world_scale 动态测量（临时挪 10 单位量差值）② 起始快照 delta×world_scale ③ 命中判定直接 `abs(loc.x)`，不再减 `GetPosition()`
-- 中键复位独立于命中判定；出画面回中心 `IsCenterOffScreen()`（打开首帧+EndDrag 各查一次，不在 move 里查）
+- 中键复位：用 `IsMouseOverPanel()` 命中判定复位鼠标所在面板；⚠️ 别用 `active_list==self` 门禁（多面板同开时只认最后打开的，别的面板按中键没反应=失效）
+- **UI 出屏处理铁律（用户强制，所有 UI 通用）**：`IsCenterOffScreen()` 检出后**直接回屏幕正中 (0,0)**，不回默认/象限位置（默认位置在某些分辨率也可能看不到）；存盘偏移 = `0 - DefaultPos()` 保证下次打开仍在正中。检出时机=打开首帧 + EndDrag 松手各查一次，不在 move 里查
 - **月眼地图揭示**：`player_classified.revealmapspot_*` + `OnRevealMapSpotEvent` → `MapExplorer:RevealArea`；room 型用 `TheWorld.topology`，entity 型用 `TheSim:FindEntities`（仅显式 AddTag）
 - **地图传送**：`map_only` action + `maponly_checkvalidpos_fn`（客户端 GetActionPoint+FindEntities，绝不读 `globalmapicon._target`）；客户端 `ScreenFade` + 服务端 RPC 直接 Teleport；弃用 `pocketwatch_warpback`
 - **UIAnim 坑**：Widget/UIAnim 无 `SetAlpha`/`DoTaskInTime`/`IsValid`，显隐只用 `Show/Hide`，用 `self.inst`；图标着色用 `image:SetTint()`，`AnimState:SetMultColour` 对 UI 无效
