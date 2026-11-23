@@ -47,7 +47,7 @@ end
 
 --  基础信息
 name = en_zh("H-SLOT", "H-无限格子")
-version = "4.3"
+version = "4.4"
 description = en_zh("V" .. version .. [[
 󰀏 Your backpack wants a bigger home!
 

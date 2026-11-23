@@ -138,6 +138,7 @@ local function SaveUnlockData()
 end
 
 local UnlockedKeysString  -- 前置声明：LoadUnlockData 回调里要用（定义在下方）
+local SyncUnlockToClient  -- 前置声明：LoadUnlockData 回调里要用（定义在下方 186 行）
 
 local function LoadUnlockData()
   TheSim:GetPersistentString(UNLOCK_SAVE_KEY, function(success, str)
@@ -153,10 +154,9 @@ local function LoadUnlockData()
     if AllPlayers ~= nil then
       for _, player in pairs(AllPlayers) do
         if player ~= nil and player:IsValid() then
-          local classified = player.player_classified
-          if classified ~= nil and classified._hslot_unlock ~= nil then
-            classified._hslot_unlock:set(UnlockedKeysString(player.userid))
-          end
+          -- ⭐ 用带重试的 SyncUnlockToClient（不要直接 set netvar）：
+          --    存档加载回调时 classified 可能还没就绪，直接 set 会静默丢失。
+          SyncUnlockToClient(player)
         end
       end
     end
@@ -184,11 +184,24 @@ AddPrefabPostInit("world", function(inst)
 end)
 
 -- 服务端：把某玩家解锁状态推送到其 player_classified netvar
-local function SyncUnlockToClient(player)
+SyncUnlockToClient = function(player, retry)
   -- 始终同步存档记录（即使配置关），客户端按 config 决定显示；
   -- 这样配置关→开时无需重开也能拿到之前的解锁记录。
-  local classified = player ~= nil and player.player_classified or nil
-  if classified == nil or classified._hslot_unlock == nil then return end
+  if player == nil or not player:IsValid() then return end
+  local classified = player.player_classified
+  -- ⚠️ 关键：玩家 postinit 的 DoTaskInTime(0) 可能早于 player_classified 关联，
+  --    此时 classified/_hslot_unlock 为 nil。旧代码直接 return 且【不重试】→ 客户端 netvar 永远空，
+  --    而服务端 UNLOCK_DATA 有记录 → 客户端点灰眼发 unlock RPC 被服务端"已解锁"忽略 → 死锁。
+  --    延迟重试直到 netvar 就绪，保证服务端状态一定能推到客户端。
+  if classified == nil or classified._hslot_unlock == nil then
+    local tries = retry or 0
+    if tries < 30 then  -- 最多约 1 秒（30 帧），防止玩家异常时无限重试
+      player:DoTaskInTime(0.033, function()
+        if player:IsValid() then SyncUnlockToClient(player, tries + 1) end
+      end)
+    end
+    return
+  end
   classified._hslot_unlock:set(UnlockedKeysString(player.userid))
 end
 
@@ -210,9 +223,48 @@ GLOBAL.c_hslot_reset_unlock = function()
   print("[hslot][unlock] RESET DONE - all moon eyes locked again")
 end
 
+-- 诊断命令：一次性打印解锁/扫描/容器状态（排查"新存档点不开、扫描不了"）
+GLOBAL.c_hslot_unlock_status = function()
+  if not TheWorld.ismastersim then
+    print("[hslot][diag] not host/server, ignore"); return
+  end
+  local p = ThePlayer
+  if p == nil or not p:IsValid() then print("[hslot][diag] ThePlayer nil"); return end
+  local uid = p.userid
+  print("[hslot][diag] config.moon_eye_unlock=" .. tostring(config.moon_eye_unlock)
+    .. " userid=" .. tostring(uid))
+  local keys = UNLOCK_DATA[uid]
+  local owned = {}
+  if keys ~= nil then for k in pairs(keys) do table.insert(owned, k) end end
+  print("[hslot][diag] UNLOCK_DATA keys=" .. table.concat(owned, ","))
+  local cls = p.player_classified
+  print("[hslot][diag] netvar=" .. tostring(cls ~= nil and cls._hslot_unlock ~= nil and cls._hslot_unlock:value() or "nil"))
+  -- 玩家身上有没有月眼（扫描判据）
+  local found = {}
+  if p.components.inventory ~= nil then
+    local seen = {}
+    for key, prefab in pairs(KEY_TO_PREFAB) do
+      if not seen[prefab] then
+        seen[prefab] = true
+        if p.components.inventory:FindItem(function(it) return it ~= nil and it.prefab == prefab end) ~= nil then
+          table.insert(found, key)
+        end
+      end
+    end
+  end
+  print("[hslot][diag] inventory mooneye=" .. (table.concat(found, ",") ~= "" and table.concat(found, ",") or "(none)"))
+  -- 四色容器是否注册到世界
+  local reg = {}
+  for _, k in ipairs({ "hslot", "purple_fish", "orange_fish", "yellow_fish" }) do
+    table.insert(reg, k .. "=" .. tostring(TheWorld:GetPocketDimensionContainer(k) ~= nil))
+  end
+  print("[hslot][diag] containers " .. table.concat(reg, " "))
+end
+
 -- 说话提示：背包图标 + 物品显示名（自动中英文）+ 灯泡图标
 local ICON_BACKPACK = "\243\176\128\158"
 local ICON_BULB = "\243\176\128\143"
+local ICON_RMB = "\238\132\129"   -- 鼠标右键字形（U+E101，strings.lua:1236）
 
 -- 取月眼显示名（临时 SpawnPrefab，自动适配语言）
 local function MoonEyeDisplayName(prefab)
@@ -240,7 +292,8 @@ local function SayNeedMoonEye(player, key)
   if prefab == nil then return end
   local name = MoonEyeDisplayName(prefab)
   if player.components.talker ~= nil then
-    player.components.talker:Say(ICON_BACKPACK .. " " .. name .. " " .. ICON_BULB)
+    -- 右键图标 + 月眼名（提示玩家：要解锁需右键检查对应的月眼实物）
+    player.components.talker:Say(ICON_RMB .. " " .. name)
   end
 end
 
@@ -786,7 +839,12 @@ AddModRPCHandler("hslot_pocket", "unlock", function(player, key)
   if type(key) ~= "string" or KEY_TO_PREFAB[key] == nil then return end
   if player == nil or not player:IsValid() then return end
   local uid = player.userid
-  if IsUnlocked(uid, key) then return end  -- 已解锁，忽略
+  if IsUnlocked(uid, key) then
+    -- ⚠️ 服务端已解锁但客户端却发了 unlock RPC（说明客户端 netvar 还是旧的/空的）→
+    --    补推一次同步让客户端状态跟上，否则会卡在"点不开也扫不了"的死锁。
+    SyncUnlockToClient(player)
+    return
+  end
 
   -- 一次检测：手持或背包里有对应月眼
   if not PlayerHasMoonEye(player, KEY_TO_PREFAB[key]) then
