@@ -234,6 +234,24 @@ local function enhance_backpack(inst, prefab)
       fx.Transform:SetPosition(pos.x, 0, pos.z) -- 修正Y轴为地面高度（0）
     end
 
+    -- 六色月眼空间的世界 key（与格子优化 mod 的 POCKET_MAP 一致）。
+    -- 官方 TheWorld:GetPocketDimensionContainer(key) 是内建 API（world.lua:621），
+    -- 没装格子优化时蓝紫橙黄返回 nil 自然跳过；绿/红是官方自带容器。
+    local POCKET_KEYS = { "hslot", "purple_fish", "orange_fish", "yellow_fish", "rabbitkinghorn", "shadow" }
+
+    -- 找玩家当前【打开着】的月眼容器（世界单例容器，IsOpenedBy 精确判定查看者，不会串号）。
+    local function GetOpenedPocketContainer(player)
+      if player == nil or TheWorld.GetPocketDimensionContainer == nil then return nil, nil end
+      for _, key in ipairs(POCKET_KEYS) do
+        local chest = TheWorld:GetPocketDimensionContainer(key)
+        local c = chest ~= nil and chest.components.container or nil
+        if c ~= nil and c:IsOpenedBy(player) then
+          return c, key
+        end
+      end
+      return nil, nil
+    end
+
     local function collect_items_periodially(inst)
       if inst.components.container == nil then
         print("hpack: container component missing!")
@@ -285,6 +303,13 @@ local function enhance_backpack(inst, prefab)
         -- others
         "FX", }                                                            -- 保持原过滤标签
 
+      -- ⭐ 优先目标：玩家当前打开着的六色月眼空间（格子优化 mod 适配）。
+      -- 没打开任何月眼容器 → pocket=nil → 全部兜底回背包（原逻辑不变）。
+      local pocket, pocket_key = GetOpenedPocketContainer(owner)
+      print("[hpack][pocketpick] --DIAG prefab=" .. tostring(inst.prefab)
+        .. " owner=" .. tostring(owner ~= nil and owner.userid or "nil")
+        .. " open_pocket=" .. tostring(pocket_key or "none"))
+
       local ents = TheSim:FindEntities(x, 0, z, 6.6, must_tags, cant_tags) -- 修正Y轴为0（地面）
       for _, ent in ipairs(ents) do
         if not stop and targets[ent.prefab] ~= nil and ent.components.stackable then
@@ -293,7 +318,19 @@ local function enhance_backpack(inst, prefab)
           local taken_item = ent.components.stackable:Get(take)
 
           -- 服务器执行物品转移（自动同步到客户端）
-          container:GiveItem(taken_item)
+          -- ⭐ 存放优先级：打开的月眼能整叠装下 → 存月眼；装不下/没打开 → 兜底回背包。
+          -- 用 CanAcceptCount 预检而非盲目 GiveItem：GiveItem 失败会把物品掉在月眼容器位置，
+          -- 那样玩家就"捡不回"了（月眼容器是隐藏实体，掉落点不可见）。必须先判容量。
+          local stored_in = "backpack"
+          if pocket ~= nil and taken_item ~= nil and taken_item:IsValid()
+              and pocket:CanAcceptCount(taken_item, take) >= take then
+            pocket:GiveItem(taken_item)
+            stored_in = pocket_key
+          else
+            container:GiveItem(taken_item)
+          end
+          print("[hpack][pocketpick] --DIAG item=" .. tostring(ent.prefab)
+            .. " x" .. tostring(take) .. " -> " .. stored_in)
           targets[ent.prefab] = targets[ent.prefab] - take
 
           if targets[ent.prefab] <= 0 then

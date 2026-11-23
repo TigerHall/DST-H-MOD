@@ -2,16 +2,16 @@
 local L = locale ~= "zh" and locale ~= "zhr"
 
 name = L and "H-Enhanced backpack" or "H-背包强化"
-version = "1.7"
+version = "1.8"
 description = L
     and
     ("V" ..
       version ..
-      "\n\nAll features can be turned on or off in the configuration options.\n\nSince backpacks and armor share the same equipment slot, it only makes sense for backpacks to provide armor effects too—including physical defense and planar defense. And if they have armor, why not add a counterattack ability as well?\n\nIt’s reasonable for a backpack to offer some insulation to keep you warm. If it can keep you warm, regaining a bit of Sanity (mental health) isn’t too much to ask. And if it helps with Sanity, shouldn’t it also protect you from rain? After all, raincoats share the same slot too.\n\nAdditionally, backpacks now have the ability to automatically collect nearby items on the ground (only picks up items that already exist in the backpack), freeing up your hands. Since they can auto-collect items, allowing infinite stack sizes for items inside feels perfectly logical!\n\nallow players to craft Krampus Sack (Need Stag Antler)\n\nThe Seed Pouch comes with the maximum tier of bonuses by default—after all, I’m a farming player. Farmers shouldn’t be disturbed… I’m just an old farmer tending to my crops.")
+      "\n\nAll features can be turned on or off in the configuration options.\n\nSince backpacks and armor share the same equipment slot, it only makes sense for backpacks to provide armor effects too—including physical defense and planar defense. And if they have armor, why not add a counterattack ability as well?\n\nIt’s reasonable for a backpack to offer some insulation to keep you warm. If it can keep you warm, regaining a bit of Sanity (mental health) isn’t too much to ask. And if it helps with Sanity, shouldn’t it also protect you from rain? After all, raincoats share the same slot too.\n\nAdditionally, backpacks now have the ability to automatically collect nearby items on the ground (only picks up items that already exist in the backpack), freeing up your hands. If a moon-eye pocket space is currently open, collected items go there first and only fall back to the backpack when the pocket is full. Since they can auto-collect items, allowing infinite stack sizes for items inside feels perfectly logical!\n\nallow players to craft Krampus Sack (Need Stag Antler)\n\nThe Seed Pouch comes with the maximum tier of bonuses by default—after all, I’m a farming player. Farmers shouldn’t be disturbed… I’m just an old farmer tending to my crops.")
     or (
       "V" ..
       version ..
-      "\n\n所有功能均可在配置项开启或关闭\n\n既然背包和护甲都在一个格子，那么就让背包也有护甲效果很合理吧。包括物理防御和位面防御。既然有护甲了，那是不是也应该可以反击呢？\n\n背包背着，有点保暖效果合理吧。能保暖了，回点SAN也不过分吧。能回san，那是不是不应该被雨淋了？毕竟雨衣也在这个格子里。\n\n另外增加自动采集地上物品到背包的能力（物品在背包中已存在才捡起），解放双手。都自动拣起地上的东西了，那东西可以无限堆叠很合理吧。\n\n可制作坎普斯背包（需要麋鹿茸）。\n\n种子袋默认是最强的一档，毕竟我是个种田玩家，种田的人不应该被打扰，我是个老农。")
+      "\n\n所有功能均可在配置项开启或关闭\n\n既然背包和护甲都在一个格子，那么就让背包也有护甲效果很合理吧。包括物理防御和位面防御。既然有护甲了，那是不是也应该可以反击呢？\n\n背包背着，有点保暖效果合理吧。能保暖了，回点SAN也不过分吧。能回san，那是不是不应该被雨淋了？毕竟雨衣也在这个格子里。\n\n另外增加自动采集地上物品到背包的能力（物品在背包中已存在才捡起），解放双手。若当前打开着六色月眼空间，采集到的物品优先存入月眼，装不下时兜底回背包。都自动拣起地上的东西了，那东西可以无限堆叠很合理吧。\n\n可制作坎普斯背包（需要麋鹿茸）。\n\n种子袋默认是最强的一档，毕竟我是个种田玩家，种田的人不应该被打扰，我是个老农。")
 author = "hehu"
 
 api_version = 10
