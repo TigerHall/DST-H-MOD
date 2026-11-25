@@ -24,7 +24,9 @@
     "Lua.workspace.ignoreDir": [
         "参考代码",
         ".git",
-        ".vscode"
+        ".vscode",
+        // 旧版本备份，不参与运行，也不需要静态诊断
+        ".workbuddy/tmp"
     ],
     "Lua.workspace.preloadFileSize": 500,
 

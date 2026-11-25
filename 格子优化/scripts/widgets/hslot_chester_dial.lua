@@ -3,7 +3,8 @@
 --   待机 idle_loop（循环呼吸）→ 点击张嘴 open → idle_loop_open → 关闭 closed → idle_loop。
 --   拖动切 walk_loop；未打开时跑马灯炫彩，打开张嘴时停（手杖同款）。
 --   hover 切斯特/宝石放大 + 宝石往外弹（吸附感，官方 Wheel 的 focus_pos 思路）。
---   hover 用 SetModFocus 防点击穿透（playercontroller.lua:494）。
+--   ⚠️ hover 绝不用 SetModFocus 防穿透——那会让 PlayerController:IsEnabled() 变 false，
+--      连 WASD 移动一起禁掉。改由 modmain 的 PlayerController:OnControl hook 只吞左右键。
 -- 交互全走 TheInput 坐标判定（4K 下 ImageButton 焦点不可靠），照搬本 mod 大容器方案。
 
 local Widget = require("widgets/widget")
@@ -12,7 +13,6 @@ local UIAnim = require("widgets/uianim")
 
 local CHESTER_BANK = "chester"
 local CHESTER_BUILD = "chester_build"
-local MOD_NAME = "hslot_chester_dial"
 
 -- ===== 位置记忆（客户端本地存盘，照搬 hslot_vault_list）=====
 local DIAL_POS_SAVE_KEY = "hslot_chester_dial_pos"
@@ -58,11 +58,11 @@ local GEMS = {
 
 local CHESTER_SCALE = 0.28
 local GEM_SCALE = 0.72              -- 月眼再放大（原 0.48）
-local RADIUS = 58               -- 轮盘半径（宝石离远一点，原 44）
+local RADIUS = 70               -- 轮盘半径（宝石离远一点，原 44 → 58 → 70）
 local CHESTER_CY = 10
 local GEM_OFFSET_Y = 44         -- 整圈宝石上移（原 30，再上移一些）
-local CHESTER_RADIUS = 52     -- 以月眼圆心为准的内圈半径=切斯特开关范围（月眼在 RADIUS=58 处，留余量）
-local DIAL_RADIUS = 120       -- 整个轮盘区域的命中半径（含宝石+空白，抑制穿透）
+local CHESTER_RADIUS = 52     -- 以月眼圆心为准的内圈半径=切斯特开关范围（月眼在 RADIUS=70 处，留余量）
+local DIAL_RADIUS = 132       -- 整个轮盘区域的命中半径（含宝石+空白，抑制穿透）
 
 local HOVER_CHESTER_SCALE = 1.15   -- 鼠标放切斯特上放大倍数
 local HOVER_GEM_SCALE = 1.3        -- 宝石悬停放大倍数
@@ -118,7 +118,6 @@ local ChesterDial = Class(Widget, function(self, on_gem_click, unlock_enabled, o
     self._gem_base_pos = {}
     self._world_scale = nil
     self._drag_button = nil
-    self._modfocus_on = false
     self._rainbow_time = 0
     self._hover_kind = nil        -- "chester" / "gem" / "dial" / nil
     self._hover_gem = 0
@@ -210,6 +209,8 @@ local ChesterDial = Class(Widget, function(self, on_gem_click, unlock_enabled, o
         end
         return nil
     end
+    -- 暴露给 modmain 的 PlayerController:OnControl hook：只吞鼠标点击，不动键盘移动。
+    self._hit_test = hit_test
 
     -- hover 放大/吸附：切斯特放大，宝石放大 + 往外弹
     local function apply_hover(kind, idx)
@@ -239,23 +240,12 @@ local ChesterDial = Class(Widget, function(self, on_gem_click, unlock_enabled, o
         if kind ~= "gem" then self:StopGemBreath() end
     end
 
-    local function set_modfocus(on)
-        if self._modfocus_on == on then return end
-        self._modfocus_on = on
-        local hud = ThePlayer ~= nil and ThePlayer.HUD or nil
-        if hud ~= nil and hud.SetModFocus then
-            hud:SetModFocus(MOD_NAME, "dial", on)
-        end
-    end
-
     self._hover_handler = TheInput:AddMoveHandler(function(x, y)
         if not self:IsVisible() then
-            set_modfocus(false)
             apply_hover(nil, 0)
             return
         end
         local hit, idx = hit_test(x, y)
-        set_modfocus(hit ~= nil)
         apply_hover(hit, idx or 0)
     end)
 
@@ -309,7 +299,6 @@ local ChesterDial = Class(Widget, function(self, on_gem_click, unlock_enabled, o
 
     self.inst:ListenForEvent("onremove", function()
         if active_dial == self then active_dial = nil end
-        set_modfocus(false)
         self:StopRainbow()
         self:StopGemBreath()
         if self._hover_handler then self._hover_handler:Remove(); self._hover_handler = nil end
@@ -602,6 +591,12 @@ function ChesterDial:Close()
     self.inst:DoTaskInTime(0.6, function()
         if self.inst:IsValid() then self:SyncAnim() end
     end)
+end
+
+-- 供 PlayerController:OnControl hook 查询：鼠标是否落在轮盘上（命中类型, 月眼序号）。
+function ChesterDial:HitTest(x, y)
+    if self._hit_test == nil then return nil end
+    return self._hit_test(x, y)
 end
 
 return ChesterDial

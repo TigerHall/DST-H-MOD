@@ -98,6 +98,7 @@ end)
 -- 跟世界存档走（照搬上面 REVEALED_DATA 范式）；配置关时不读写、不删记录。
 -- ═══════════════════════════════════════════════════════════════
 local UNLOCK_DATA = {} -- [userid][key] = true
+local unlock_data_loaded = false -- 全量存盘前必须等 LoadUnlockData 合并完，否则会抹掉旧记录
 local UNLOCK_SAVE_KEY = "hslot_mooneye_unlocked"
 
 -- container_key → 月眼 prefab（tex 名即 prefab 名，官方 scrapbookdata 确认）
@@ -149,6 +150,9 @@ local function LoadUnlockData()
         for k in pairs(keys) do UNLOCK_DATA[uid][k] = true end
       end
     end
+    -- ⭐ 标记"旧记录已并入内存"：自动解锁的 SaveUnlockData 是全量覆盖写，
+    --    必须等这一刻之后才允许写盘，否则慢盘/冷启动时旧 key/其他玩家记录会被抹掉。
+    unlock_data_loaded = true
     -- 存档加载完，给在线玩家重新同步（玩家 postinit 的同步可能早于这里）
     -- ⚠️ TheNet 没有 GetAllPlayers（审查确认）；服务端用全局 AllPlayers 遍历玩家实体
     if AllPlayers ~= nil then
@@ -645,6 +649,38 @@ local function DegradeContainerItems(inst)
   end
 end
 
+-- ⭐ 安全移除槽位物品：DST 里偶尔会有「已失效但仍占槽」的脏物品
+-- （实测洞穴服里 spider_spitter 的 inst valid:false / replica.inventoryitem 为空）。
+-- 别的 mod 若 hook 了 inventoryitem.owner 的 setter（实测「丰耘秘境」的
+-- _hmr_factory_owner_setter），官方 RemoveItemBySlot → OnRemoved → ClearOwner 会调进
+-- 那个 hook 并 index nil 崩服（整个洞穴分片挂掉，玩家再也连不上）。
+-- 这里的兜底直接清槽 + 推 itemlose：container_replica.lua 靠 itemlose 同步 netvar，
+-- 少走一次 OnRemoved 即可绕开第三方 hook，不影响正常物品。
+local function SafeRemoveItemBySlot(container, slot)
+  local item = container.slots[slot]
+  if item == nil then return nil end
+
+  local can_use_official = item:IsValid()
+    and item.components ~= nil and item.components.inventoryitem ~= nil
+    and item.replica ~= nil and item.replica.inventoryitem ~= nil
+  if can_use_official then
+    local ok, removed = pcall(function() return container:RemoveItemBySlot(slot) end)
+    if ok then return removed end
+    -- ⭐ 官方是在推完 itemlose 之后才崩在 OnRemoved，物品已经脱离槽位。
+    --    实体还有效就必须交回 items 让 Step4 重新 GiveItem，否则玩家物品被静默吞掉。
+    if item:IsValid() then return item end
+  end
+
+  -- 失效物品 / 第三方 hook 报错且实体已无效：跳过 OnRemoved，直接清槽 + 同步。
+  -- 官方 RemoveItem_Internal 也是先清 slots / 推 itemlose，再调 OnRemoved；
+  -- 若 pcall 失败发生在最后那步，槽已清空，就别重复推 itemlose 了。
+  if container.slots[slot] == item then
+    container.slots[slot] = nil
+    container.inst:PushEvent("itemlose", { slot = slot, prev_item = item })
+  end
+  return nil
+end
+
 -- 一键整理容器：清除空洞 → 合并堆叠 → 按物品名排序
 local function ArrangeContainerItems(inst)
   if not inst or not inst:IsValid() then return end
@@ -653,10 +689,10 @@ local function ArrangeContainerItems(inst)
 
   container.ignoreoverstacked = true -- 允许整理时保留超上限堆叠
 
-  -- Step 1: 从后往前取出所有物品
+  -- Step 1: 从后往前取出所有物品（脏/失效物品走安全兜底，别把分片搞崩）
   local items = {}
   for i = container:GetNumSlots(), 1, -1 do
-    local item = container:RemoveItemBySlot(i)
+    local item = SafeRemoveItemBySlot(container, i)
     if item then
       table.insert(items, item)
     end
@@ -685,9 +721,25 @@ local function ArrangeContainerItems(inst)
     return a.prefab < b.prefab
   end)
 
-  -- Step 4: 重新放入容器
+  -- Step 4: 重新放入容器（同样 pcall：第三方 hook 若连"设 owner 为非 nil"也崩，别把整理变成崩服）
   for _, item in ipairs(items) do
-    container:GiveItem(item)
+    local ok = pcall(function() return container:GiveItem(item) end)
+    if not ok then
+      -- 官方可能已写进槽但 itemget 没推出来 → 清掉幽灵槽并同步客户端
+      local s = container:GetItemSlot(item)
+      if s ~= nil and container.slots[s] == item then
+        container.slots[s] = nil
+        container.inst:PushEvent("itemlose", { slot = s, prev_item = item })
+      end
+      -- 宁可掉在容器脚下也别吞玩家物品
+      if item:IsValid() then
+        local x, y, z = inst.Transform:GetWorldPosition()
+        item.Transform:SetPosition(x, y, z)
+        if item.components.inventoryitem ~= nil then
+          pcall(function() item.components.inventoryitem:OnDropped(true) end)
+        end
+      end
+    end
   end
 
   container.ignoreoverstacked = false
@@ -858,6 +910,46 @@ AddModRPCHandler("hslot_pocket", "unlock", function(player, key)
   SaveUnlockData()
   SyncUnlockToClient(player)
   SayUnlockSuccess(player, key)   -- 说话提示：月眼名 + 三个灯泡
+end)
+
+-- ⭐ 进入存档 / 切换世界（地表↔洞穴）时自动扫描一次身上已有的月眼并解锁。
+--    旧行为要玩家点一下灰月眼才触发 unlock RPC，体验像"没载入"；
+--    persistent string 是按 shard 存的，换洞穴后服务端没有本 shard 的解锁记录，
+--    这里用玩家随身实物当凭证，进图即点亮对应宝石。
+local function AutoUnlockOwnedMoonEyes(player, retry)
+  if not config.moon_eye_unlock then return end
+  if player == nil or not player:IsValid() or player.userid == nil then return end
+  -- ⚠️ SaveUnlockData 是全量覆盖写：必须等 LoadUnlockData 把旧记录并进内存再写，
+  --    否则慢盘/冷启动时旧 key（或其他玩家）的解锁记录会被这次写入直接抹掉。
+  if not unlock_data_loaded then
+    local tries = retry or 0
+    if tries < 50 then  -- 最多约 10 秒
+      player:DoTaskInTime(0.2, function()
+        if player:IsValid() then AutoUnlockOwnedMoonEyes(player, tries + 1) end
+      end)
+    end
+    return
+  end
+  local uid = player.userid
+  local changed = false
+  for key, prefab in pairs(KEY_TO_PREFAB) do
+    if not IsUnlocked(uid, key) and PlayerHasMoonEye(player, prefab) then
+      UNLOCK_DATA[uid] = UNLOCK_DATA[uid] or {}
+      UNLOCK_DATA[uid][key] = true
+      changed = true
+    end
+  end
+  if changed then SaveUnlockData() end
+  -- 即便没有新解锁也补推一次：登录时 netvar 同步时序问题在这里兜底
+  SyncUnlockToClient(player)
+end
+
+AddPrefabPostInit("player", function(inst)
+  if not TheWorld.ismastersim then return end
+  -- 存档物品是玩家生成后才装进背包的，DoTaskInTime(0) 太早；1 秒足够稳。
+  inst:DoTaskInTime(1, function()
+    if inst:IsValid() then AutoUnlockOwnedMoonEyes(inst) end
+  end)
 end)
 
 -- 眼骨
@@ -2168,6 +2260,38 @@ if not GLOBAL.TheNet:IsDedicated() then
   local create_dial = (config.chester_dial ~= false) or (config.pocket_hotkey ~= false)
   if create_dial then
     local ChesterDial = require("widgets/hslot_chester_dial")
+
+    -- ⭐ 鼠标放在轮盘上不再抢 WASD：不用 SetModFocus（它会把 PlayerController:IsEnabled()
+    --    整个关掉，键盘移动也跟着失效）。改为只吞 PRIMARY/SECONDARY 两个鼠标控制，
+    --    键盘移动键完全放行；命中和视觉 hover 都复用 widget 的同一套坐标判定。
+    AddClassPostConstruct("components/playercontroller", function(self)
+      local old_OnControl = self.OnControl
+      -- down/up 必须配对：记录"这次按下是否被我们吞掉"，松手时按同一判据放行，
+      -- 否则「轮盘外按下→移进轮盘松手」会让官方 OnLeftClick(true) 没有配对的 false。
+      self._hslot_dial_swallowed = {}
+      function self:OnControl(control, down)
+        if control == GLOBAL.CONTROL_PRIMARY or control == GLOBAL.CONTROL_SECONDARY then
+          local key = (control == GLOBAL.CONTROL_PRIMARY) and "primary" or "secondary"
+          if down then
+            local owner = GLOBAL.ThePlayer
+            local hud = owner ~= nil and owner.HUD or nil
+            local dial = hud ~= nil and hud.controls ~= nil and hud.controls.hslot_chester_dial or nil
+            local hit = false
+            if dial ~= nil and dial:IsVisible() and dial.HitTest ~= nil then
+              local sp = GLOBAL.TheInput:GetScreenPosition()
+              hit = dial:HitTest(sp.x, sp.y) ~= nil
+            end
+            self._hslot_dial_swallowed[key] = hit
+            if hit then return true end   -- 只挡世界输入，WASD 继续有效
+          elseif self._hslot_dial_swallowed[key] then
+            self._hslot_dial_swallowed[key] = false
+            return true
+          end
+        end
+        return old_OnControl(self, control, down)
+      end
+    end)
+
     AddClassPostConstruct("widgets/controls", function(self)
       self.hslot_chester_dial = self.bottomright_root:AddChild(ChesterDial(
         function(key)

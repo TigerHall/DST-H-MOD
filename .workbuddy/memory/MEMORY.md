@@ -22,12 +22,12 @@
 - 配置项仅 Boolean（`addConfig()`）/ Multi-option（`options`）；改配置必升 version
 
 ## 技能 / 专家 / 工具
-- 技能 `dst-mod-dev`（用户级 `~/.workbuddy/skills/dst-mod-dev/`）：`pitfalls.md`（67 条，3 副本 3 套编号）、`code-templates.md`、`api-quick-reference.md`、`mod-patterns.md`、`verified-api-calls.md`（13 节）、`dst-icon-glyphs.md`、`large_container_ui.md`（9 章）、`dst-item-names.md`（官方中文对照：2841 物品名 + 970 配方描述）、`client-log-triage.md`、`scripts/log_triage.py`
+- 技能 `dst-mod-dev`（用户级 `~/.workbuddy/skills/dst-mod-dev/`）：`pitfalls.md`（用户级 72 / 市场包 41 / 缓存 37 条，3 套编号）、`code-templates.md`、`api-quick-reference.md`、`mod-patterns.md`、`verified-api-calls.md`（15 节）、`dst-icon-glyphs.md`、`large_container_ui.md`（9 章）、`dst-item-names.md`（官方中文对照：2841 物品名 + 970 配方描述）、`client-log-triage.md`、`scripts/log_triage.py`
 - **遇到未知物品中文名先查 `references/dst-item-names.md`**（grep 中文找 key / grep key 找中文），不要猜；已写进专家定义 + 三份 SKILL.md
 - 三副本：用户级主库 / 市场包 `my-experts/plugins/dst-mod-expert/skills/` / 缓存 `plugins/cache/my-experts/dst-mod-expert/1.0.0/skills/`
 - 专家 `dst-mod-expert`：`~/.workbuddy/plugins/marketplaces/my-experts/plugins/dst-mod-expert/`，左侧「专家」入口
 - **崩溃排查**：报崩溃先跑 `python scripts/log_triage.py [--mod hslot] [--all]` 切最近一轮会话，别修已修复的旧 bug
-- 日志两处：`client_log.txt` + `backup/client_log/client_log_<时间戳>.txt`（DST 启动归档上一份）；专用服务器 `Cluster_N/Master|Caves/server_log.txt`
+- 日志两处：`client_log.txt` + `backup/client_log/client_log_<时间戳>.txt`（DST 启动归档上一份）；专用服务器 `Cluster_N/Master|Caves/server_log.txt`；本地开服另有 `~/Documents/Klei/DoNotStarveTogether/{master,caves}_server_log.txt`（掉线先查 caves 日志，客户端可能零报错）
 - 官方源码更新：`scripts/update_official_source.py`（CRC 比对 scripts.zip，只同步 .lua，自动备份/回滚）
 - 工坊参考：只读 `C:/Program Files (x86)/Steam/steamapps/workshop/content/322330/<ID>/`，名单 `参考代码/MOD名单.md`；`--id <ID> --copy` 才复制。地标传送优先查 workshop `3638290455`
 
@@ -43,6 +43,9 @@
 - **月眼地图揭示**：`player_classified.revealmapspot_*` + `OnRevealMapSpotEvent` → `MapExplorer:RevealArea`；room 型用 `TheWorld.topology`，entity 型用 `TheSim:FindEntities`（仅显式 AddTag）
 - **地图传送**：`map_only` action + `maponly_checkvalidpos_fn`（客户端 GetActionPoint+FindEntities，绝不读 `globalmapicon._target`）；客户端 `ScreenFade` + 服务端 RPC 直接 Teleport；弃用 `pocketwatch_warpback`
 - **UIAnim 坑**：Widget/UIAnim 无 `SetAlpha`/`DoTaskInTime`/`IsValid`，显隐只用 `Show/Hide`，用 `self.inst`；图标着色用 `image:SetTint()`，`AnimState:SetMultColour` 对 UI 无效
+- **HUD 轮盘防穿透（v4.4.1）**：绝不用 `SetModFocus`（连 WASD 一起禁）；hook `PlayerController:OnControl` 只在鼠标命中轮盘时吞 PRIMARY/SECONDARY，见 verified-api-calls.md §15
+- **整理容器防崩服（v4.4.1）**：`RemoveItemBySlot` 会经 ClearOwner 触发第三方 owner setter hook；失效物品（`valid:false` / `replica.inventoryitem==nil`）跳过 OnRemoved，直接清槽 + `PushEvent("itemlose")`，有效物品 pcall 兜底
+- **进图自动解锁（v4.4.1）**：服务端 `AddPrefabPostInit("player")` 延迟 1 秒扫描 `inventory:FindItem` 命中的实物月眼，自动写 UNLOCK_DATA + 同步 netvar，不用点灰宝石
 - 内置图标字形有**两套**：`dst-icon-glyphs.md`（`\243\176\128\xxx` U+F0000 段，50 条物品图标）+ `dst-pua-glyphs.md`（`\238\xxx\xxx` U+E000-E51B，179 条控制图标，strings.lua；鼠标左/右/中键=E100/E101/E102）。都三副本同步；「图标+数字」拼同一个 Text
 
 ## 详细历史
