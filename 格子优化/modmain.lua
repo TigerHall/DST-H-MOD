@@ -746,14 +746,22 @@ local function ArrangeContainerItems(inst)
 end
 
 -- 统一的整理逻辑：先排序，再根据容器做修复或降级（按钮和定时任务共用）
+-- ⭐ 整体 pcall 护栏：Step1/Step4 虽已保护，但第三方 mod 的 owner setter hook
+--    可能在堆叠合并 src:Remove() 等中间环节抛错；不加兜底就会带崩整个洞穴分片。
+--    这里只在出错时打印一条（正常路径零开销、不刷屏）。
 local function DoSortAndRepair(inst)
   if not inst or not inst:IsValid() then return end
-  ArrangeContainerItems(inst)
-  local prefab = inst.prefab
-  if prefab == "rabbitkinghorn_container" then
-    RepairContainerItems(inst)
-  elseif prefab == "shadow_container" then
-    DegradeContainerItems(inst)
+  local ok, err = pcall(function()
+    ArrangeContainerItems(inst)
+    local prefab = inst.prefab
+    if prefab == "rabbitkinghorn_container" then
+      RepairContainerItems(inst)
+    elseif prefab == "shadow_container" then
+      DegradeContainerItems(inst)
+    end
+  end)
+  if not ok then
+    print("[hslot][sort] protected failure (third-party hook?): " .. tostring(err))
   end
 end
 

@@ -59,7 +59,7 @@ local GEMS = {
 local CHESTER_SCALE = 0.28
 local GEM_SCALE = 0.72              -- 月眼再放大（原 0.48）
 local RADIUS = 70               -- 轮盘半径（宝石离远一点，原 44 → 58 → 70）
-local CHESTER_CY = 10
+local CHESTER_CY = 22              -- 切斯特上移 1/4 个月眼图标（64×0.72/4≈12px）：10+12=22；tooltip 共用此值
 local GEM_OFFSET_Y = 44         -- 整圈宝石上移（原 30，再上移一些）
 local CHESTER_RADIUS = 52     -- 以月眼圆心为准的内圈半径=切斯特开关范围（月眼在 RADIUS=70 处，留余量）
 local DIAL_RADIUS = 132       -- 整个轮盘区域的命中半径（含宝石+空白，抑制穿透）
