@@ -49,12 +49,40 @@ end
 
 --  基础信息
 name = L and "H-Cane Enhancement" or "H-手杖强化"
-version = "5.6"
+version = "6.0"
 description =
     L and
-    ("V" .. version .. "\n\n" .. "󰀏All features can be turned on or off in the configuration options.\n\nEnhance your walking cane with features including custom movement speed bonuses, damage values (including planar damage values),Ramping Damage, ranged attacks and area-of-effect attacks, life leech (including restoring hunger and sanity), glowing (only when dropped on the ground), preventing being knocked off by bosses, being revivable via haunting, and being theft-proof, etc.\n\nIt also supports various multi-functional tool features, including axe, pickaxe, shovel (with customizable tool efficiency), hammer, circular harvesting, and other multi-functional tools. It can automatically pick harvestable crops around the player. It also features automatic tilling. The multi-functional tool features and light effect function of the cane can be turned off/on by right-clicking.\n\nIn addition, there are permanent features such as watering can, oar, freshwater fishing rod, brush, and razor (with a separate setting switch).\n\nYou can set to craft walrus ivory with no tech requirement (1 bone and 1 fang), craft a Walking Cane with tusk + gold + log + twigs, or make walruses drop an extra walrus ivory. It can also resist lightning, rain, and maintain a constant temperature.\n\nYou can place seeds in the character's last inventory slot (the 15th one, closest to the equipment slot), and they will be sown automatically. You can also place gems, sand stones, bear skins (be careful of home destruction), etc., each of which has different abilities. But all abilities come with a hunger cost") or
-    (
-      "V" .. version .. "\n\n" .. "󰀏所有功能均可在配置项开启或关闭\n\n强化你的步行手杖，包括自定义移速加成、伤害值(包括位面伤害值)、越战越强、远程攻击与群体攻击、吸血(包括回复饥饿和理智)、发光（仅限丢在地上的时候）、防boss拍落、可作祟复活以及不会被偷窃等功能，\n还支持多种多功能工具功能，包括斧子、稿子、铲子（可自定义工具效率）、锤子、圆形收割等多功能工具，且可自动采摘玩家周围的可采摘作物，自动锄地。可通过右键关闭/开启手杖的多功能工具功能和光特效功能。\n另外有常驻功能浇水壶、船桨、淡水钓竿、刷子、剃刀（有单独设置开关）\n可以设置直接制作海象牙（1骨头1犬牙，无需科技）、用海象牙+黄金+木头+树枝制作步行手杖，或让海象额外掉落一个海象牙，可以防雷、防雨、恒温。\n可以在人物最后一个格子（15个，最靠近装备那个）里放入种子，能自动播种（包括杂草）。还可以放入宝石、沙之石、熊皮（小心拆家）等，都有不同的能力。但所有的能力都有饥饿代价。")
+    ("V" .. version .. [[
+󰀁 Speed / damage / planar / ramping damage
+󰀘 Ranged + AOE attacks, knockback, hit flash
+󰀍 Lifesteal: damage to health/hunger/sanity
+󰀏 Glowing, breathing light, particles
+󰀉 Haunt resurrection, boss-proof, theft-proof
+󰀌 Axe/pick/shovel/hammer/net/mine, right-click toggle
+󰀇 Auto-harvest + auto-farm
+󰀒 Six-gem dial: fire/ice/green/purple/orange/yellow
+󰀂 15-slot scan: dupe / all-tech / stealth, etc.
+󰀥 Free tusk & cane craft, extra tusk drop
+󰀖 Lightning/rain proof, constant temperature
+Every feature has a switch 󰀏
+All abilities cost hunger 󰀎
+]]) or
+    ("V" .. version .. [[
+󰀁 移速/伤害/位面伤害/越战越强
+󰀘 远程+群攻，掌掴击飞、受击闪烁
+󰀍 吸血：伤害转生命/饥饿/理智
+󰀏 发光、呼吸灯、粒子特效
+󰀉 作祟复活、防boss拍落、防偷窃
+󰀌 斧镐铲锤/捕网挖矿，右键开关
+󰀇 自动采摘+自动耕地
+󰀒 六色宝石轮盘：火冰绿紫橙黄
+󰀂 15格扫描：复制/全科技/隐身等
+󰀥 海象牙/手杖免费合成、额外掉落
+󰀖 防雷防雨恒温
+所有功能均可单独开关 󰀏
+所有能力都有饥饿代价 󰀎
+]])
+
 author = "hehu"
 
 api_version = 10
@@ -311,15 +339,39 @@ configuration_options = {
   -- 多工具组件
   addConfig(
     "tool_enable",
-    "多功能",
-    "Multi-Function",
+    "右键开关多功能",
+    "Right-Click Toggle Multi-Function",
     true,
-    "是否启用手杖的多功能（可砍、锤、挖、捕网、挖矿等）",
-    "Enable multi-tool capabilities (chop, hammer, dig, net, mine, etc.)",
+    "是否启用手杖的多功能（可砍、锤、挖、捕网、挖矿等）；装备手杖后右键点击即可开关",
+    "Enable multi-tool capabilities (chop, hammer, dig, net, mine, etc.); right-click the equipped cane to toggle",
     "让手杖拥有很多功能，解放双手",
     "Staff has many functions, free your hands",
     "功能太多确实也不好",
     "Too many functions are indeed not good"
+  ),
+  addConfig(
+    "enable_gem_abilities",
+    "轮盘UI显示",
+    "Gem Dial UI",
+    true,
+    "开启后显示六色宝石轮盘 UI 并启用六色法杖能力（红=火弹点燃、蓝=冰弹冰冻+熄灭、绿=材料减半+拆解、紫=简约传送+发疯、橙=闪烁+拾取、黄=发光+点亮）。此能力为独立任务，不依赖「启用扫描格子」或「自动工作范围」",
+    "Show the six-gem dial UI and enable six gem staff abilities (red=fire, blue=ice+extinguish, green=craft+deconstruct, purple=teleport+insanity, orange=blink+pickup, yellow=light). Independent task: does not require Scan Slot or Auto-Work Range",
+    "显示轮盘并启用六色能力（默认）",
+    "Show dial and enable six abilities (default)",
+    "隐藏轮盘且六色能力全部不生效",
+    "Hide dial and disable all six abilities"
+  ),
+  addConfig(
+    "gem_unlock_required",
+    "宝石需点击解锁",
+    "Gems Require Click to Unlock",
+    true,
+    "开启后轮盘里的宝石初始为锁定：持有同色宝石/月眼/护符/法杖时点击灰宝石即可解锁，右键或轮盘开关手杖时也会自动扫描解锁；持有彩虹宝石(opalpreciousgem)或虹彩法杖(opalstaff)或不朽宝石(immortal_gem)直接解锁全部六色。关闭则六色直接可用",
+    "When enabled, gems start locked: click a grey gem while holding the matching gem/mooneye/amulet/staff to unlock; toggling the cane also auto-scans. Holding opalpreciousgem, opalstaff or immortal_gem unlocks all six. Disable to make all six immediately available",
+    "点击解锁（仿格子优化月眼）",
+    "Click to unlock (like hslot moon eyes)",
+    "关闭则宝石全部直接可用",
+    "Disable to make all gems available immediately"
   ),
   addConfig(
     "multi_tool_state_save",
@@ -333,6 +385,9 @@ configuration_options = {
     "卸下时自动关闭所有工具组件，重新装备需手动右键开启",
     "Automatically disables all tool components when unequipped; manual right-click to re-enable after re-equipping"
   ),
+
+  -- 图标切换 / 呼吸灯等纯视觉特效
+  addTitle(L and "Visual Effects (icons, glow, particles)" or "特效展示"),
   addConfig(
     "enable_light_fx",
     "呼吸灯特效",
@@ -417,6 +472,8 @@ configuration_options = {
     "禁用后切换工具功能时保持手杖原始名称不变",
     "Disables name changes when toggling tool functions (keeps the original cane name)"
   ),
+  -- 工具动作：各类工具是否允许动作与效率
+  addTitle(L and "Tool Actions (hammer, dig, scythe, efficiency)" or "工具动作"),
   -- 锤子
   addConfig(
     "enable_hammer_action",
@@ -478,8 +535,8 @@ configuration_options = {
     name = "auto_farm_range",
     label = L and "Auto-Farm Range" or "自动耕地范围",
     hover = L and
-        "Effective range for auto-farming (set to 0 to disable)" or
-        "自动耕地的有效范围（设置为0则关闭功能）",
+        "Effective range for auto-farming (0 = disable). Independent task, not controlled by the right-click toggle" or
+        "自动耕地的有效范围（0=关闭）。独立任务，不受右键总开关控制",
     options = {
       { description = "0", data = 0, hover = L and "Disable auto-farming" or "关闭自动耕地功能" },
       { description = "1", data = 1, hover = L and "1 Turf range" or "周围1个地皮，9宫格" },
@@ -658,19 +715,19 @@ configuration_options = {
     true,
     "控制是否启用手杖的扫描格子功能",
     "Control whether to enable the scan slot function of the cane",
-    "手杖会根据第15个物品栏及装备栏物品解锁对应功能",
-    "The cane will unlock corresponding functions based on the items in the 15th inventory slot and the equipment slot.",
-    "没啥变化，而且不会有自动工作了",
-    "nothing changes and no functions unlocked"),
+    "手杖会根据第15个物品栏及装备栏物品解锁高级能力（彩虹复制、全科技、天体隐身、熊皮破坏等）。六色法杖能力为独立任务，不受此开关影响",
+    "Unlock advanced abilities from the 15th inventory slot and equipment (rainbow dupe, all tech, celestial stealth, bear fur destruction, etc.). Gem staff abilities run independently of this switch",
+    "高级能力关闭，但六色法杖能力与自动耕地照常工作",
+    "Advanced abilities off; gem staff and auto-farm still work"),
   -- 自动工作范围
   {
     name = "auto_work_range",
     label = L and "Auto-Work Range" or "自动工作范围",
     hover = L and
-        "Effective range for auto-working (set to 0 to disable)" or
-        "自动工作的有效范围（设置为0则关闭功能）",
+        "Range for slot-scan abilities, auto-harvest, orange-staff pickup and bear-fur destruction (0 = disable scan & harvest). Gem staff abilities and auto-farm are independent" or
+        "控制扫描15格高级能力、自动采摘、橙法杖拾取、熊皮破坏的半径（0=关闭扫描与采摘）。六色法杖能力与自动耕地不受此开关影响",
     options = {
-      { description = "0", data = 0, hover = L and "Disable auto-work" or "关闭自动工作功能" },
+      { description = "0", data = 0, hover = L and "Disable slot scan & auto-harvest" or "关闭扫描15格与自动采摘" },
       { description = "2.6", data = 2.6, hover = L and "Slightly more than 0.5 Turf Radius" or "稍大于0.5个地皮半径" },
       { description = "4.6", data = 4.6, hover = L and "Slightly more than 1 Turf Radius" or "稍大于1个地皮的半径范围" },
       { description = "6.6", data = 6.6, hover = L and "Slightly more than 1.5 Turfs Radius, allows the general grassland of grass lizards to be just fully harvested outside the fence." or "稍大于1.5个地皮的半径范围，围起来草蜥蜴的一般草场刚好能在栅栏外收完" },
