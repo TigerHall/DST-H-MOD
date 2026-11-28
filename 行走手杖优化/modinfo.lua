@@ -49,7 +49,7 @@ end
 
 --  基础信息
 name = L and "H-Cane Enhancement" or "H-手杖强化"
-version = "6.0"
+version = "6.1"
 description =
     L and
     ("V" .. version .. [[
@@ -342,12 +342,12 @@ configuration_options = {
     "右键开关多功能",
     "Right-Click Toggle Multi-Function",
     true,
-    "是否启用手杖的多功能（可砍、锤、挖、捕网、挖矿等）；装备手杖后右键点击即可开关",
-    "Enable multi-tool capabilities (chop, hammer, dig, net, mine, etc.); right-click the equipped cane to toggle",
-    "让手杖拥有很多功能，解放双手",
-    "Staff has many functions, free your hands",
-    "功能太多确实也不好",
-    "Too many functions are indeed not good"
+    "是否注册右键开关组件。开启：装备栏右键手杖切换多功能总开关；关闭：不注册右键use组件，右键手杖恢复为普通卸下装备，但轮盘中心点击仍可正常切换总开关",
+    "Whether to register the right-click toggle. On: right-click the equipped cane toggles multi-function. Off: no right-click use component, so right-click just unequips the cane, but the dial center still toggles the switch",
+    "右键开关多功能（可砍锤挖捕网挖矿），轮盘备用",
+    "Right-click toggles multi-tool (chop/hammer/dig/net/mine), dial as backup",
+    "关掉右键＝普通卸下手杖，轮盘照常切换",
+    "Off = right-click just unequips, dial still toggles"
   ),
   addConfig(
     "enable_gem_abilities",

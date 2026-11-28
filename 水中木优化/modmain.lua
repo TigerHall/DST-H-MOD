@@ -434,6 +434,10 @@ if config.farming_combat then
     end
   end)
 
+  -- 反伤断链标志（所有耕作帽共享）：防两个同款帽子玩家互殴时反伤无限递归
+  -- 注：resistance 抵挡时推的是 blocked 事件（无 stimuli 字段），故用共享 flag 而非 stimuli 断链
+  local reflecting = false
+
   local function SetupHatCombat(prefab, armor, planar, fireproof)
     AddPrefabPostInit(prefab, function(inst)
       if not TheWorld.ismastersim then return end
@@ -477,6 +481,182 @@ if config.farming_combat then
             owner.components.health.externalfiredamagemultipliers:RemoveModifier(inst)
           end
         end
+      end
+
+      -- ===== 无敌护盾 + 反伤（resistance 全免 + 铥矿皇冠 forcefieldfx + 彩色呼吸灯）=====
+      -- 防护：resistance 命中 → inventory:ApplyDamage 直接 return 0,nil → 物理+位面(spdamage)全免
+      -- 硬直：combat 走 blocked 分支 → 不推 attacked → SGwilson 不进 hit → 硬直自动免疫
+      -- 参数复用：armor(0.36/0.66) 兼作触发概率与护盾时长基数；planar(36/66) 作反伤值
+      local shield_chance = armor         -- 36% / 66%
+      local shield_duration = armor * 10  -- 3.6s / 6.6s（远长于官方骨甲的 10 帧）
+      local reflect_dmg = planar          -- 36 / 66
+
+      -- armorskeleton 同款抵抗标签：_combat 覆盖一切带战斗组件的攻击者（物理+位面），
+      -- 其余为环境伤害（爆炸/落石/月雹/洞穴塌陷/陷阱/树木）
+      local SHIELD_RESISTANCES = {
+        "_combat", "explosive", "quakedebris", "lunarhaildebris",
+        "caveindebris", "trapdamage", "rock_tree",
+      }
+
+      inst:AddComponent("resistance")
+      local shield_active = false
+      -- 用私有标志而非 forcefield tag 门禁，避免与官方铥矿皇冠的 forcefield 语义冲突
+      inst.components.resistance:SetShouldResistFn(function() return shield_active end)
+
+      local shield_task = nil     -- 护盾持续时间上限
+      local shield_fx = nil       -- forcefieldfx 持续特效（open→idle_loop 循环，kill_fx 清理）
+      local breath_task = nil     -- 叠加呼吸灯
+      local breath_time = 0
+
+      -- 呼吸灯：照手杖跑马灯（HueToRGB 色相循环 + sin 呼吸亮度）叠在 forcefieldfx 上。
+      -- forcefieldfx 是 networked 实体，服务端 AnimState 染色会同步到客户端（同手杖呼吸灯）。
+      local BREATH_SPEED = 1.2
+      local COLOR_CYCLE_SPEED = 1.6
+      local BREATH_INTENSITY = 0.6
+      local function HueToRGB(hue)
+        local r = (math.sin(hue) + 1) / 2
+        local g = (math.sin(hue + 2.094) + 1) / 2
+        local b = (math.sin(hue + 4.189) + 1) / 2
+        return r, g, b
+      end
+
+      local function ShieldFxBreath()
+        if shield_fx == nil or not shield_fx:IsValid() then return end
+        breath_time = breath_time + 0.05
+        local phase = (math.sin(breath_time * 2 * math.pi / BREATH_SPEED) + 1) / 2
+        local intensity = phase * BREATH_INTENSITY
+        local cr, cg, cb = HueToRGB(breath_time * 2 * math.pi / COLOR_CYCLE_SPEED)
+        if shield_fx.AnimState ~= nil then
+          shield_fx.AnimState:SetAddColour(cr * intensity, cg * intensity, cb * intensity, 0)
+        end
+      end
+
+      local function SpawnShieldFx(owner)
+        if owner == nil or not owner:IsValid() then return end
+        local fx = SpawnPrefab("forcefieldfx")
+        if fx == nil then return end
+        fx.entity:SetParent(owner.entity)
+        fx.Transform:SetPosition(0, 0.2, 0)
+        shield_fx = fx
+        if breath_task ~= nil then breath_task:Cancel() end
+        breath_time = 0
+        breath_task = fx:DoPeriodicTask(0.05, ShieldFxBreath)
+      end
+
+      local function ShieldEnd(inst)
+        shield_active = false
+        -- ★ 关键：护盾结束必须移除抵抗标签，否则 resistance 永久生效
+        for _, tag in ipairs(SHIELD_RESISTANCES) do
+          inst.components.resistance:RemoveResistance(tag)
+        end
+        if breath_task ~= nil then
+          breath_task:Cancel()
+          breath_task = nil
+        end
+        if shield_fx ~= nil then
+          -- forcefieldfx 官方清理：kill_fx 播 close 动画渐暗 0.6s 后移除，不能直接 Remove
+          if shield_fx.kill_fx ~= nil then
+            shield_fx:kill_fx()
+          else
+            shield_fx:Remove()
+          end
+          shield_fx = nil
+        end
+        if shield_task ~= nil then
+          shield_task:Cancel()
+          shield_task = nil
+        end
+      end
+
+      local function ShieldStart(inst, owner)
+        shield_active = true
+        -- ★ 关键：护盾开启时加入抵抗标签（之前漏了这步，导致防护完全不生效）
+        for _, tag in ipairs(SHIELD_RESISTANCES) do
+          inst.components.resistance:AddResistance(tag)
+        end
+        -- forcefieldfx 常驻：首次才 spawn，续盾只延长时长，避免 kill_fx 的 close 闪烁
+        if shield_fx == nil or not shield_fx:IsValid() then
+          SpawnShieldFx(owner)
+        end
+        -- 护盾时间可刷新：每次触发重置到满时长（不叠加），可无限续盾
+        if shield_task ~= nil then shield_task:Cancel() end
+        shield_task = inst:DoTaskInTime(shield_duration, function()
+          ShieldEnd(inst)
+        end)
+      end
+
+      -- 反伤目标过滤（照搬背包强化 mod）
+      local INVALID_REFLECT_TAGS = {
+        "bramble_resistant", "INLIMBO", "FX", "invisible", "wall",
+        "notarget", "noattack", "flight", "playerghost", "NOCLICK",
+      }
+      local function CanReflect(attacker, owner)
+        if attacker == nil or not attacker:IsValid() or not attacker.entity:IsVisible() then
+          return false
+        end
+        for _, tag in ipairs(INVALID_REFLECT_TAGS) do
+          if attacker:HasTag(tag) then return false end
+        end
+        if attacker.components.combat == nil or attacker.components.health == nil then
+          return false
+        end
+        if attacker.components.health:IsDead() then return false end
+        if owner ~= nil and owner.components.combat ~= nil
+            and owner.components.combat:IsAlly(attacker) then
+          return false
+        end
+        return true
+      end
+
+      local function OnOwnerAttacked(inst, owner, data)
+        if owner == nil or data == nil then return end
+        -- 反伤伤害不再触发反伤/续盾，避免两个同款帽子玩家互殴无限递归崩服
+        -- 注意：resistance 抵挡时推的是 blocked 且无 stimuli，故用共享 reflecting flag
+        if reflecting then return end
+        -- 护盾激活时受击 → 反伤（forcefieldfx 常驻 + 呼吸灯，无需每次重新 spawn 闪烁）
+        if shield_active then
+          local attacker = data.attacker
+          if CanReflect(attacker, owner) then
+            reflecting = true
+            attacker.components.combat:GetAttacked(attacker, reflect_dmg, inst, "htree_reflect")
+            reflecting = false
+            if owner.SoundEmitter ~= nil then
+              owner.SoundEmitter:PlaySound("dontstarve/common/together/armor/cactus")
+            end
+          end
+        end
+        -- 每次受击 roll 触发/刷新护盾（attacked 与 blocked 都监听，覆盖普通/全免两种伤害）
+        if not data.redirected and math.random() < shield_chance then
+          ShieldStart(inst, owner)
+        end
+      end
+
+      local _old_onequip_shield = inst.components.equippable.onequipfn
+      inst.components.equippable.onequipfn = function(inst, owner)
+        if _old_onequip_shield then _old_onequip_shield(inst, owner) end
+        inst._htree_onattacked = function(_owner, data)
+          OnOwnerAttacked(inst, _owner, data)
+        end
+        inst:ListenForEvent("attacked", inst._htree_onattacked, owner)
+        inst:ListenForEvent("blocked", inst._htree_onattacked, owner)
+      end
+
+      local _old_onunequip_shield = inst.components.equippable.onunequipfn
+      inst.components.equippable.onunequipfn = function(inst, owner)
+        ShieldEnd(inst)
+        if inst._htree_onattacked ~= nil and owner ~= nil then
+          inst:RemoveEventCallback("attacked", inst._htree_onattacked, owner)
+          inst:RemoveEventCallback("blocked", inst._htree_onattacked, owner)
+          inst._htree_onattacked = nil
+        end
+        if _old_onunequip_shield then _old_onunequip_shield(inst, owner) end
+      end
+
+      -- 帽子销毁时清理，防止 task/fx 泄漏
+      local _old_onremove = inst.OnRemoveEntity
+      inst.OnRemoveEntity = function(inst)
+        ShieldEnd(inst)
+        if _old_onremove ~= nil then _old_onremove(inst) end
       end
     end)
   end

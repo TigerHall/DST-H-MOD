@@ -1617,7 +1617,8 @@ AddPrefabPostInit("cane", function(inst)
   -- 多工具组件管理
   -- 加多工具组件
   local function AddToolComponents()
-    if not config.tool_enable then return end
+    -- 6.0.1：tool_enable 现在只控制"右键 use 组件是否注册"，不再是多功能总门禁。
+    --        轮盘点击照常切 all_active → 工具组件随 all_active 启停。
     if not inst.components.tool then
       -- 工具组件
       inst:AddComponent("tool")
@@ -1684,7 +1685,7 @@ AddPrefabPostInit("cane", function(inst)
   end
   -- 多工具功能状态更新函数
   local function UpdateToolState()
-    if config.tool_enable and inst.all_active then
+    if inst.all_active then
       AddToolComponents()
     else
       RemoveToolComponents()
@@ -2028,12 +2029,8 @@ AddPrefabPostInit("cane", function(inst)
 
   local function ToggleCaneActive(owner)
     if owner == nil or not owner:HasTag("player") then return false end
-    if not config.tool_enable then
-      if owner.components.talker then
-        owner.components.talker:Say("多功能未启用（配置里已关闭）")
-      end
-      return false
-    end
+    -- ⭐ 6.0.1：tool_enable 不再拦截 ToggleCaneActive——它只控制右键 use 组件是否注册。
+    --    关掉右键开关后，轮盘中心点击仍可正常切换总开关（all_active）。
     -- 切换开关状态
     inst.all_active = not inst.all_active
     SyncCaneState()
@@ -2081,13 +2078,18 @@ AddPrefabPostInit("cane", function(inst)
   -- 暴露到实体上：UI RPC 找到手杖后调用同一个函数
   inst.hcane_toggle_active = ToggleCaneActive
 
-  -- 右键 use 组件始终注册：与轮盘左键共用 ToggleCaneActive（同一 all_active 开关）
-  inst:AddComponent("useableitem")
+  -- ⭐ 6.0.1：右键 use 组件改为条件注册。
+  --    tool_enable=true（默认）：注册 useableitem，右键装备栏手杖 = 切换总开关（原行为）。
+  --    tool_enable=false：不注册 useableitem → 右键装备栏手杖 = 官方默认行为（卸下手杖），
+  --      这正是"没有 use 组件的效果"；轮盘中心点击仍可照常切换 all_active。
   inst:AddComponent("named")
-  inst.components.useableitem:SetOnUseFn(function(inst)
-    local owner = inst.components.inventoryitem:GetGrandOwner()
-    return ToggleCaneActive(owner)
-  end)
+  if config.tool_enable then
+    inst:AddComponent("useableitem")
+    inst.components.useableitem:SetOnUseFn(function(inst)
+      local owner = inst.components.inventoryitem:GetGrandOwner()
+      return ToggleCaneActive(owner)
+    end)
+  end
 
   -- ⭐ 5.6.26：状态按手杖各自存档（active_gem + 总开关），换手杖互不串
   inst.OnSave = function(inst, data)
