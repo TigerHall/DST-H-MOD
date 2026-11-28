@@ -110,6 +110,10 @@ local KEY_TO_PREFAB = {
   purple_fish = "purplemooneye",
   shadow = "redmooneye",
 }
+-- ⭐ 4.6.1：持有任一「彩虹系」物品 → 直接解锁全部六个月眼空间（切斯特全 UI）。
+--    与 hcane 的 GEM_ALL_UNLOCK_PREFABS 对齐：彩虹宝石/虹彩法杖/不朽宝石。
+--    opalstaff=官方虹彩法杖（staff.lua:309）；opalpreciousgem=彩虹宝石；immortal_gem=自定义/第三方。
+local ALL_UNLOCK_PREFABS = { "opalpreciousgem", "opalstaff", "immortal_gem" }
 
 local function SerializeUnlock(t)
   local parts = {}
@@ -140,6 +144,7 @@ end
 
 local UnlockedKeysString  -- 前置声明：LoadUnlockData 回调里要用（定义在下方）
 local SyncUnlockToClient  -- 前置声明：LoadUnlockData 回调里要用（定义在下方 186 行）
+local ScanUnlockAll       -- ⭐ 4.6.2 前置声明：存档加载完回调里要触发统一扫描（定义在下方 915 行）
 
 local function LoadUnlockData()
   TheSim:GetPersistentString(UNLOCK_SAVE_KEY, function(success, str)
@@ -161,6 +166,9 @@ local function LoadUnlockData()
           -- ⭐ 用带重试的 SyncUnlockToClient（不要直接 set netvar）：
           --    存档加载回调时 classified 可能还没就绪，直接 set 会静默丢失。
           SyncUnlockToClient(player)
+          -- ⭐ 4.6.2：重新进入存档也走统一扫描（彩虹全解锁 + 逐月眼），逻辑只此一份。
+          --    此时 unlock_data_loaded 刚置 true，ScanUnlockAll 内部门禁直接放行。
+          if ScanUnlockAll ~= nil then ScanUnlockAll(player) end
         end
       end
     end
@@ -894,6 +902,72 @@ local function PlayerHasMoonEye(player, prefab)
   end) ~= nil
 end
 
+-- ⭐ 4.6.1：检测玩家是否持有「任一」彩虹系全解锁物品（列表见 ALL_UNLOCK_PREFABS）
+local function PlayerHasAllUnlockItem(player)
+  if player == nil then return false end
+  local inv = player.components.inventory
+  if inv == nil then return false end
+  return inv:FindItem(function(item)
+    if item == nil then return false end
+    for _, p in ipairs(ALL_UNLOCK_PREFABS) do
+      if item.prefab == p then return true end
+    end
+    return false
+  end) ~= nil
+end
+
+-- ⭐ 4.6.2：解锁扫描【唯一入口】——进图自动扫 / 点灰月眼 / 切斯特轮盘开关 全部走这里。
+--    彩虹系物品 → 一次全解锁六月眼；否则逐月眼扫随身实物。
+--    hint_key: 非 nil 时扫描后按该 key 结果给「成功 / 需要月眼」提示（点灰月眼用）；
+--              nil 则静默（进图 / 轮盘开关用，避免刷屏）。
+--    返回是否发生新解锁（存档未就绪走重试时返回 false）。
+ScanUnlockAll = function(player, retry, hint_key)
+  if not config.moon_eye_unlock then return false end
+  if player == nil or not player:IsValid() or player.userid == nil then return false end
+  -- ⚠️ SaveUnlockData 是全量覆盖写：必须等 LoadUnlockData 把旧记录并进内存再写，
+  --    否则慢盘/冷启动时旧 key（或其他玩家）的解锁记录会被这次写入直接抹掉。
+  if not unlock_data_loaded then
+    local tries = retry or 0
+    if tries < 50 then  -- 最多约 10 秒
+      player:DoTaskInTime(0.2, function()
+        if player:IsValid() then ScanUnlockAll(player, tries + 1, hint_key) end
+      end)
+    end
+    return false
+  end
+  local uid = player.userid
+  local changed = false
+  if PlayerHasAllUnlockItem(player) then
+    -- 彩虹系物品（彩虹宝石/虹彩法杖/不朽宝石）→ 直接全解锁六月眼空间（切斯特全 UI）
+    UNLOCK_DATA[uid] = UNLOCK_DATA[uid] or {}
+    for key, _ in pairs(KEY_TO_PREFAB) do
+      if not IsUnlocked(uid, key) then
+        UNLOCK_DATA[uid][key] = true
+        changed = true
+      end
+    end
+  else
+    for key, prefab in pairs(KEY_TO_PREFAB) do
+      if not IsUnlocked(uid, key) and PlayerHasMoonEye(player, prefab) then
+        UNLOCK_DATA[uid] = UNLOCK_DATA[uid] or {}
+        UNLOCK_DATA[uid][key] = true
+        changed = true
+      end
+    end
+  end
+  if changed then SaveUnlockData() end
+  -- 即便没有新解锁也补推一次：登录时 netvar 同步时序问题在这里兜底
+  SyncUnlockToClient(player)
+  if hint_key ~= nil then
+    if IsUnlocked(uid, hint_key) then
+      SayUnlockSuccess(player, hint_key)   -- 说话：月眼名 + 三个灯泡
+    else
+      SayNeedMoonEye(player, hint_key)     -- 没带对应物品 → 说话提示
+    end
+  end
+  return changed
+end
+
 AddModRPCHandler("hslot_pocket", "unlock", function(player, key)
   if not config.moon_eye_unlock then return end
   if type(key) ~= "string" or KEY_TO_PREFAB[key] == nil then return end
@@ -905,51 +979,21 @@ AddModRPCHandler("hslot_pocket", "unlock", function(player, key)
     SyncUnlockToClient(player)
     return
   end
-
-  -- 一次检测：手持或背包里有对应月眼
-  if not PlayerHasMoonEye(player, KEY_TO_PREFAB[key]) then
-    SayNeedMoonEye(player, key)   -- 没带对应月眼 → 说话提示
-    return
-  end
-
-  -- 解锁：存盘 + 同步客户端
-  UNLOCK_DATA[uid] = UNLOCK_DATA[uid] or {}
-  UNLOCK_DATA[uid][key] = true
-  SaveUnlockData()
-  SyncUnlockToClient(player)
-  SayUnlockSuccess(player, key)   -- 说话提示：月眼名 + 三个灯泡
+  -- ⭐ 4.6.2：统一扫描入口（点灰月眼 → 带提示），逻辑与进图/轮盘开关共用一份
+  ScanUnlockAll(player, nil, key)
 end)
 
--- ⭐ 进入存档 / 切换世界（地表↔洞穴）时自动扫描一次身上已有的月眼并解锁。
---    旧行为要玩家点一下灰月眼才触发 unlock RPC，体验像"没载入"；
---    persistent string 是按 shard 存的，换洞穴后服务端没有本 shard 的解锁记录，
---    这里用玩家随身实物当凭证，进图即点亮对应宝石。
+-- ⭐ 4.6.2：切斯特轮盘【打开/关闭】时请求后台扫描解锁（彩虹全解锁 + 逐月眼）。
+--    客户端只发这个轻量 RPC；逻辑与进图/点灰月眼共用 ScanUnlockAll 一份，静默不刷屏。
+--    ⚠️ 两端都要 AddModRPCHandler，否则 MOD_RPC 里没有这个 id，客户端发不出去。
+AddModRPCHandler("hslot_pocket", "scan_unlock", function(player)
+  ScanUnlockAll(player)
+end)
+
+-- 进图 / 切换世界（地表↔洞穴）时自动扫描一次：薄封装，统一走 ScanUnlockAll。
+-- persistent string 按 shard 存，换洞穴后服务端没记录 → 用玩家随身实物当凭证点亮。
 local function AutoUnlockOwnedMoonEyes(player, retry)
-  if not config.moon_eye_unlock then return end
-  if player == nil or not player:IsValid() or player.userid == nil then return end
-  -- ⚠️ SaveUnlockData 是全量覆盖写：必须等 LoadUnlockData 把旧记录并进内存再写，
-  --    否则慢盘/冷启动时旧 key（或其他玩家）的解锁记录会被这次写入直接抹掉。
-  if not unlock_data_loaded then
-    local tries = retry or 0
-    if tries < 50 then  -- 最多约 10 秒
-      player:DoTaskInTime(0.2, function()
-        if player:IsValid() then AutoUnlockOwnedMoonEyes(player, tries + 1) end
-      end)
-    end
-    return
-  end
-  local uid = player.userid
-  local changed = false
-  for key, prefab in pairs(KEY_TO_PREFAB) do
-    if not IsUnlocked(uid, key) and PlayerHasMoonEye(player, prefab) then
-      UNLOCK_DATA[uid] = UNLOCK_DATA[uid] or {}
-      UNLOCK_DATA[uid][key] = true
-      changed = true
-    end
-  end
-  if changed then SaveUnlockData() end
-  -- 即便没有新解锁也补推一次：登录时 netvar 同步时序问题在这里兜底
-  SyncUnlockToClient(player)
+  return ScanUnlockAll(player, retry)
 end
 
 AddPrefabPostInit("player", function(inst)
@@ -2310,6 +2354,10 @@ if not GLOBAL.TheNet:IsDedicated() then
         function(key)
           -- 未解锁月眼点击 → 请求服务端扫描解锁（服务端验证持有）
           SendModRPCToServer(MOD_RPC["hslot_pocket"]["unlock"], key)
+        end,
+        function()
+          -- ⭐ 4.6.2：轮盘打开/关闭 → 后台扫描解锁（彩虹全解锁 + 逐月眼），静默
+          SendModRPCToServer(MOD_RPC["hslot_pocket"]["scan_unlock"])
         end
       ))
       local dial = self.hslot_chester_dial

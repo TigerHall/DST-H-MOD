@@ -47,7 +47,7 @@ end
 
 --  基础信息
 name = en_zh("H-SLOT", "H-无限格子")
-version = "4.6"
+version = "4.7"
 description = en_zh("V" .. version .. [[
 󰀏 Your backpack wants a bigger home!
 
@@ -261,8 +261,8 @@ configuration_options = {
     "月眼需解锁才能使用",
     "Moon eyes require unlock",
     true,
-    "开启后：六个月眼初始灰黑不可用，需手持或携带对应月眼点击扫描点亮才能打开该空间；解锁进度按角色存档。关闭后：全部月眼直接可用（解锁记录会保留，重新开启后继续生效）。",
-    "When on: all six moon eyes start locked (grey) and must be scanned by holding/carrying the matching moon eye; unlock progress is saved. When off: all moon eyes are usable directly (unlock records are kept and reused if turned back on).",
+    "开启后：六个月眼初始灰黑不可用，需手持或携带对应月眼点击扫描点亮才能打开该空间；持有彩虹宝石(opalpreciousgem)/虹彩法杖(opalstaff)/不朽宝石(immortal_gem)任一则直接解锁全部六月眼空间。解锁进度按角色存档。关闭后：全部月眼直接可用（解锁记录会保留，重新开启后继续生效）。",
+    "When on: all six moon eyes start locked (grey) and must be scanned by holding/carrying the matching moon eye; holding opalpreciousgem, opalstaff or immortal_gem unlocks all six at once. Unlock progress is saved. When off: all moon eyes are usable directly (unlock records are kept and reused if turned back on).",
     "开启（默认）：月眼需扫描解锁，未解锁时会提示所需月眼",
     "On (default): moon eyes must be unlocked by scanning",
     "关闭：全部月眼直接可用，无灰黑无扫描",

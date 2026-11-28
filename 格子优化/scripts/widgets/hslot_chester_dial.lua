@@ -107,10 +107,11 @@ local function refresh_world_scale(widget)
     )
 end
 
-local ChesterDial = Class(Widget, function(self, on_gem_click, unlock_enabled, on_gem_unlock)
+local ChesterDial = Class(Widget, function(self, on_gem_click, unlock_enabled, on_gem_unlock, on_scan)
     Widget._ctor(self, "hslot_chester_dial")
     self.on_gem_click = on_gem_click
     self.on_gem_unlock = on_gem_unlock        -- 未解锁点击 → 发 unlock RPC
+    self.on_scan = on_scan                    -- ⭐ 4.6.2：打开/关闭轮盘 → 请求后台扫描解锁（静默）
     self.unlock_enabled = (unlock_enabled == true)
     self._unlocked = {}                        -- [key]=true，服务端 netvar 同步过来
     self.is_open = false
@@ -579,6 +580,8 @@ function ChesterDial:Open()
     self:PlayOpen()
     play_chester_sound(SOUND_OPEN)   -- 张开嘴：切斯特 open 声效
     self.wheel:Show()
+    -- ⭐ 4.6.2：打开轮盘时后台扫描解锁（彩虹全解锁 + 逐月眼），开销小、静默不刷屏
+    if self.on_scan then self.on_scan() end
 end
 
 function ChesterDial:Close()
@@ -587,6 +590,8 @@ function ChesterDial:Close()
     self.chester_anim:GetAnimState():PlayAnimation("closed")  -- 闭嘴动作（一次性）
     self:StartRainbow()   -- 关闭后恢复炫彩（睡眠/清醒都开）
     self.wheel:Hide()
+    -- ⭐ 4.6.2：关闭轮盘时也扫一次（兜底：开轮盘期间才捡到彩虹物品的情况）
+    if self.on_scan then self.on_scan() end
     -- 闭嘴动画放完（~0.6s）后按当前状态回睡眠或清醒待机
     self.inst:DoTaskInTime(0.6, function()
         if self.inst:IsValid() then self:SyncAnim() end
