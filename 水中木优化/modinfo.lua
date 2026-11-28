@@ -48,12 +48,34 @@ local function addTitle(title)
 end
 
 name = L and "H-Enhanced Waterlogged Tree" or "H-水中木强化"
-version = "2.6"
+version = "2.7"
 description = L
     and
-    ("V" .. version .. "\n\nAllows transplanted Waterlogged Trees to glow, reduces the visual size of large trees, shrinks moss vines, increases the shade range of the fig Tree, and adjusts the number of figs obtained per harvest.Modify the production speed and consumption effect of Glommer's Goop, and modify the fertilizer effect of tree jam and Glommer's Goop. When fertilizing with Glommer's Goop, the transplant marker of the crop can be removed (after becoming a native plant, there is no need to fertilize again), and it should no longer wither. The ambient temperature under the tree is 16 degrees. Farming hat enhancements: night vision+storm proof+waterproof+thermal / armor+planar defense+faction immunity+fireproof / mount perks: ride ignoring obedience, knockback immunity, no buck when domesticated, immune to heat-beefalo, electric-proof.")
+    ("V" .. version .. [[
+󰀏 Waterlogged trees glow, crops grow at night
+󰀠 Shrink big trees & moss vines, wider shade
+󰀇 More figs, faster goop, anyone can eat it
+󰀓 Glommer sanity aura + self-heal, 16° under trees
+󰀇 Goop fertilizer makes crops native, no wither
+󰀪 No dock-tile block, seaweed places with no gap
+󰀖 Utility boost: farm in any weather
+󰀘 Combat boost: farm with peace of mind
+󰀁 Mount perks
+Every feature has a switch 󰀏
+]])
     or
-    ("V" .. version .. "\n\n让移植过来的水中木发光（光芒能让作物晚上生长），减小大树视觉体积，自定义增大树荫范围，减小苔藓藤条体积，修改获得的无花果数量，修改格罗姆粘液的产出速度和食用效果（应该任何人都能吃），自定义格罗姆的会san光环效果，修改树果酱和格罗姆粘液的肥料效果。格罗姆粘液施肥时可移除作物的移植标记（变为原生植物以后不用再施肥了）同时应该不会再枯萎。树下环境温度16度。水中木不会挡着码头地皮铺设。格罗姆可自带回血，海带无间隔放置。耕作帽强化：夜视+防风暴+防水+恒温 / 防御+位面防+阵营友好+防火 / 骑乘增益：无视服从度骑乘+免疫击退+驯化完成不被甩下+免被发情皮弗娄牛攻击+防电。")
+    ("V" .. version .. [[
+󰀏 水中木发光，作物夜里也能长
+󰀠 缩小大树/苔藓藤条，增大树荫
+󰀇 无花果更多，粘液产出更快、人人能吃
+󰀓 格罗姆回san光环+自回血，树下恒温16度
+󰀇 粘液施肥变原生植物，不再枯萎
+󰀪 不挡码头地皮，海带可无间隔放置
+󰀖 功能强化，风雨无阻种地
+󰀘 战斗强化，专心致志种地
+󰀁 骑乘增益
+所有功能均可单独开关 󰀏
+]])
 author = "hehu"
 api_version = 10
 dst_compatible = true
@@ -191,8 +213,8 @@ configuration_options = {
     "耕作帽战斗强化",
     "Farming Hat Combat",
     true,
-    "种地的人应该专心致志。耕作帽36/66防+36/66位面防，暗影+月亮友好，高级帽防火",
-    "plantregistryhat 36armor+36planar, nutrientsgoggleshat 66armor+66planar, faction immunity, fireproof",
+    "种地的人应该专心致志。耕作帽36/66防+36/66位面防，暗影+月亮友好，高级帽防火；受击36%/66%概率开3.6/6.6秒骨头盔甲级无敌护盾(物理位面全免+免疫受击硬直)，铥矿皇冠蓝色护盾+彩色呼吸灯，盾中反伤36/66且可刷新续盾",
+    "plantregistryhat 36armor+36planar, nutrientsgoggleshat 66armor+66planar, faction immunity, fireproof; 36%/66% chance to gain a 3.6/6.6s bone-armor shield on hit (immune to physical & planar dmg + no hitstun), thulecite-crown forcefield with rainbow breathing glow, reflecting 36/66 dmg while shielded (refreshable)",
     "开启后耕作帽获得战斗强化，可以专心致志的种地了",
     "Farming hats gain combat enhancements",
     "关闭后耕作帽无战斗强化",
