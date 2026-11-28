@@ -17,7 +17,10 @@
         "missing-parameter",
         "need-check-nil",
         "codestyle-check",
-        "undefined-global"
+        "undefined-global",
+        // DST 运行时给标准库注入的扩展（如 table.invert）非标准 Lua 5.1 字段，
+        // LLS 会误报 undefined-field；同 undefined-global 一并关闭，靠游戏实测
+        "undefined-field"
     ],
     // DST MOD 全局变量（关闭了 undefined-global 诊断后，以下配置可选）
     "Lua.diagnostics.globals": [],
